@@ -2,6 +2,7 @@
 
 #include <windows.h>
 #include <credentialprovider.h>
+#include <shlguid.h>
 #include <string>
 
 enum PhoneUnlockFieldId : DWORD
