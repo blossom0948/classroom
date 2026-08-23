@@ -1,0 +1,101 @@
+<Window x:Class="PhoneUnlock.Setup.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Phone Unlock 설정"
+        Width="900" Height="800" MinWidth="760" MinHeight="650"
+        WindowStartupLocation="CenterScreen"
+        Background="#F5F6F8"
+        FontFamily="Segoe UI Variable Text"
+        Foreground="{StaticResource TextBrush}"
+        Loaded="Window_Loaded">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="32">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock FontSize="29" FontWeight="SemiBold" Text="Phone Unlock 설정" />
+                    <TextBlock Margin="0,6,0,0" Foreground="{StaticResource MutedBrush}" Text="휴대폰과 Windows 로그인을 안전하게 연결합니다" />
+                </StackPanel>
+                <Button Grid.Column="1" Style="{StaticResource SecondaryButton}" Click="Refresh_Click" Content="새로 고침" VerticalAlignment="Center" />
+            </Grid>
+
+            <Border Margin="0,22,0,0" Padding="20" Background="White" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock FontSize="12" Foreground="{StaticResource MutedBrush}" Text="서비스" />
+                        <TextBlock x:Name="ServiceStatusText" Margin="0,6,0,0" FontSize="19" FontWeight="SemiBold" Text="확인 중…" />
+                        <TextBlock x:Name="ComputerText" Margin="0,5,0,0" Foreground="{StaticResource MutedBrush}" />
+                    </StackPanel>
+                    <Border Grid.Column="1" x:Name="ReadyBadge" Padding="13,8" CornerRadius="18" Background="#ECEEF2" VerticalAlignment="Center">
+                        <TextBlock x:Name="ReadyBadgeText" FontSize="12" FontWeight="SemiBold" Text="준비 안 됨" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Grid Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Padding="20" Background="White" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="12">
+                    <StackPanel>
+                        <TextBlock FontSize="18" FontWeight="SemiBold" Text="1. Windows 계정" />
+                        <TextBlock Margin="0,7,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                                   Text="비밀번호를 Windows Credential Manager에 보호 저장합니다. Android로 전송하지 않습니다." />
+                        <TextBlock Margin="0,16,0,5" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="계정 (PC이름\사용자 또는 MicrosoftAccount\이메일)" />
+                        <TextBox x:Name="UsernameBox" />
+                        <TextBlock Margin="0,11,0,5" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="Windows 계정 비밀번호" />
+                        <PasswordBox x:Name="PasswordInput" />
+                        <Button Margin="0,14,0,0" Click="StoreCredential_Click" Content="검증 후 안전하게 저장" HorizontalAlignment="Left" />
+                        <TextBlock x:Name="CredentialStateText" Margin="0,12,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Padding="20" Background="White" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="12">
+                    <StackPanel>
+                        <TextBlock FontSize="18" FontWeight="SemiBold" Text="2. Android 휴대폰" />
+                        <TextBlock Margin="0,7,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                                   Text="2분 동안 유효한 페어링 정보를 만든 뒤 Android 앱에 붙여 넣으세요." />
+                        <Button Margin="0,14,0,0" Click="CreatePairing_Click" Content="새 휴대폰 연결" HorizontalAlignment="Left" />
+                        <TextBox x:Name="PairingJsonBox" Margin="0,12,0,0" Height="174" IsReadOnly="True" AcceptsReturn="True"
+                                 FontFamily="Cascadia Mono" FontSize="11" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                        <Button Margin="0,10,0,0" Style="{StaticResource SecondaryButton}" Click="CopyPairing_Click" Content="페어링 정보 복사" HorizontalAlignment="Left" />
+                        <TextBlock x:Name="PhoneStateText" Margin="0,12,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Border Margin="0,16,0,0" Padding="20" Background="White" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock FontSize="18" FontWeight="SemiBold" Text="3. 휴대폰 인증 테스트" />
+                        <TextBlock Margin="0,7,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                                   Text="이 테스트가 성공한 뒤에만 Credential Provider 활성화 스크립트를 사용할 수 있습니다." />
+                        <TextBlock x:Name="TestResultText" Margin="0,12,0,0" FontWeight="SemiBold" Text="아직 테스트하지 않았습니다." />
+                    </StackPanel>
+                    <Button Grid.Column="1" Click="TestAuthentication_Click" Content="휴대폰에 인증 요청" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <Border Margin="0,16,0,0" Padding="18" Background="#FFF4D6" CornerRadius="12">
+                <TextBlock Foreground="#765100" TextWrapping="Wrap"
+                           Text="안전 안내: Phone Unlock은 추가 로그인 옵션입니다. 기존 PIN·비밀번호·Windows Hello를 비활성화하지 않습니다. 문제가 생기면 기본 로그인 옵션을 사용하세요." />
+            </Border>
+
+            <TextBlock x:Name="OperationStatusText" Margin="0,16,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+        </StackPanel>
+    </ScrollViewer>
+</Window>

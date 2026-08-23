@@ -10,11 +10,26 @@ AGP 9.0.1은 JDK 17과 Gradle 9.1.0이 필요하다. `JAVA_HOME`을 JDK 17 폴�
 
 ## 생체인증 사용 불가
 
-기기에 PIN/패턴 같은 보안 잠금과 강한 생체인증을 먼저 등록한다. 기기가 `BIOMETRIC_STRONG`을 제공하지 않으면 Phase 1 앱은 서명을 허용하지 않는다.
+기기에 PIN/패턴 같은 보안 잠금과 강한 생체인증을 먼저 등록한다. 기기가 `BIOMETRIC_STRONG`을 제공하지 않으면 앱은 로그인을 승인하지 않는다.
 
 ## Key permanently invalidated
 
-생체정보를 추가/삭제하면 기존 키가 무효화될 수 있다. 앱에서 키를 다시 만든 뒤 Windows에 새 공개키를 사용한다. 향후 pairing 구현에서는 키 교체를 명시적으로 승인하게 된다.
+생체정보를 추가/삭제하면 기존 키가 무효화될 수 있다. Android 앱에서 PC 연결을 해제한 뒤 Windows 설정 앱이 만든 새 페어링 정보로 다시 연결한다.
+
+## PC 연결 실패
+
+- PC와 Android가 같은 로컬 네트워크인지 확인한다.
+- Windows 네트워크 프로필이 Public이면 LocalSubnet 방화벽 규칙이 적용되지 않으므로 Private 네트워크에서 테스트한다.
+- 페어링 JSON은 생성 후 2분 안에 사용해야 하며 한 번만 사용할 수 있다.
+- 공유기 AP isolation/게스트 Wi-Fi가 켜져 있으면 기기 간 통신이 차단될 수 있다.
+- PC IP가 바뀐 경우 기존 연결을 해제하고 다시 페어링한다.
+
+## 로그인 요청 알림이 오지 않음
+
+- Android에서 Phone Unlock 알림 권한과 배터리 백그라운드 실행을 허용한다.
+- 앱의 상시 알림이 `PC 이름 · 연결됨`인지 확인한다.
+- Android 재부팅 후 제조사 정책이 자동 시작을 막으면 앱을 한 번 직접 연다.
+- 설정 앱의 휴대폰 상태가 `오프라인`이면 다시 연결하거나 재페어링한다.
 
 ## 서명 검증 실패
 
@@ -25,4 +40,10 @@ AGP 9.0.1은 JDK 17과 Gradle 9.1.0이 필요하다. `JAVA_HOME`을 JDK 17 폴�
 
 ## Windows 로그인 문제
 
-현재 Phase 1은 로그인 시스템을 수정하지 않는다. 향후 Credential Provider 테스트에서도 기본 PIN/비밀번호를 유지하고, 문제가 생기면 기본 로그인 옵션을 사용한다.
+로그인 화면에서 **로그인 옵션**을 눌러 기본 PIN 또는 비밀번호를 사용한다. 로그인 후 관리자 PowerShell에서 다음을 실행한다.
+
+```powershell
+& "$env:ProgramFiles\PhoneUnlock\Disable-CredentialProvider.ps1"
+```
+
+로그인할 수 없으면 `windows/PhoneUnlock.Installer/RECOVERY.md`의 안전 모드 명령을 사용한다. 설치 스크립트는 Microsoft 기본 공급자를 필터링하지 않는다.

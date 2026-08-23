@@ -63,7 +63,7 @@ PONG
 - `computerId`: 페어링된 PC의 UUID
 - `computerName`: 표시용 이름이며 서명 대상이 아님
 
-Android는 envelope version/type, UUID, Base64 길이, `createdAt <= now <= expiresAt`, 최대 허용 수명 30초를 확인한 뒤에만 생체인증을 연다.
+Android는 envelope version/type, UUID, Base64 길이, 최대 허용 수명 30초를 확인한 뒤에만 생체인증을 연다. 기기 시계 차이는 사전 검사에서 최대 ±30초 허용하지만 PC가 최종 만료를 강제한다.
 
 ## 서명 canonical payload
 
@@ -157,9 +157,9 @@ PC 검증 순서:
 
 허용 reason 예시: `USER_DENIED`, `BIOMETRIC_CANCELLED`, `BIOMETRIC_FAILED`, `REQUEST_EXPIRED`, `KEY_INVALIDATED`.
 
-## Pairing v1 초안
+## Pairing v1
 
-Phase 2에서 구현한다. QR payload는 Windows 자격 증명을 포함하지 않는다.
+설정 앱이 보여 주는 payload는 Windows 자격 증명을 포함하지 않는다.
 
 ```json
 {
@@ -169,11 +169,14 @@ Phase 2에서 구현한다. QR payload는 Windows 자격 증명을 포함하지 
   "pairingToken": "base64url-32-random-bytes",
   "host": "192.168.0.10",
   "port": 48231,
-  "expiresAt": 1787490120
+  "expiresAt": 1787490120,
+  "certificateFingerprint": "64자리 SHA-256 hex"
 }
 ```
 
-pairing token은 256비트 난수이며 2분 뒤 만료되고, 성공 여부와 관계없이 허용된 시도 횟수를 넘으면 폐기한다. 프로덕션 전송은 `wss://<host>:48231/ws`와 pairing 과정에서 고정한 인증서 fingerprint를 사용한다.
+Android는 fingerprint가 정확히 일치하는 TLS 인증서로 `POST /pair`를 호출하고 `X-Pairing-Token` 헤더를 보낸다. body에는 `phoneId`, 표시용 `phoneName`, P-256 SubjectPublicKeyInfo `publicKey`가 들어간다. 성공 응답은 `computerId`, `phoneId`, 256비트 `deviceToken`, port와 같은 fingerprint를 반환한다.
+
+pairing token은 256비트 난수이며 2분 뒤 만료되고 한 번만 소비된다. 이후 전송은 `wss://<host>:48231/ws?phoneId=...`와 `Authorization: Bearer <deviceToken>`을 사용한다. Android는 device token을 Keystore AES-GCM 키로 암호화해 저장하고 PC는 token의 SHA-256 hash만 저장한다.
 
 ## 시간과 replay
 

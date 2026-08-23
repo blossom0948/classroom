@@ -1,26 +1,37 @@
 # Architecture
 
-## Phase 1
+## 실제 로그인 경로
 
 ```text
-Windows Desktop
-  challenge 생성 + pending 저장
-      ↓ 요청 JSON 수동 전달
+Windows LogonUI
+  Phone Unlock Credential Provider 타일
+      ↓ 관리자/SYSTEM 전용 Named Pipe (SID)
+PhoneUnlockService (LocalSystem)
+  30초 challenge 생성 → 인증된 WSS 연결
+      ↓ TLS 인증서 pin + Bearer 장치 토큰
 Android Phone Unlock
-  요청 검증 → BiometricPrompt → Keystore 서명
-      ↓ 공개키 + 응답 JSON 수동 전달
-Windows Core
-  요청 일치/만료 확인 → ECDSA 검증 → 1회 소비
+  잠금 화면 알림 → BiometricPrompt → Keystore ECDSA 서명
+      ↓ AUTH_APPROVED
+PhoneUnlockService
+  phone/computer/request/challenge/만료/replay/서명 검증
+      ↓ 승인된 경우에만 저장 자격 증명 반환
+Credential Provider
+  CredProtectW → KERB_INTERACTIVE_UNLOCK_LOGON → Windows LSA
 ```
 
-수동 전달은 네트워크와 암호 로직을 분리해 먼저 검증하기 위한 개발 경로다. Desktop 앱은 실제 Windows 잠금 상태나 자격 증명에 접근하지 않는다.
+Credential Provider는 네트워크나 Android 키를 직접 다루지 않는다. 서비스는 로그인 UI와 분리되어 WSS 연결, challenge 상태, 공개키 검증, 자격 증명 저장을 담당한다. Android는 Windows 비밀번호를 받지 않으며 승인 메시지에 ECDSA 서명만 보낸다.
 
-## 이후 단계
+## 설정·페어링 경로
 
-1. 2분 만료 pairing token과 공개키 등록
-2. 인증서 fingerprint pinning을 적용한 LAN WebSocket
-3. 최소 권한 Windows Service와 로컬 Named Pipe IPC
-4. VM에서 복구 절차를 먼저 검증한 Credential Provider V2
-5. 테스트 성공 후에만 선택적으로 활성화하는 설치 프로그램
+1. 관리자 설정 앱이 보안 Named Pipe로 Windows 계정을 `LogonUserW` 검증 후 서비스에 저장한다.
+2. 서비스가 현재 LAN 주소, 인증서 fingerprint, 2분·1회용 token을 포함한 JSON을 만든다.
+3. Android가 고정된 인증서로 `/pair`에 공개키와 phone ID를 등록한다.
+4. 서비스는 원문 장치 토큰 대신 SHA-256 hash만 구성 파일에 저장한다.
+5. Android는 장치 토큰을 Android Keystore AES-GCM 키로 암호화해 저장한다.
+6. 실제 휴대폰 인증 테스트 성공 후 10분 동안만 Credential Provider 활성화 조건이 충족된다.
+
+## 개발용 수동 경로
+
+`PhoneUnlock.Desktop`과 Android 메인 화면의 수동 JSON 영역은 네트워크 없이 canonical payload와 ECDSA 상호운용을 진단하기 위해 남아 있다. 실제 잠금 해제는 위 서비스 경로를 사용한다.
 
 Credential Provider는 기존 PIN, 비밀번호, Windows Hello 공급자를 비활성화하지 않는다.

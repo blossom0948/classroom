@@ -12,10 +12,31 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+      - uses: microsoft/setup-msbuild@v2
       - name: Build Windows projects
         run: dotnet build PhoneUnlock.sln -c Release
+      - name: Build x64 Credential Provider
+        run: msbuild windows/PhoneUnlock.CredentialProvider/PhoneUnlock.CredentialProvider.vcxproj /m /p:Configuration=Release /p:Platform=x64
       - name: Run Core self-tests
         run: dotnet run --project windows/PhoneUnlock.Core.Tests/PhoneUnlock.Core.Tests.csproj -c Release --no-build
+      - name: Run Service self-tests
+        run: dotnet run --project windows/PhoneUnlock.Service.Tests/PhoneUnlock.Service.Tests.csproj -c Release --no-build
+      - name: Build Windows release package
+        shell: pwsh
+        run: |
+          dotnet publish windows/PhoneUnlock.Service/PhoneUnlock.Service.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/package/service
+          dotnet publish windows/PhoneUnlock.Setup/PhoneUnlock.Setup.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/package/setup
+          New-Item -ItemType Directory -Path artifacts/package/credential-provider -Force | Out-Null
+          Copy-Item windows/PhoneUnlock.CredentialProvider/x64/Release/PhoneUnlock.CredentialProvider.dll artifacts/package/credential-provider/
+          Copy-Item windows/PhoneUnlock.Installer/*.ps1 artifacts/package/
+          Copy-Item windows/PhoneUnlock.Installer/*.md artifacts/package/
+          Copy-Item THIRD_PARTY_NOTICES.md artifacts/package/
+          Compress-Archive -Path artifacts/package/* -DestinationPath artifacts/PhoneUnlock-Windows-x64.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PhoneUnlock-Windows-x64
+          path: artifacts/PhoneUnlock-Windows-x64.zip
+          if-no-files-found: error
 
   android:
     runs-on: ubuntu-latest
@@ -28,3 +49,8 @@ jobs:
       - name: Build Android debug APK
         working-directory: android/PhoneUnlock
         run: ./gradlew :app:assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PhoneUnlock-Android-debug
+          path: android/PhoneUnlock/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

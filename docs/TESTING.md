@@ -16,6 +16,14 @@
 dotnet run --project .\windows\PhoneUnlock.Core.Tests\PhoneUnlock.Core.Tests.csproj -c Release
 ```
 
+## 자동화된 Service 검사
+
+`PhoneUnlock.Service.Tests`는 장치 토큰 hash 검증, P-256 공개키 등록, 페어링 token 1회 소비, 잘못된 공개키 거부를 검사한다.
+
+```powershell
+dotnet run --project .\windows\PhoneUnlock.Service.Tests\PhoneUnlock.Service.Tests.csproj -c Release
+```
+
 ## Windows UI 수동 검사
 
 1. `테스트 challenge 생성`을 누른다.
@@ -24,14 +32,24 @@ dotnet run --project .\windows\PhoneUnlock.Core.Tests\PhoneUnlock.Core.Tests.csp
 4. 같은 응답으로 다시 검증해 replay 거부를 확인한다.
 5. 30초 후 응답이 만료되는지 확인한다.
 
-## Android 실기기 상호운용 검사
+## Android 실기기 네트워크 검사
 
 1. 강한 생체인증이 등록된 Android 11+ 기기에 debug APK를 설치한다.
-2. Windows 요청 JSON을 Android 앱에 붙여 넣는다.
-3. `생체인증 후 서명`을 누르고 지문/생체인증을 완료한다.
-4. 공개키와 응답 JSON을 Windows 앱으로 복사한다.
-5. `Android 서명 검증` 결과가 성공인지 확인한다.
-6. 같은 응답을 다시 제출해 replay 거부를 확인한다.
-7. 요청 생성 후 30초가 지나면 만료 거부를 확인한다.
+2. Windows 설정 앱에서 페어링 JSON을 만든 뒤 Android의 **PC 연결**에 붙여 넣는다.
+3. 설정 앱의 PC와 Android의 PC 이름/주소가 일치하는지 확인한다.
+4. 설정 앱에서 **휴대폰에 인증 요청**을 누른다.
+5. Android 잠금 화면 알림을 열어 표시된 PC 이름을 확인하고 지문을 승인한다.
+6. Windows 설정 앱에 인증 성공이 표시되는지 확인한다.
+7. 거부, 30초 만료, Wi-Fi 끊김, Android 앱 강제 종료 후 재연결을 각각 확인한다.
+
+## Credential Provider VM 검사
+
+1. 스냅샷을 만든 Windows 11 VM과 별도 Android 실기기를 사용한다.
+2. 기본 PIN/비밀번호로 로그인 가능한지 먼저 확인한다.
+3. 서비스 설치와 실기기 인증 테스트를 마친 뒤 `Enable-CredentialProvider.ps1`을 실행한다.
+4. 화면 잠금 후 **로그인 옵션 → Phone Unlock**을 선택한다.
+5. 지문 승인 성공, 사용자 거부, 휴대폰 오프라인, timeout을 확인한다.
+6. 잘못 저장한 비밀번호에서 Windows 오류가 표시되고 기본 로그인으로 복구되는지 확인한다.
+7. `Disable-CredentialProvider.ps1`과 `RECOVERY.md`의 레지스트리 복구 명령을 검증한다.
 
 실제 생체인증 테스트는 에뮬레이터가 아닌 실기기를 권장한다.

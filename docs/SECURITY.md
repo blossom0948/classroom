@@ -1,6 +1,6 @@
 # Security
 
-## Phase 1 보안 속성
+## 보안 속성
 
 - challenge는 `RandomNumberGenerator`가 생성한 32바이트 난수다.
 - 요청은 `requestId`, `computerId`, challenge, 절대 만료시간에 함께 서명된다.
@@ -9,10 +9,20 @@
 - PC는 X.509 SubjectPublicKeyInfo 공개키만 받는다.
 - 검증 성공 후 request ID를 원자적으로 소비해 재전송을 거부한다.
 - 잘못된 서명은 요청을 소비하지 않아 단순한 네트워크 방해가 정상 승인을 차단하지 못한다.
+- pairing token과 device token은 각각 256비트 난수이며 서버에는 device token hash만 저장한다.
+- Android는 최초 페어링 JSON의 TLS 인증서 SHA-256 fingerprint를 고정한다.
+- Windows 설정/인증 Named Pipe ACL은 운영 서비스에서 LocalSystem과 Administrators로 제한한다.
+- 서비스 구성과 PFX 파일 ACL은 LocalSystem과 Administrators로 제한한다.
+- Credential Provider는 요청한 사용자 SID와 저장된 계정 SID가 일치할 때만 자격 증명을 받는다.
+- Credential Provider는 원문 비밀번호를 받은 즉시 `CredProtectW`로 보호하고 원문 버퍼를 지운다.
 
-## 현재 신뢰 경계
+## 신뢰 경계와 제한
 
-Phase 1의 JSON 전달은 수동이며 페어링 신원을 제공하지 않는다. Windows 앱에 붙여 넣는 공개키가 실제 등록 휴대폰의 키인지 사용자가 확인해야 한다. 이 제한 때문에 현재 코드는 인증 연구용이며 Windows 로그인에 연결하면 안 된다.
+- 이 방식은 완전한 passwordless 로그인이 아니다. LocalSystem 서비스가 기존 Windows 비밀번호를 Windows Credential Manager에 보관하고, 유효한 휴대폰 승인이 있을 때만 Credential Provider에 전달한다.
+- 관리자 또는 LocalSystem 권한이 탈취되면 저장 자격 증명과 서비스 신뢰 경계를 우회할 수 있다.
+- 잠금 해제 가능 여부는 같은 LAN, Android 백그라운드 실행/알림, 휴대폰 배터리 정책에 영향을 받는다.
+- 자체 서명 TLS 인증서는 공개 PKI가 아니라 최초 페어링 정보의 fingerprint 정확성에 의존한다.
+- 현재 릴리스는 코드 서명이 없다. Windows VM에서 DLL/설치/복구를 먼저 검증해야 한다.
 
 ## 기록 금지
 
@@ -21,10 +31,10 @@ Phase 1의 JSON 전달은 수동이며 페어링 신원을 제공하지 않는�
 - raw biometric 정보
 - 전체 pairing secret
 
-## 다음 Phase 필수 조건
+## 설치 안전 장치
 
-- 256비트 pairing token과 짧은 만료
-- 공개키·phone ID의 명시적 등록/해제
-- TLS 및 인증서 fingerprint pinning
-- 외부 인터페이스에 무인증 HTTP 노출 금지
-- rate limit, 구조화 보안 로그, 키 삭제 이후 즉시 거부
+- 기본 Microsoft Credential Provider 필터를 설치하지 않는다.
+- 서비스, 자격 증명, 페어링, 최근 인증 테스트가 모두 준비된 후에만 타일 등록을 허용한다.
+- 비활성화 스크립트는 Phone Unlock의 두 레지스트리 키만 제거한다.
+- 방화벽은 TCP 48231을 Private/Domain 프로필의 LocalSubnet에만 허용한다.
+- 최초 운영 사용 전 별도 관리자 계정 또는 확인된 PIN/비밀번호 복구 수단을 유지한다.

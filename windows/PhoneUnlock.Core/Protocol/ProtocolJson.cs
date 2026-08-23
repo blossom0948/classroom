@@ -13,7 +13,14 @@ public static class ProtocolJson
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
+    public static JsonSerializerOptions CompactOptions { get; } = new(Options)
+    {
+        WriteIndented = false
+    };
+
     public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+
+    public static string SerializeCompact<T>(T value) => JsonSerializer.Serialize(value, CompactOptions);
 
     public static T Deserialize<T>(string json) =>
         JsonSerializer.Deserialize<T>(json, Options)

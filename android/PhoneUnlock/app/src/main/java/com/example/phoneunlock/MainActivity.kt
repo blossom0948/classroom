@@ -1,20 +1,30 @@
 package com.example.phoneunlock
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.text.method.ScrollingMovementMethod
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.example.phoneunlock.network.ConnectionService
+import com.example.phoneunlock.network.PairingClient
+import com.example.phoneunlock.storage.PairedComputer
+import com.example.phoneunlock.storage.PairingPayload
+import com.example.phoneunlock.storage.SecurePairingStore
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
+import kotlinx.coroutines.launch
 import org.json.JSONException
-import java.security.Signature
 import java.time.Instant
 import java.util.UUID
 
@@ -25,9 +35,21 @@ class MainActivity : AppCompatActivity() {
     private lateinit var resultText: TextView
     private lateinit var publicKeyText: TextView
     private lateinit var responseText: TextView
+    private lateinit var pairingInput: TextInputEditText
+    private lateinit var networkStatusText: TextView
+    private lateinit var pairButton: MaterialButton
+    private lateinit var disconnectButton: MaterialButton
     private lateinit var keystoreSigner: KeystoreSigner
+    private lateinit var pairingStore: SecurePairingStore
+    private val pairingClient = PairingClient()
     private lateinit var phoneId: String
     private var pendingRequest: AuthRequest? = null
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (!granted) {
+                showResult("알림 권한이 없어 로그인 요청을 놓칠 수 있습니다. Android 설정에서 Phone Unlock 알림을 허용하세요.", success = false)
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,11 +61,18 @@ class MainActivity : AppCompatActivity() {
         resultText = findViewById(R.id.resultText)
         publicKeyText = findViewById(R.id.publicKeyText)
         responseText = findViewById(R.id.responseText)
+        pairingInput = findViewById(R.id.pairingInput)
+        networkStatusText = findViewById(R.id.networkStatusText)
+        pairButton = findViewById(R.id.pairButton)
+        disconnectButton = findViewById(R.id.disconnectButton)
         publicKeyText.movementMethod = ScrollingMovementMethod()
         responseText.movementMethod = ScrollingMovementMethod()
         keystoreSigner = KeystoreSigner(this)
+        pairingStore = SecurePairingStore(this)
         phoneId = loadOrCreatePhoneId()
 
+        pairButton.setOnClickListener { pairWithComputer() }
+        disconnectButton.setOnClickListener { disconnectComputer() }
         findViewById<MaterialButton>(R.id.inspectButton).setOnClickListener { inspectRequest() }
         findViewById<MaterialButton>(R.id.signButton).setOnClickListener { beginBiometricSigning() }
         findViewById<MaterialButton>(R.id.copyPublicKeyButton).setOnClickListener {
@@ -51,6 +80,81 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<MaterialButton>(R.id.copyResponseButton).setOnClickListener {
             copyText("Phone Unlock response", responseText.text.toString())
+        }
+
+        requestNotificationPermission()
+        pairingStore.load()?.let {
+            displayPairedComputer(it)
+            ConnectionService.connect(this)
+        } ?: displayNoPairedComputer()
+    }
+
+    private fun pairWithComputer() {
+        val payload = try {
+            PairingPayload.parse(pairingInput.text?.toString().orEmpty())
+        } catch (exception: Exception) {
+            showRequestError(exception)
+            return
+        }
+
+        pairButton.isEnabled = false
+        networkStatusText.text = "${payload.computerName}의 인증서와 연결 정보를 확인하는 중…"
+        lifecycleScope.launch {
+            try {
+                val key = keystoreSigner.getOrCreate(payload.computerId)
+                val paired = pairingClient.pair(payload, phoneId, key.publicKeyBase64)
+                val previous = pairingStore.load()
+                pairingStore.save(paired)
+                if (previous != null && previous.computerId != paired.computerId) {
+                    keystoreSigner.delete(previous.computerId)
+                }
+                pairingInput.text?.clear()
+                displayPairedComputer(paired)
+                ConnectionService.connect(this@MainActivity)
+                showResult("PC 연결 완료 · 이제 Windows 로그인 타일에서 요청하면 이 휴대폰으로 알림이 옵니다.", success = true)
+            } catch (exception: Exception) {
+                networkStatusText.text = "연결 실패"
+                showRequestError(exception)
+            } finally {
+                pairButton.isEnabled = true
+            }
+        }
+    }
+
+    private fun disconnectComputer() {
+        val paired = pairingStore.load()
+        ConnectionService.disconnect(this)
+        pairingStore.clear()
+        paired?.let { keystoreSigner.delete(it.computerId) }
+        pairingInput.text?.clear()
+        displayNoPairedComputer()
+        showResult("PC 연결과 해당 PC용 생체 서명 키를 삭제했습니다.", success = true)
+    }
+
+    private fun displayPairedComputer(computer: PairedComputer) {
+        computerNameText.text = computer.computerName
+        requestMetaText.text = "● 보안 연결 서비스 실행 중"
+        networkStatusText.text = "${computer.computerName} · ${computer.host}:${computer.port} · 인증서 고정됨"
+        disconnectButton.isEnabled = true
+        publicKeyText.text = try {
+            keystoreSigner.getOrCreate(computer.computerId).publicKeyBase64
+        } catch (_: Exception) {
+            "등록 키를 읽을 수 없습니다. PC 연결을 해제하고 다시 페어링하세요."
+        }
+    }
+
+    private fun displayNoPairedComputer() {
+        computerNameText.text = "연결된 PC 없음"
+        requestMetaText.text = "● Windows 설정 앱에서 페어링 정보를 만드세요"
+        networkStatusText.text = "연결된 PC가 없습니다."
+        disconnectButton.isEnabled = false
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -118,7 +222,7 @@ class MainActivity : AppCompatActivity() {
                 return
             }
 
-            if (Instant.now().epochSecond > request.expiresAt) {
+            if (PhoneUnlockProtocol.hasExpired(request)) {
                 responseText.text = PhoneUnlockProtocol.expiredResponse(request)
                 showResult("생체인증 중 요청이 만료되었습니다. Windows에서 새 요청을 만드세요.", success = false)
                 return

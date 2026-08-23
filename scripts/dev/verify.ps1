@@ -16,6 +16,10 @@ Write-Host 'Running cryptographic self-tests...'
 & $dotnetCommand run --project (Join-Path $repoRoot 'windows\PhoneUnlock.Core.Tests\PhoneUnlock.Core.Tests.csproj') -c Release --no-build
 if ($LASTEXITCODE -ne 0) { throw 'Core self-tests failed.' }
 
+Write-Host 'Running service pairing self-tests...'
+& $dotnetCommand run --project (Join-Path $repoRoot 'windows\PhoneUnlock.Service.Tests\PhoneUnlock.Service.Tests.csproj') -c Release --no-build
+if ($LASTEXITCODE -ne 0) { throw 'Service self-tests failed.' }
+
 if ($IncludeAndroid) {
     $androidRoot = Join-Path $repoRoot 'android\PhoneUnlock'
     $localJdkRoot = Join-Path $repoRoot '.tools\jdk17'

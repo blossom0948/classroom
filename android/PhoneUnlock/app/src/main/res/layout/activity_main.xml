@@ -44,7 +44,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:padding="16dp"
-                android:text="Phase 1 개발 모드 · 실제 Windows 잠금은 해제하지 않습니다"
+                android:text="실제 로그인 모드 · 같은 로컬 네트워크의 등록된 PC만 승인합니다"
                 android:textColor="#765100"
                 android:textSize="13sp"
                 android:textStyle="bold" />
@@ -93,6 +93,70 @@
                     android:textSize="13sp" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="PC 연결"
+            android:textColor="@color/brand_on_surface"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="9dp"
+            android:hint="Windows 설정 앱의 페어링 JSON"
+            app:boxBackgroundMode="outline"
+            app:boxCornerRadiusBottomEnd="12dp"
+            app:boxCornerRadiusBottomStart="12dp"
+            app:boxCornerRadiusTopEnd="12dp"
+            app:boxCornerRadiusTopStart="12dp">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/pairingInput"
+                android:layout_width="match_parent"
+                android:layout_height="128dp"
+                android:fontFamily="monospace"
+                android:gravity="top|start"
+                android:inputType="textMultiLine|textNoSuggestions"
+                android:paddingTop="14dp"
+                android:scrollbars="vertical"
+                android:textSize="11sp" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pairButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1.2"
+                android:text="안전하게 연결" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/disconnectButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:text="연결 해제" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/networkStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="연결된 PC가 없습니다."
+            android:textColor="#666A73"
+            android:textSize="13sp" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -164,8 +228,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
+            android:checked="true"
             android:enabled="false"
-            android:text="요청 수신 시 생체인증 자동 열기 (WebSocket Phase에서 활성화)"
+            android:text="로그인 요청을 잠금 화면 알림으로 받기"
             android:textSize="13sp" />
 
         <TextView

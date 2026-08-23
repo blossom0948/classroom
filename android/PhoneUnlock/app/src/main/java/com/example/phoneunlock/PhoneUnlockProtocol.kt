@@ -17,6 +17,7 @@ data class AuthRequest(
 object PhoneUnlockProtocol {
     const val VERSION = 1
     const val MAX_AUTH_LIFETIME_SECONDS = 30L
+    const val ALLOWED_CLOCK_SKEW_SECONDS = 30L
 
     fun parseAuthRequest(json: String, now: Long = Instant.now().epochSecond): AuthRequest {
         require(json.isNotBlank()) { "Windows 요청 JSON을 붙여 넣어 주세요." }
@@ -37,14 +38,17 @@ object PhoneUnlockProtocol {
         )
 
         require(request.computerName.isNotEmpty()) { "PC 이름이 비어 있습니다." }
-        require(request.createdAt <= now) { "휴대폰 시간보다 미래에 생성된 요청입니다." }
-        require(request.expiresAt >= now) { "인증 요청이 만료되었습니다." }
+        require(request.createdAt <= now + ALLOWED_CLOCK_SKEW_SECONDS) { "휴대폰 시간보다 지나치게 미래에 생성된 요청입니다." }
+        require(request.expiresAt + ALLOWED_CLOCK_SKEW_SECONDS >= now) { "인증 요청이 만료되었습니다." }
         require(request.expiresAt - request.createdAt in 1..MAX_AUTH_LIFETIME_SECONDS) {
             "허용된 30초보다 긴 요청입니다."
         }
         validateChallenge(request.challenge)
         return request
     }
+
+    fun hasExpired(request: AuthRequest, now: Long = Instant.now().epochSecond): Boolean =
+        request.expiresAt + ALLOWED_CLOCK_SKEW_SECONDS < now
 
     fun canonicalPayload(request: AuthRequest): ByteArray {
         validateChallenge(request.challenge)
