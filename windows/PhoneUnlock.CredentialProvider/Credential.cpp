@@ -105,13 +105,15 @@ HRESULT PhoneUnlockCredential::UnAdvise()
 HRESULT PhoneUnlockCredential::SetSelected(BOOL* autoLogon)
 {
     if (autoLogon == nullptr) return E_INVALIDARG;
-    *autoLogon = FALSE;
-    SetStatus(L"버튼을 누른 뒤 휴대폰에서 지문으로 승인하세요");
+    *autoLogon = autoRequestPending_ ? TRUE : FALSE;
+    autoRequestPending_ = false;
+    SetStatus(*autoLogon ? L"휴대폰으로 지문 요청을 보내는 중…" : L"휴대폰에서 지문으로 승인하세요");
     return S_OK;
 }
 
 HRESULT PhoneUnlockCredential::SetDeselected()
 {
+    autoRequestPending_ = true;
     SetStatus(L"휴대폰에서 지문으로 승인하세요");
     return S_OK;
 }
@@ -135,7 +137,7 @@ HRESULT PhoneUnlockCredential::GetStringValue(DWORD fieldId, PWSTR* value)
     {
     case FieldTitle: return SHStrDupW(L"Phone Unlock", value);
     case FieldStatus: return SHStrDupW(status_.c_str(), value);
-    case FieldSubmit: return SHStrDupW(L"휴대폰으로 잠금 해제", value);
+    case FieldSubmit: return SHStrDupW(L"지문 요청 다시 보내기", value);
     default: return E_INVALIDARG;
     }
 }

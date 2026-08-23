@@ -2,6 +2,10 @@
 
 The native Credential Provider serialization and COM structure was adapted from Microsoft's [Windows Classic Samples Credential Provider](https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/CredentialProvider).
 
+The Windows QR image is generated with [QRCoder](https://github.com/codebude/QRCoder), licensed under the MIT License.
+
+The Android QR scanner uses [ZXing Android Embedded](https://github.com/journeyapps/zxing-android-embedded), licensed under the Apache License 2.0.
+
 ## Windows Classic Samples
 
 The MIT License (MIT)

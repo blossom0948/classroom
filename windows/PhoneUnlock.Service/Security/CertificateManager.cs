@@ -80,10 +80,36 @@ public sealed class CertificateManager(ServicePaths paths)
     public static IReadOnlyList<IPAddress> GetLocalAddresses() => NetworkInterface
         .GetAllNetworkInterfaces()
         .Where(adapter => adapter.OperationalStatus == OperationalStatus.Up)
-        .SelectMany(adapter => adapter.GetIPProperties().UnicastAddresses)
-        .Select(address => address.Address)
-        .Where(address => address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-        .Where(address => !IPAddress.IsLoopback(address) && !address.ToString().StartsWith("169.254.", StringComparison.Ordinal))
+        .Where(adapter => adapter.NetworkInterfaceType is not NetworkInterfaceType.Loopback and not NetworkInterfaceType.Tunnel)
+        .SelectMany(adapter =>
+        {
+            var properties = adapter.GetIPProperties();
+            var hasGateway = properties.GatewayAddresses.Any(gateway =>
+                gateway.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                && !gateway.Address.Equals(IPAddress.Any));
+            var isPreferredType = adapter.NetworkInterfaceType is NetworkInterfaceType.Wireless80211 or NetworkInterfaceType.Ethernet;
+            return properties.UnicastAddresses.Select(address => new
+            {
+                address.Address,
+                HasGateway = hasGateway,
+                IsPreferredType = isPreferredType
+            });
+        })
+        .Where(candidate => candidate.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        .Where(candidate => !IPAddress.IsLoopback(candidate.Address)
+            && !candidate.Address.ToString().StartsWith("169.254.", StringComparison.Ordinal))
+        .OrderByDescending(candidate => candidate.HasGateway)
+        .ThenByDescending(candidate => candidate.IsPreferredType)
+        .ThenByDescending(candidate => IsPrivateAddress(candidate.Address))
+        .Select(candidate => candidate.Address)
         .Distinct()
         .ToArray();
+
+    private static bool IsPrivateAddress(IPAddress address)
+    {
+        var bytes = address.GetAddressBytes();
+        return bytes[0] == 10
+            || bytes[0] == 172 && bytes[1] is >= 16 and <= 31
+            || bytes[0] == 192 && bytes[1] == 168;
+    }
 }

@@ -62,6 +62,7 @@ private:
 
     volatile long referenceCount_ = 1;
     CREDENTIAL_PROVIDER_USAGE_SCENARIO usageScenario_ = CPUS_INVALID;
+    bool autoRequestPending_ = true;
     std::wstring sid_;
     std::wstring status_ = L"휴대폰에서 지문으로 승인하세요";
     ICredentialProviderCredentialEvents* events_ = nullptr;

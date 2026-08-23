@@ -29,6 +29,7 @@ jobs:
           New-Item -ItemType Directory -Path artifacts/package/credential-provider -Force | Out-Null
           Copy-Item windows/PhoneUnlock.CredentialProvider/x64/Release/PhoneUnlock.CredentialProvider.dll artifacts/package/credential-provider/
           Copy-Item windows/PhoneUnlock.Installer/*.ps1 artifacts/package/
+          Copy-Item windows/PhoneUnlock.Installer/*.cmd artifacts/package/
           Copy-Item windows/PhoneUnlock.Installer/*.md artifacts/package/
           Copy-Item THIRD_PARTY_NOTICES.md artifacts/package/
           Compress-Archive -Path artifacts/package/* -DestinationPath artifacts/PhoneUnlock-Windows-x64.zip -Force

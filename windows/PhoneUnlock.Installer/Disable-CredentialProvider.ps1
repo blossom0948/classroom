@@ -8,5 +8,15 @@ $providerKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\C
 $classKey = "HKLM:\SOFTWARE\Classes\CLSID\$($script:PhoneUnlockProviderGuid)"
 if (Test-Path -LiteralPath $providerKey) { Remove-Item -LiteralPath $providerKey -Recurse -Force }
 if (Test-Path -LiteralPath $classKey) { Remove-Item -LiteralPath $classKey -Recurse -Force }
+$defaultProvider = Get-ItemPropertyValue `
+    -LiteralPath $script:PhoneUnlockLogonPolicyPath `
+    -Name $script:PhoneUnlockDefaultProviderValue `
+    -ErrorAction SilentlyContinue
+if ($defaultProvider -eq $script:PhoneUnlockProviderGuid) {
+    Remove-ItemProperty `
+        -LiteralPath $script:PhoneUnlockLogonPolicyPath `
+        -Name $script:PhoneUnlockDefaultProviderValue `
+        -Force
+}
 
 Write-Host 'Phone Unlock 로그인 타일을 비활성화했습니다. 기본 로그인 옵션은 변경하지 않았습니다.' -ForegroundColor Green

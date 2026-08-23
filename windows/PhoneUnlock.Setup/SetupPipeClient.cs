@@ -27,7 +27,7 @@ public sealed class SetupPipeClient
             throw new TimeoutException("Phone Unlock 서비스를 찾을 수 없습니다.");
         }
 
-        var requestBytes = Encoding.UTF8.GetBytes(ProtocolJson.Serialize(request) + "\n");
+        var requestBytes = Encoding.UTF8.GetBytes(ProtocolJson.SerializeCompact(request) + "\n");
         await pipe.WriteAsync(requestBytes, cancellation.Token);
         await pipe.FlushAsync(cancellation.Token);
 

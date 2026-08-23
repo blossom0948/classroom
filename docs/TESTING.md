@@ -35,7 +35,7 @@ dotnet run --project .\windows\PhoneUnlock.Service.Tests\PhoneUnlock.Service.Tes
 ## Android 실기기 네트워크 검사
 
 1. 강한 생체인증이 등록된 Android 11+ 기기에 debug APK를 설치한다.
-2. Windows 설정 앱에서 페어링 JSON을 만든 뒤 Android의 **PC 연결**에 붙여 넣는다.
+2. Windows 설정 앱에서 연결 QR을 만든 뒤 Android의 **QR 코드 스캔**으로 읽는다.
 3. 설정 앱의 PC와 Android의 PC 이름/주소가 일치하는지 확인한다.
 4. 설정 앱에서 **휴대폰에 인증 요청**을 누른다.
 5. Android 잠금 화면 알림을 열어 표시된 PC 이름을 확인하고 지문을 승인한다.
@@ -46,8 +46,8 @@ dotnet run --project .\windows\PhoneUnlock.Service.Tests\PhoneUnlock.Service.Tes
 
 1. 스냅샷을 만든 Windows 11 VM과 별도 Android 실기기를 사용한다.
 2. 기본 PIN/비밀번호로 로그인 가능한지 먼저 확인한다.
-3. 서비스 설치와 실기기 인증 테스트를 마친 뒤 `Enable-CredentialProvider.ps1`을 실행한다.
-4. 화면 잠금 후 **로그인 옵션 → Phone Unlock**을 선택한다.
+3. 서비스 설치와 페어링을 마친 뒤 설정 앱에서 **지문 로그인 켜기**를 실행한다.
+4. 화면 잠금 후 Phone Unlock이 기본 선택되고 요청이 자동 전송되는지 확인한다.
 5. 지문 승인 성공, 사용자 거부, 휴대폰 오프라인, timeout을 확인한다.
 6. 잘못 저장한 비밀번호에서 Windows 오류가 표시되고 기본 로그인으로 복구되는지 확인한다.
 7. `Disable-CredentialProvider.ps1`과 `RECOVERY.md`의 레지스트리 복구 명령을 검증한다.

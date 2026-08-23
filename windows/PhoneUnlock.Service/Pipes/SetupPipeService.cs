@@ -49,7 +49,7 @@ public sealed class SetupPipeService(
                 var request = ProtocolJson.Deserialize<SetupRequest>(line);
                 response = await ExecuteRequestAsync(request, cancellationToken);
             }
-            catch (Exception exception) when (exception is JsonException or InvalidDataException or ArgumentException or Win32Exception)
+            catch (Exception exception) when (exception is JsonException or InvalidDataException or ArgumentException or InvalidOperationException or Win32Exception)
             {
                 logger.LogWarning("Rejected setup request: {Reason}", exception.Message);
                 response = new SetupResponse(false, "INVALID_REQUEST", exception.Message);
@@ -103,7 +103,7 @@ public sealed class SetupPipeService(
     private async Task<SetupResponse> CreatePairingResponseAsync(CancellationToken cancellationToken)
     {
         var pairing = await pairingCoordinator.CreateAsync(cancellationToken);
-        return new SetupResponse(true, "OK", "Pairing session created for 2 minutes.", ProtocolJson.Serialize(pairing));
+        return new SetupResponse(true, "OK", "Pairing session created for 2 minutes.", ProtocolJson.SerializeCompact(pairing));
     }
 
     private async Task<SetupResponse> StoreCredentialAsync(SetupRequest request, CancellationToken cancellationToken)

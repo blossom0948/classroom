@@ -8,5 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\PhoneUnlock.Core\PhoneUnlock.Core.csproj" />
+    <PackageReference Include="QRCoder" Version="1.7.0" />
   </ItemGroup>
 </Project>

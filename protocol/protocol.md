@@ -168,13 +168,14 @@ PC 검증 순서:
   "computerName": "MY-PC",
   "pairingToken": "base64url-32-random-bytes",
   "host": "192.168.0.10",
+  "hosts": ["192.168.0.10", "10.0.0.15"],
   "port": 48231,
   "expiresAt": 1787490120,
   "certificateFingerprint": "64자리 SHA-256 hex"
 }
 ```
 
-Android는 fingerprint가 정확히 일치하는 TLS 인증서로 `POST /pair`를 호출하고 `X-Pairing-Token` 헤더를 보낸다. body에는 `phoneId`, 표시용 `phoneName`, P-256 SubjectPublicKeyInfo `publicKey`가 들어간다. 성공 응답은 `computerId`, `phoneId`, 256비트 `deviceToken`, port와 같은 fingerprint를 반환한다.
+`host`는 우선 주소이며 `hosts`는 여러 네트워크 어댑터가 있을 때의 연결 후보이다. Android는 fingerprint가 정확히 일치하는 TLS 인증서로 후보 주소에 `POST /pair`를 호출하고 `X-Pairing-Token` 헤더를 보낸다. body에는 `phoneId`, 표시용 `phoneName`, P-256 SubjectPublicKeyInfo `publicKey`가 들어간다. 성공 응답은 `computerId`, `phoneId`, 256비트 `deviceToken`, port와 같은 fingerprint를 반환한다.
 
 pairing token은 256비트 난수이며 2분 뒤 만료되고 한 번만 소비된다. 이후 전송은 `wss://<host>:48231/ws?phoneId=...`와 `Authorization: Bearer <deviceToken>`을 사용한다. Android는 device token을 Keystore AES-GCM 키로 암호화해 저장하고 PC는 token의 SHA-256 hash만 저장한다.
 

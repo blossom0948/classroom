@@ -11,7 +11,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingStart="22dp"
-        android:paddingTop="30dp"
+        android:paddingTop="32dp"
         android:paddingEnd="22dp"
         android:paddingBottom="40dp">
 
@@ -27,14 +27,150 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="7dp"
-            android:text="Android 생체인증으로 PC challenge에 서명합니다"
+            android:text="이 휴대폰의 지문으로 Windows를 잠금 해제합니다"
             android:textColor="#666A73"
             android:textSize="14sp" />
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
+            android:layout_marginTop="24dp"
+            app:cardBackgroundColor="#FFFFFF"
+            app:cardCornerRadius="18dp"
+            app:cardElevation="0dp"
+            app:strokeColor="#E3E5EA"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="연결된 PC"
+                    android:textColor="#737780"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/computerNameText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:text="연결된 PC 없음"
+                    android:textColor="@color/brand_on_surface"
+                    android:textSize="23sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/networkStatusText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Windows 앱에서 QR 코드를 만들어 주세요."
+                    android:textColor="#737780"
+                    android:textSize="13sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/disconnectButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="연결 해제"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <LinearLayout
+            android:id="@+id/pairingControls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="PC 연결"
+                android:textColor="@color/brand_on_surface"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Windows Phone Unlock 설정에 표시된 QR을 스캔하세요."
+                android:textColor="#666A73"
+                android:textSize="14sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/scanQrButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:minHeight="54dp"
+                android:text="QR 코드 스캔"
+                android:textSize="16sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pasteCodeButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="9dp"
+                android:text="복사한 연결 코드로 연결" />
+
+            <LinearLayout
+                android:id="@+id/manualCodeGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="연결 코드 붙여넣기"
+                    app:boxBackgroundMode="outline">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/pairingInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="112dp"
+                        android:fontFamily="monospace"
+                        android:gravity="top|start"
+                        android:inputType="textMultiLine|textNoSuggestions"
+                        android:textSize="11sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pairButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="9dp"
+                    android:text="입력한 코드로 연결" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/resultText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/result_background"
+            android:text="연결을 기다리고 있습니다."
+            android:textColor="#294D9B"
+            android:textSize="14sp" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
             app:cardBackgroundColor="#FFF4D6"
             app:cardCornerRadius="14dp"
             app:cardElevation="0dp"
@@ -44,255 +180,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:padding="16dp"
-                android:text="실제 로그인 모드 · 같은 로컬 네트워크의 등록된 PC만 승인합니다"
+                android:text="로그인 요청이 오면 알림을 누르고 지문만 인증하세요. Windows 암호와 지문 정보는 휴대폰으로 전송되지 않습니다."
                 android:textColor="#765100"
-                android:textSize="13sp"
-                android:textStyle="bold" />
+                android:textSize="13sp" />
         </com.google.android.material.card.MaterialCardView>
-
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            app:cardBackgroundColor="#FFFFFF"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="0dp"
-            app:strokeColor="#E3E5EA"
-            app:strokeWidth="1dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="18dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Windows PC"
-                    android:textColor="#737780"
-                    android:textSize="12sp" />
-
-                <TextView
-                    android:id="@+id/computerNameText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="5dp"
-                    android:text="요청을 붙여 넣어 주세요"
-                    android:textColor="@color/brand_on_surface"
-                    android:textSize="21sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/requestMetaText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="● 오프라인 수동 전달"
-                    android:textColor="#737780"
-                    android:textSize="13sp" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="PC 연결"
-            android:textColor="@color/brand_on_surface"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="9dp"
-            android:hint="Windows 설정 앱의 페어링 JSON"
-            app:boxBackgroundMode="outline"
-            app:boxCornerRadiusBottomEnd="12dp"
-            app:boxCornerRadiusBottomStart="12dp"
-            app:boxCornerRadiusTopEnd="12dp"
-            app:boxCornerRadiusTopStart="12dp">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/pairingInput"
-                android:layout_width="match_parent"
-                android:layout_height="128dp"
-                android:fontFamily="monospace"
-                android:gravity="top|start"
-                android:inputType="textMultiLine|textNoSuggestions"
-                android:paddingTop="14dp"
-                android:scrollbars="vertical"
-                android:textSize="11sp" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="horizontal">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/pairButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1.2"
-                android:text="안전하게 연결" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/disconnectButton"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
-                android:layout_weight="1"
-                android:text="연결 해제" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/networkStatusText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="연결된 PC가 없습니다."
-            android:textColor="#666A73"
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="Windows 요청 JSON"
-            android:textColor="@color/brand_on_surface"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="9dp"
-            android:hint="AUTH_REQUEST JSON"
-            app:boxBackgroundMode="outline"
-            app:boxCornerRadiusBottomEnd="12dp"
-            app:boxCornerRadiusBottomStart="12dp"
-            app:boxCornerRadiusTopEnd="12dp"
-            app:boxCornerRadiusTopStart="12dp">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/requestInput"
-                android:layout_width="match_parent"
-                android:layout_height="150dp"
-                android:fontFamily="monospace"
-                android:gravity="top|start"
-                android:inputType="textMultiLine|textNoSuggestions"
-                android:paddingTop="14dp"
-                android:scrollbars="vertical"
-                android:textSize="11sp" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="horizontal">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/inspectButton"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="요청 확인" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/signButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
-                android:layout_weight="1.2"
-                android:text="생체인증 후 서명" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/resultText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/result_background"
-            android:text="요청을 기다리고 있습니다."
-            android:textColor="#294D9B"
-            android:textSize="14sp" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/autoBiometricSwitch"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:checked="true"
-            android:enabled="false"
-            android:text="로그인 요청을 잠금 화면 알림으로 받기"
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="25dp"
-            android:text="Windows에 전달할 공개키"
-            android:textColor="@color/brand_on_surface"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/publicKeyText"
-            android:layout_width="match_parent"
-            android:layout_height="100dp"
-            android:layout_marginTop="9dp"
-            android:background="#FFFFFF"
-            android:fontFamily="monospace"
-            android:padding="12dp"
-            android:scrollbars="vertical"
-            android:text="아직 키가 없습니다."
-            android:textColor="#4D5159"
-            android:textIsSelectable="true"
-            android:textSize="11sp" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/copyPublicKeyButton"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="end"
-            android:text="공개키 복사" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="AUTH_APPROVED 응답"
-            android:textColor="@color/brand_on_surface"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/responseText"
-            android:layout_width="match_parent"
-            android:layout_height="190dp"
-            android:layout_marginTop="9dp"
-            android:background="#FFFFFF"
-            android:fontFamily="monospace"
-            android:padding="12dp"
-            android:scrollbars="vertical"
-            android:text="생체인증 후 응답이 여기에 표시됩니다."
-            android:textColor="#4D5159"
-            android:textIsSelectable="true"
-            android:textSize="11sp" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/copyResponseButton"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="end"
-            android:text="응답 복사" />
     </LinearLayout>
 </ScrollView>

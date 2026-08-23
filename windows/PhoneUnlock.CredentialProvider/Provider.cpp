@@ -105,7 +105,7 @@ HRESULT PhoneUnlockProvider::GetCredentialCount(
 {
     if (count == nullptr || defaultCredential == nullptr || autoLogonWithDefault == nullptr) return E_INVALIDARG;
     *count = static_cast<DWORD>(credentials_.size());
-    *defaultCredential = CREDENTIAL_PROVIDER_NO_DEFAULT;
+    *defaultCredential = credentials_.empty() ? CREDENTIAL_PROVIDER_NO_DEFAULT : 0;
     *autoLogonWithDefault = FALSE;
     return S_OK;
 }

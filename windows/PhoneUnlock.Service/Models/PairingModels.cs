@@ -6,6 +6,7 @@ public sealed record PairingPayload(
     string ComputerName,
     string PairingToken,
     string Host,
+    IReadOnlyList<string> Hosts,
     int Port,
     long ExpiresAt,
     string CertificateFingerprint);

@@ -48,6 +48,7 @@ static async Task TestPairingAsync()
         var pairing = await coordinator.CreateAsync();
         Assert(pairing.ExpiresAt > DateTimeOffset.UtcNow.ToUnixTimeSeconds(), "pairing should not already be expired");
         Assert(pairing.CertificateFingerprint.Length == 64, "certificate fingerprint should be SHA-256");
+        Assert(pairing.Hosts.Count > 0 && pairing.Hosts.Contains(pairing.Host), "pairing should expose reachable host candidates");
 
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var phoneId = Guid.NewGuid().ToString();

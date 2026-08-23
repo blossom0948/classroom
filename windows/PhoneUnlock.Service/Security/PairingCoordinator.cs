@@ -22,14 +22,19 @@ public sealed class PairingCoordinator(
         sessions[hash] = new PairingSession(hash, token, expiresAt);
         RemoveExpired();
 
-        var host = CertificateManager.GetLocalAddresses().FirstOrDefault()?.ToString() ?? "127.0.0.1";
+        var hosts = CertificateManager.GetLocalAddresses().Select(address => address.ToString()).ToArray();
+        if (hosts.Length == 0)
+        {
+            throw new InvalidOperationException("휴대폰과 연결할 로컬 네트워크 주소를 찾지 못했습니다. Wi-Fi 또는 이더넷 연결을 확인하세요.");
+        }
         var certificate = certificateManager.LoadOrCreate();
         return new PairingPayload(
             1,
             configuration.ComputerId,
             configuration.ComputerName,
             token,
-            host,
+            hosts[0],
+            hosts,
             ServiceConstants.Port,
             expiresAt.ToUnixTimeSeconds(),
             CertificateManager.GetSha256Fingerprint(certificate));

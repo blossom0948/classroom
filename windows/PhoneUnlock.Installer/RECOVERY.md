@@ -9,6 +9,7 @@ Phone Unlock은 Microsoft 기본 로그인 옵션을 필터링하지 않습니�
 ```cmd
 reg delete "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\Credential Providers\{8C12D44B-04D3-41D4-980B-80DF3D8DD324}" /f
 reg delete "HKLM\SOFTWARE\Classes\CLSID\{8C12D44B-04D3-41D4-980B-80DF3D8DD324}" /f
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v DefaultCredentialProvider /f
 ```
 
 서비스도 중지해야 한다면 다음을 실행합니다.

@@ -9,6 +9,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import com.example.phoneunlock.storage.PairedComputer
 import com.example.phoneunlock.storage.PairingPayload
+import java.io.IOException
 
 class PairingClient {
     suspend fun pair(
@@ -16,6 +17,26 @@ class PairingClient {
         phoneId: String,
         publicKey: String,
     ): PairedComputer = withContext(Dispatchers.IO) {
+        var lastNetworkError: IOException? = null
+        for (host in payload.hosts) {
+            try {
+                return@withContext pairUsingHost(payload, host, phoneId, publicKey)
+            } catch (exception: IOException) {
+                lastNetworkError = exception
+            }
+        }
+        throw IOException(
+            "PC에 연결할 수 없습니다. PC와 휴대폰이 같은 Wi-Fi인지 확인하세요.",
+            lastNetworkError,
+        )
+    }
+
+    private fun pairUsingHost(
+        payload: PairingPayload,
+        host: String,
+        phoneId: String,
+        publicKey: String,
+    ): PairedComputer {
         val client = PinnedHttpClient.create(payload.certificateFingerprint)
         val body = JSONObject()
             .put("phoneId", phoneId)
@@ -24,12 +45,12 @@ class PairingClient {
             .toString()
             .toRequestBody("application/json; charset=utf-8".toMediaType())
         val request = Request.Builder()
-            .url("https://${payload.host}:${payload.port}/pair")
+            .url("https://$host:${payload.port}/pair")
             .header("X-Pairing-Token", payload.pairingToken)
             .post(body)
             .build()
 
-        client.newCall(request).execute().use { response ->
+        return client.newCall(request).execute().use { response ->
             require(response.isSuccessful) { "PC가 페어링 요청을 거부했습니다 (${response.code})." }
             val value = JSONObject(response.body?.string() ?: error("PC 응답이 비어 있습니다."))
             val fingerprint = value.getString("certificateFingerprint").uppercase()
@@ -38,7 +59,7 @@ class PairingClient {
                 version = value.getInt("version"),
                 computerId = java.util.UUID.fromString(value.getString("computerId")),
                 computerName = value.getString("computerName"),
-                host = payload.host,
+                host = host,
                 port = value.getInt("port"),
                 certificateFingerprint = fingerprint,
                 phoneId = value.getString("phoneId"),

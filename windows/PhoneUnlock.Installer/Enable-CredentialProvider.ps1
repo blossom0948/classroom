@@ -33,6 +33,15 @@ New-Item -Path $serverKey -Force | Out-Null
 Set-Item -Path $serverKey -Value $providerDll
 New-ItemProperty -Path $serverKey -Name 'ThreadingModel' -Value 'Apartment' -PropertyType String -Force | Out-Null
 
-Write-Host 'Phone Unlock 로그인 타일을 활성화했습니다.' -ForegroundColor Green
+# Keep all Microsoft providers installed, but ask Windows to select Phone Unlock first.
+New-Item -Path $script:PhoneUnlockLogonPolicyPath -Force | Out-Null
+New-ItemProperty `
+    -Path $script:PhoneUnlockLogonPolicyPath `
+    -Name $script:PhoneUnlockDefaultProviderValue `
+    -Value $script:PhoneUnlockProviderGuid `
+    -PropertyType String `
+    -Force | Out-Null
+
+Write-Host 'Phone Unlock을 잠금화면 기본 로그인으로 활성화했습니다.' -ForegroundColor Green
 Write-Host '기본 PIN, 비밀번호, Windows Hello 공급자는 변경하지 않았습니다.' -ForegroundColor Green
 Write-Host '잠금 전 설정 앱의 인증 테스트가 실제 휴대폰에서 성공했는지 다시 확인하세요.' -ForegroundColor Yellow
