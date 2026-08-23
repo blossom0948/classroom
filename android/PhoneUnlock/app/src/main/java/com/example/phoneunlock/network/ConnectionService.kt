@@ -12,6 +12,7 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.example.phoneunlock.AuthApprovalActivity
+import com.example.phoneunlock.AuthPromptSettings
 import com.example.phoneunlock.PhoneUnlockProtocol
 import com.example.phoneunlock.R
 import com.example.phoneunlock.storage.PairedComputer
@@ -101,7 +102,12 @@ class ConnectionService : Service() {
                     return
                 }
                 val request = PhoneUnlockProtocol.parseAuthRequest(text)
-                showAuthenticationNotification(text, request.computerName, request.requestId.hashCode())
+                showAuthenticationNotification(
+                    text,
+                    request.computerName,
+                    request.requestId.hashCode(),
+                    request.expiresAt,
+                )
             } catch (_: Exception) {
                 // Untrusted network messages are ignored without exposing details in notifications.
             }
@@ -133,9 +139,15 @@ class ConnectionService : Service() {
         handler.postDelayed({ connect() }, delay)
     }
 
-    private fun showAuthenticationNotification(requestJson: String, computerName: String, requestCode: Int) {
+    private fun showAuthenticationNotification(
+        requestJson: String,
+        computerName: String,
+        requestCode: Int,
+        expiresAt: Long,
+    ) {
         val intent = Intent(this, AuthApprovalActivity::class.java)
             .putExtra(EXTRA_AUTH_REQUEST, requestJson)
+            .putExtra(EXTRA_AUTH_NOTIFICATION_ID, requestCode)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -146,13 +158,19 @@ class ConnectionService : Service() {
         val notification = Notification.Builder(this, AUTH_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_phone_unlock)
             .setContentTitle("Windows 로그인 요청")
-            .setContentText("눌러서 지문으로 $computerName 잠금 해제")
+            .setContentText("$computerName 잠금 해제를 생체인증으로 승인")
             .setCategory(Notification.CATEGORY_REMINDER)
             .setPriority(Notification.PRIORITY_HIGH)
             .setAutoCancel(true)
+            .setTimeoutAfter(((expiresAt - Instant.now().epochSecond).coerceAtLeast(1)) * 1_000L)
             .setContentIntent(pendingIntent)
             .addAction(R.drawable.ic_phone_unlock, "지문 인증", pendingIntent)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .apply {
+                if (AuthPromptSettings.isAutoOpenEnabled(this@ConnectionService)) {
+                    setFullScreenIntent(pendingIntent, true)
+                }
+            }
             .build()
         getSystemService(NotificationManager::class.java).notify(requestCode, notification)
     }
@@ -200,6 +218,7 @@ class ConnectionService : Service() {
 
     companion object {
         const val EXTRA_AUTH_REQUEST = "auth_request"
+        const val EXTRA_AUTH_NOTIFICATION_ID = "auth_notification_id"
         private const val EXTRA_RESPONSE = "auth_response"
         private const val ACTION_CONNECT = "com.example.phoneunlock.CONNECT"
         private const val ACTION_SEND_RESPONSE = "com.example.phoneunlock.SEND_RESPONSE"

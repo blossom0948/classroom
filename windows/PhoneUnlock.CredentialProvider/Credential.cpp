@@ -8,6 +8,12 @@
 void DllAddRef();
 void DllRelease();
 
+namespace
+{
+constexpr wchar_t ReadyStatus[] =
+    L"\uD734\uB300\uD3F0\uC5D0\uC11C \uC0DD\uCCB4\uC778\uC2DD\uC73C\uB85C \uC7A0\uAE08 \uD574\uC81C";
+}
+
 const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR PhoneUnlockFieldDescriptors[FieldCount] =
 {
     { FieldTileImage, CPFT_TILE_IMAGE, const_cast<PWSTR>(L"Phone Unlock"), CPFG_CREDENTIAL_PROVIDER_LOGO },
@@ -32,7 +38,7 @@ const CREDENTIAL_PROVIDER_FIELD_INTERACTIVE_STATE PhoneUnlockFieldInteractiveSta
     CPFIS_NONE,
 };
 
-PhoneUnlockCredential::PhoneUnlockCredential()
+PhoneUnlockCredential::PhoneUnlockCredential() : status_(ReadyStatus)
 {
     DllAddRef();
 }
@@ -107,14 +113,14 @@ HRESULT PhoneUnlockCredential::SetSelected(BOOL* autoLogon)
     if (autoLogon == nullptr) return E_INVALIDARG;
     *autoLogon = autoRequestPending_ ? TRUE : FALSE;
     autoRequestPending_ = false;
-    SetStatus(*autoLogon ? L"휴대폰으로 지문 요청을 보내는 중…" : L"휴대폰에서 지문으로 승인하세요");
+    SetStatus(*autoLogon ? L"휴대폰으로 지문 요청을 보내는 중…" : ReadyStatus);
     return S_OK;
 }
 
 HRESULT PhoneUnlockCredential::SetDeselected()
 {
     autoRequestPending_ = true;
-    SetStatus(L"휴대폰에서 지문으로 승인하세요");
+    SetStatus(ReadyStatus);
     return S_OK;
 }
 

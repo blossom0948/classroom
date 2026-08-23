@@ -38,9 +38,10 @@ dotnet run --project .\windows\PhoneUnlock.Service.Tests\PhoneUnlock.Service.Tes
 2. Windows 설정 앱에서 연결 QR을 만든 뒤 Android의 **QR 코드 스캔**으로 읽는다.
 3. 설정 앱의 PC와 Android의 PC 이름/주소가 일치하는지 확인한다.
 4. 설정 앱에서 **휴대폰에 인증 요청**을 누른다.
-5. Android 잠금 화면 알림을 열어 표시된 PC 이름을 확인하고 지문을 승인한다.
-6. Windows 설정 앱에 인증 성공이 표시되는지 확인한다.
-7. 거부, 30초 만료, Wi-Fi 끊김, Android 앱 강제 종료 후 재연결을 각각 확인한다.
+5. Android 화면을 끈 상태에서 로그인 요청이 오면 인증 화면과 지문창이 자동으로 열리는지 확인한다.
+6. Android 14 이상에서는 앱의 **자동 팝업 허용**으로 이동해 권한을 허용한 뒤 같은 검사를 반복한다.
+7. Windows 설정 앱에 인증 성공이 표시되는지 확인한다.
+8. 거부, 30초 만료, Wi-Fi 끊김, Android 앱 강제 종료 후 재연결을 각각 확인한다.
 
 ## Credential Provider VM 검사
 

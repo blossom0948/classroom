@@ -64,6 +64,6 @@ private:
     CREDENTIAL_PROVIDER_USAGE_SCENARIO usageScenario_ = CPUS_INVALID;
     bool autoRequestPending_ = true;
     std::wstring sid_;
-    std::wstring status_ = L"휴대폰에서 지문으로 승인하세요";
+    std::wstring status_;
     ICredentialProviderCredentialEvents* events_ = nullptr;
 };

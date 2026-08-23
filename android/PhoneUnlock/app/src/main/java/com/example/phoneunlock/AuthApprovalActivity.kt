@@ -1,5 +1,6 @@
 package com.example.phoneunlock
 
+import android.app.NotificationManager
 import android.os.Bundle
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.widget.TextView
@@ -17,12 +18,15 @@ class AuthApprovalActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var signer: KeystoreSigner
     private var responseSent = false
+    private var authenticationStarted = false
+    private var notificationId = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_auth_approval)
         statusText = findViewById(R.id.authStatusText)
         signer = KeystoreSigner(this)
+        notificationId = intent.getIntExtra(ConnectionService.EXTRA_AUTH_NOTIFICATION_ID, 0)
 
         request = try {
             PhoneUnlockProtocol.parseAuthRequest(
@@ -46,9 +50,16 @@ class AuthApprovalActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.denyButton).setOnClickListener {
             sendAndFinish(PhoneUnlockProtocol.deniedResponse(request, "USER_DENIED"))
         }
+
+        if (savedInstanceState == null) {
+            statusText.text = "생체인증 창을 여는 중…"
+            window.decorView.post { authenticate() }
+        }
     }
 
     private fun authenticate() {
+        if (authenticationStarted || responseSent) return
+        authenticationStarted = true
         if (PhoneUnlockProtocol.hasExpired(request)) {
             sendAndFinish(PhoneUnlockProtocol.expiredResponse(request))
             return
@@ -58,6 +69,7 @@ class AuthApprovalActivity : AppCompatActivity() {
             != BiometricManager.BIOMETRIC_SUCCESS
         ) {
             statusText.text = "강한 생체인증을 사용할 수 없습니다."
+            authenticationStarted = false
             return
         }
 
@@ -67,6 +79,7 @@ class AuthApprovalActivity : AppCompatActivity() {
         } catch (_: KeyPermanentlyInvalidatedException) {
             signer.delete(request.computerId)
             statusText.text = "생체정보 변경으로 키가 무효화되었습니다. PC와 다시 연결하세요."
+            authenticationStarted = false
             return
         }
         val prompt = BiometricPrompt(
@@ -107,6 +120,9 @@ class AuthApprovalActivity : AppCompatActivity() {
     private fun sendAndFinish(response: String) {
         if (responseSent) return
         responseSent = true
+        if (notificationId != 0) {
+            getSystemService(NotificationManager::class.java).cancel(notificationId)
+        }
         ConnectionService.sendResponse(this, response)
         finishAndRemoveTask()
     }

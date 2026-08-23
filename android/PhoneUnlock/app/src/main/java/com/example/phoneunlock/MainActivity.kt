@@ -1,6 +1,7 @@
 package com.example.phoneunlock
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -22,6 +23,7 @@ import com.example.phoneunlock.storage.PairedComputer
 import com.example.phoneunlock.storage.PairingPayload
 import com.example.phoneunlock.storage.SecurePairingStore
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.TextInputEditText
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -41,6 +43,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pairButton: MaterialButton
     private lateinit var disconnectButton: MaterialButton
     private lateinit var updateButton: MaterialButton
+    private lateinit var autoPromptSwitch: MaterialSwitch
+    private lateinit var autoPromptStatusText: TextView
+    private lateinit var fullScreenPermissionButton: MaterialButton
     private lateinit var keystoreSigner: KeystoreSigner
     private lateinit var pairingStore: SecurePairingStore
     private val pairingClient = PairingClient()
@@ -79,6 +84,9 @@ class MainActivity : AppCompatActivity() {
         pairButton = findViewById(R.id.pairButton)
         disconnectButton = findViewById(R.id.disconnectButton)
         updateButton = findViewById(R.id.updateButton)
+        autoPromptSwitch = findViewById(R.id.autoPromptSwitch)
+        autoPromptStatusText = findViewById(R.id.autoPromptStatusText)
+        fullScreenPermissionButton = findViewById(R.id.fullScreenPermissionButton)
         keystoreSigner = KeystoreSigner(this)
         pairingStore = SecurePairingStore(this)
         phoneId = loadOrCreatePhoneId()
@@ -88,6 +96,21 @@ class MainActivity : AppCompatActivity() {
         pairButton.setOnClickListener { connectWithCode(pairingInput.text?.toString().orEmpty()) }
         disconnectButton.setOnClickListener { disconnectComputer() }
         updateButton.setOnClickListener { handleUpdateClick() }
+        autoPromptSwitch.isChecked = AuthPromptSettings.isAutoOpenEnabled(this)
+        autoPromptSwitch.setOnCheckedChangeListener { _, enabled ->
+            AuthPromptSettings.setAutoOpenEnabled(this, enabled)
+            updateAutoPromptControls()
+        }
+        fullScreenPermissionButton.setOnClickListener {
+            val permissionIntent = AuthPromptSettings.permissionIntent(this)
+                ?: return@setOnClickListener
+            try {
+                startActivity(permissionIntent)
+            } catch (_: ActivityNotFoundException) {
+                showResult("이 기기에서는 자동 팝업 권한 설정 화면을 열 수 없습니다.", success = false)
+            }
+        }
+        updateAutoPromptControls()
 
         pairingStore.load()?.let {
             displayPairedComputer(it)
@@ -96,6 +119,25 @@ class MainActivity : AppCompatActivity() {
         } ?: displayNoPairedComputer()
 
         checkForUpdate(silent = true)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::autoPromptSwitch.isInitialized) {
+            updateAutoPromptControls()
+        }
+    }
+
+    private fun updateAutoPromptControls() {
+        val enabled = AuthPromptSettings.isAutoOpenEnabled(this)
+        val permissionGranted = AuthPromptSettings.canUseFullScreenIntent(this)
+        autoPromptStatusText.text = when {
+            !enabled -> "알림만 표시합니다. 알림을 누르면 지문창이 바로 열립니다."
+            !permissionGranted -> "Android 설정에서 전체 화면 알림을 허용해야 잠긴 화면 위로 자동으로 열립니다."
+            else -> "Windows 요청이 오면 인증 화면과 지문창을 바로 엽니다."
+        }
+        fullScreenPermissionButton.visibility =
+            if (enabled && !permissionGranted) View.VISIBLE else View.GONE
     }
 
     private fun handleUpdateClick() {
@@ -197,7 +239,7 @@ class MainActivity : AppCompatActivity() {
                 displayPairedComputer(paired)
                 requestNotificationPermission()
                 ConnectionService.connect(this@MainActivity)
-                showResult("연결 완료. 이제 Windows가 잠기면 알림을 누르고 지문만 인증하세요.", success = true)
+                showResult("연결 완료. 이제 Windows 요청이 오면 지문창이 자동으로 열립니다.", success = true)
             } catch (exception: Exception) {
                 networkStatusText.text = "연결 실패 · QR을 새로 만들어 다시 시도하세요."
                 showRequestError(exception)
