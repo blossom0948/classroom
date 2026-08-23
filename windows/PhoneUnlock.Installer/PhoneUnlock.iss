@@ -54,7 +54,7 @@ Name: "{autoprograms}\Phone Unlock\Phone Unlock 설정"; Filename: "{app}\setup\
 Name: "{autodesktop}\Phone Unlock 설정"; Filename: "{app}\setup\PhoneUnlock.Setup.exe"; WorkingDir: "{app}\setup"; Tasks: desktopicon
 
 [Tasks]
-Name: "desktopicon"; Description: "바탕 화면에 Phone Unlock 설정 바로가기 만들기"; GroupDescription: "추가 바로가기:"; Flags: unchecked
+Name: "desktopicon"; Description: "바탕 화면에 Phone Unlock 설정 바로가기 만들기"; GroupDescription: "추가 바로가기:"
 
 [Run]
 Filename: "{app}\setup\PhoneUnlock.Setup.exe"; Description: "Phone Unlock 설정 열기"; WorkingDir: "{app}\setup"; Flags: postinstall nowait skipifsilent
