@@ -26,7 +26,7 @@ class PairingClient {
             }
         }
         throw IOException(
-            "PC에 연결할 수 없습니다. PC와 휴대폰이 같은 Wi-Fi인지 확인하세요.",
+            "PC에 연결할 수 없습니다. PC는 이더넷이어도 됩니다. 휴대폰 Wi-Fi가 PC와 같은 공유기/LAN인지, 게스트 Wi-Fi가 아닌지 확인하세요. 시도한 PC 주소: ${payload.hosts.joinToString()}",
             lastNetworkError,
         )
     }

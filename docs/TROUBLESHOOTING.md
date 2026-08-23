@@ -18,8 +18,8 @@ AGP 9.0.1은 JDK 17과 Gradle 9.1.0이 필요하다. `JAVA_HOME`을 JDK 17 폴�
 
 ## PC 연결 실패
 
-- PC와 Android가 같은 로컬 네트워크인지 확인한다.
-- Windows 네트워크 프로필이 Public이면 LocalSubnet 방화벽 규칙이 적용되지 않으므로 Private 네트워크에서 테스트한다.
+- PC는 이더넷, Android는 Wi-Fi여도 된다. 두 장치가 같은 공유기/LAN에 있고 휴대폰 주소가 PC의 `192.168.10.x`처럼 같은 서브넷인지 확인한다.
+- 방화벽 규칙은 Windows의 Public/Private/Domain 프로필 모두에서 앱 실행 파일의 TCP 48231을 `LocalSubnet`에만 허용한다.
 - 연결 QR은 생성 후 2분 안에 사용해야 하며 한 번만 사용할 수 있다.
 - 공유기 AP isolation/게스트 Wi-Fi가 켜져 있으면 기기 간 통신이 차단될 수 있다.
 - PC IP가 바뀐 경우 기존 연결을 해제하고 다시 페어링한다.

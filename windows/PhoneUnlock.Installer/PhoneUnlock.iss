@@ -1,5 +1,5 @@
 #define MyAppName "Phone Unlock"
-#define MyAppVersion "0.4.0-beta.1"
+#define MyAppVersion "0.4.0-beta.2"
 #define MyAppPublisher "blossom0948"
 #define MyAppURL "https://github.com/blossom0948/windowslogin"
 #define MyServiceName "PhoneUnlockService"
@@ -121,7 +121,7 @@ begin
     'advfirewall firewall delete rule name="{#MyFirewallName}"',
     '기존 방화벽 규칙 정리', 1);
   RunCommand(ExpandConstant('{sys}\netsh.exe'),
-    'advfirewall firewall add rule name="{#MyFirewallName}" dir=in action=allow protocol=TCP localport=48231 remoteip=LocalSubnet profile=private,domain program="' + ServiceExe + '"',
+    'advfirewall firewall add rule name="{#MyFirewallName}" dir=in action=allow protocol=TCP localport=48231 remoteip=LocalSubnet profile=any program="' + ServiceExe + '"',
     '로컬 네트워크 방화벽 설정', -1);
   RunCommand(ExpandConstant('{sys}\net.exe'), 'start {#MyServiceName}',
     'Phone Unlock 서비스 시작', 2);

@@ -33,6 +33,7 @@ $result = [ordered]@{
     pairingSuccess = [bool]$pairing.success
     pairingComputer = [string]$pairingData.computerName
     hostCandidateCount = @($pairingData.hosts).Count
+    hosts = @($pairingData.hosts)
     port = [int]$pairingData.port
     tokenPresent = -not [string]::IsNullOrWhiteSpace([string]$pairingData.pairingToken)
 }

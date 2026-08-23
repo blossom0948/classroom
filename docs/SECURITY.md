@@ -36,5 +36,5 @@
 - 기본 Microsoft Credential Provider 필터를 설치하지 않는다.
 - 서비스, 자격 증명, 페어링, 최근 인증 테스트가 모두 준비된 후에만 타일 등록을 허용한다.
 - 비활성화 스크립트는 Phone Unlock의 두 레지스트리 키만 제거한다.
-- 방화벽은 TCP 48231을 Private/Domain 프로필의 LocalSubnet에만 허용한다.
+- 방화벽은 Ethernet이 Public으로 분류되는 PC도 지원하도록 모든 Windows 네트워크 프로필에서 열리지만, 설치된 서비스 실행 파일의 TCP 48231과 `LocalSubnet` 원격 주소로만 제한한다.
 - 최초 운영 사용 전 별도 관리자 계정 또는 확인된 PIN/비밀번호 복구 수단을 유지한다.

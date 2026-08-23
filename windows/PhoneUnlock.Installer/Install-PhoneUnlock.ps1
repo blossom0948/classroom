@@ -84,7 +84,7 @@ New-NetFirewallRule `
     -LocalPort 48231 `
     -RemoteAddress LocalSubnet `
     -Program $serviceExe `
-    -Profile Private,Domain | Out-Null
+    -Profile Any | Out-Null
 
 Start-Service -Name $script:PhoneUnlockServiceName
 (Get-Service -Name $script:PhoneUnlockServiceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(20))
