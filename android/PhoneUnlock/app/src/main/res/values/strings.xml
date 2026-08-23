@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Phone Unlock</string>
+    <string name="biometric_title">PC 로그인 승인</string>
+    <string name="biometric_subtitle">본인 확인 후 요청에 서명합니다</string>
+    <string name="biometric_cancel">취소</string>
+</resources>

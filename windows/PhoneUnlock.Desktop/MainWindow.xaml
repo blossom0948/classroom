@@ -1,0 +1,138 @@
+<Window x:Class="PhoneUnlock.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Phone Unlock — Phase 1"
+        Width="1060" Height="820" MinWidth="860" MinHeight="680"
+        WindowStartupLocation="CenterScreen"
+        Loaded="Window_Loaded"
+        Background="#F5F6F8"
+        FontFamily="Segoe UI Variable Text"
+        Foreground="{StaticResource TextBrush}">
+    <ScrollViewer x:Name="MainScrollViewer" VerticalScrollBarVisibility="Auto">
+        <Grid Margin="34">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="20" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="18" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="18" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock FontSize="29" FontWeight="SemiBold" Text="Phone Unlock" />
+                    <TextBlock Margin="0,7,0,0" FontSize="14" Foreground="{StaticResource MutedBrush}"
+                               Text="Android 생체인증 서명을 확인하는 안전한 Phase 1 테스트 앱" />
+                </StackPanel>
+                <Border Grid.Column="1" Padding="13,8" CornerRadius="18" Background="#FFF4D6" VerticalAlignment="Center">
+                    <TextBlock Foreground="#7C5400" FontSize="12" FontWeight="SemiBold" Text="개발 모드 · Windows 잠금 해제 안 함" />
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="2" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="12" Padding="24">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock FontSize="12" Foreground="{StaticResource MutedBrush}" Text="이 PC" />
+                        <TextBlock x:Name="ComputerNameText" Margin="0,5,0,0" FontSize="20" FontWeight="SemiBold" />
+                        <TextBlock x:Name="ComputerIdText" Margin="0,5,0,0" FontFamily="Cascadia Mono" FontSize="11" Foreground="{StaticResource MutedBrush}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="9" Height="9" Fill="#8A8F98" Margin="0,0,8,0" />
+                        <TextBlock Foreground="{StaticResource MutedBrush}" Text="휴대폰 미연결 · 수동 전달" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="18" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="12" Padding="22">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="230" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="92" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" FontSize="18" FontWeight="SemiBold" Text="1. 인증 요청 만들기" />
+                        <TextBlock Grid.Row="2" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                                   Text="30초 동안 유효한 challenge를 만든 뒤 요청 JSON을 Android 앱에 붙여 넣으세요." />
+                        <TextBox x:Name="RequestJsonBox" Grid.Row="4" IsReadOnly="True" Focusable="False" AcceptsReturn="True" />
+                        <StackPanel Grid.Row="6" Orientation="Horizontal">
+                            <Button Click="GenerateChallenge_Click" Content="테스트 challenge 생성" />
+                            <Button Margin="10,0,0,0" Style="{StaticResource SecondaryButton}" Click="CopyRequest_Click" Content="요청 복사" />
+                        </StackPanel>
+                        <TextBox x:Name="CanonicalPayloadBox" Grid.Row="8" IsReadOnly="True" Focusable="False" AcceptsReturn="True" />
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="2" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="12" Padding="22">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="8" />
+                            <RowDefinition Height="80" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="8" />
+                            <RowDefinition Height="160" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" FontSize="18" FontWeight="SemiBold" Text="2. Android 서명 확인" />
+                        <TextBlock Grid.Row="2" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="공개키 (X.509 DER Base64)" />
+                        <TextBox x:Name="PublicKeyBox" Grid.Row="4" AcceptsReturn="True" />
+                        <TextBlock Grid.Row="6" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="AUTH_APPROVED 응답 JSON" />
+                        <TextBox x:Name="ResponseJsonBox" Grid.Row="8" AcceptsReturn="True" />
+                        <StackPanel Grid.Row="10" Orientation="Horizontal">
+                            <Button Click="VerifyResponse_Click" Content="Android 서명 검증" />
+                            <Button Margin="10,0,0,0" Style="{StaticResource SecondaryButton}" Click="RunLocalDemo_Click" Content="로컬 암호 데모" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="6" x:Name="ResultCard" Background="#F0F1F3" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="12" Padding="22">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="270" />
+                        <ColumnDefinition Width="1" />
+                        <ColumnDefinition Width="22" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock FontSize="12" Foreground="{StaticResource MutedBrush}" Text="마지막 결과" />
+                        <TextBlock x:Name="ResultTitleText" Margin="0,7,0,0" FontSize="18" FontWeight="SemiBold" Text="아직 인증하지 않았습니다" />
+                        <TextBlock x:Name="ResultDetailText" Margin="0,5,0,0" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Text="challenge를 생성해 시작하세요." />
+                    </StackPanel>
+                    <Border Grid.Column="1" Background="{StaticResource StrokeBrush}" />
+                    <StackPanel Grid.Column="3">
+                        <TextBlock FontSize="12" Foreground="{StaticResource MutedBrush}" Text="개발 로그" />
+                        <ListBox x:Name="LogList" Margin="0,7,0,0" Height="92" BorderThickness="0" Background="Transparent" FontFamily="Cascadia Mono" FontSize="11" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</Window>

@@ -1,0 +1,30 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build Windows projects
+        run: dotnet build PhoneUnlock.sln -c Release
+      - name: Run Core self-tests
+        run: dotnet run --project windows/PhoneUnlock.Core.Tests/PhoneUnlock.Core.Tests.csproj -c Release --no-build
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build Android debug APK
+        working-directory: android/PhoneUnlock
+        run: ./gradlew :app:assembleDebug --no-daemon

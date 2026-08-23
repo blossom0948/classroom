@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+**/build/
+.gradle/
+.kotlin/
+local.properties
+*.apk
+*.aab
+.idea/
+*.iml
+.vs/
+.tools/
+artifacts/
+*.user
+*.suo
+Thumbs.db

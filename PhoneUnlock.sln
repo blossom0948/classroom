@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhoneUnlock.Core", "windows\PhoneUnlock.Core\PhoneUnlock.Core.csproj", "{2B0806F4-BAB7-4D02-9CDF-A057C82DB8D5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhoneUnlock.Desktop", "windows\PhoneUnlock.Desktop\PhoneUnlock.Desktop.csproj", "{FBD465E9-BEBC-4B80-941C-EFF02304B5DC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhoneUnlock.Core.Tests", "windows\PhoneUnlock.Core.Tests\PhoneUnlock.Core.Tests.csproj", "{E2E20AFA-A85A-47B9-9340-F8CA48D1A2FA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2B0806F4-BAB7-4D02-9CDF-A057C82DB8D5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B0806F4-BAB7-4D02-9CDF-A057C82DB8D5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B0806F4-BAB7-4D02-9CDF-A057C82DB8D5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B0806F4-BAB7-4D02-9CDF-A057C82DB8D5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FBD465E9-BEBC-4B80-941C-EFF02304B5DC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FBD465E9-BEBC-4B80-941C-EFF02304B5DC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FBD465E9-BEBC-4B80-941C-EFF02304B5DC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FBD465E9-BEBC-4B80-941C-EFF02304B5DC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E2E20AFA-A85A-47B9-9340-F8CA48D1A2FA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E2E20AFA-A85A-47B9-9340-F8CA48D1A2FA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E2E20AFA-A85A-47B9-9340-F8CA48D1A2FA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E2E20AFA-A85A-47B9-9340-F8CA48D1A2FA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
