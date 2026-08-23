@@ -34,7 +34,7 @@ dotnet run --project .\windows\PhoneUnlock.Service.Tests\PhoneUnlock.Service.Tes
 
 ## Android 실기기 네트워크 검사
 
-1. 강한 생체인증이 등록된 Android 11+ 기기에 debug APK를 설치한다.
+1. 강한 생체인증이 등록된 Android 11+ 기기에 고정 서명 release APK를 설치한다.
 2. Windows 설정 앱에서 연결 QR을 만든 뒤 Android의 **QR 코드 스캔**으로 읽는다.
 3. 설정 앱의 PC와 Android의 PC 이름/주소가 일치하는지 확인한다.
 4. 설정 앱에서 **휴대폰에 인증 요청**을 누른다.

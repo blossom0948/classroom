@@ -14,6 +14,8 @@ Android의 강한 생체인증과 Android Keystore의 ECDSA P-256 키로 Windows
 - 현재 로그인 계정 자동 선택과 Windows Credential Manager의 검증된 자격 증명 보호 저장
 - V2 Credential Provider를 기본 로그인으로 선택하고, 잠금화면이 열리면 자동으로 휴대폰 요청
 - 설정 앱 안의 지문 테스트·로그인 활성화와 별도 비활성화·복구 스크립트
+- ZIP이나 PowerShell 없이 설치되는 단일 `PhoneUnlock-Setup.exe`와 앱 내 업데이트 확인
+- 한 번 만든 고정 키로 서명되는 Android release APK와 앱 내 최신 APK 바로 받기
 - 수동 JSON 암호 상호운용 테스트 화면과 자동화된 Core/Service self-test 유지
 
 ## 저장소 구조
@@ -35,14 +37,16 @@ scripts/uninstall/                     향후 복구 스크립트 위치
 
 ## 설치 순서
 
-GitHub Actions의 `PhoneUnlock-Windows-x64`와 `PhoneUnlock-Android-debug` 아티팩트를 받거나 소스에서 빌드합니다.
+GitHub Releases에서 Windows용 `PhoneUnlock-Setup.exe`와 휴대폰용 `PhoneUnlock-Android.apk`만 받으면 됩니다.
 
-1. Windows 릴리스 ZIP 전체를 풀고 **Phone Unlock 설치.cmd**를 더블클릭합니다.
-2. Android APK를 Android 11 이상 실기기에 설치하고 알림을 허용합니다.
+1. Windows에서 **PhoneUnlock-Setup.exe**를 더블클릭하고 설치합니다. ZIP 압축 해제나 PowerShell 작업은 필요하지 않습니다.
+2. Android 11 이상 실기기에 **PhoneUnlock-Android.apk**를 설치하고 알림을 허용합니다.
 3. Windows 설정 앱에서 **연결 QR 코드 만들기**를 누르고 Android 앱으로 스캔합니다.
 4. 자동 선택된 현재 계정의 Windows 암호를 한 번 입력합니다. PIN 번호는 사용할 수 없습니다.
 5. **지문 로그인 켜기**를 누르고 휴대폰에서 지문을 인증합니다.
 6. 이후 PC가 잠기면 Phone Unlock이 기본으로 열리고 휴대폰에 요청이 자동 전송됩니다.
+
+PC와 Android 앱 모두 실행 화면에서 새 버전을 확인할 수 있습니다. Android에서 이전 `debug` APK를 사용했다면 고정 서명판으로 바뀌는 이번 한 번만 기존 앱을 삭제하고 다시 설치해야 합니다. 이후 release APK는 연결 정보를 유지한 채 업데이트됩니다.
 
 비활성화와 복구 방법은 [설치·복구 문서](windows/PhoneUnlock.Installer/README.md)를 참고하세요.
 
@@ -62,12 +66,7 @@ dotnet run --project .\windows\PhoneUnlock.Desktop\PhoneUnlock.Desktop.csproj
 
 필수: JDK 17, Android SDK 36, Android Build Tools 36.0.0
 
-```powershell
-cd .\android\PhoneUnlock
-.\gradlew.bat :app:assembleDebug
-```
-
-생성 APK: `android/PhoneUnlock/app/build/outputs/apk/debug/app-debug.apk`
+개발용 debug APK는 `:app:assembleDebug`로 빌드할 수 있습니다. 배포용 `:app:assembleRelease`는 저장소 소유자의 고정 서명 환경 변수가 필요하며 GitHub Actions에서 생성합니다.
 
 실기기에서 Android 11(API 30) 이상과 강한 생체인증 등록이 필요합니다. 실제 로그인은 앱의 **QR 코드 스캔**으로 연결한 뒤 알림을 눌러 승인합니다.
 
@@ -90,5 +89,6 @@ Android 빌드까지 검사하려면 JDK 17을 준비한 뒤 다음을 실행합
 - Windows 비밀번호, PIN, 개인키, pairing secret을 Git에 저장하지 않습니다. Windows 비밀번호는 서비스 계정의 Credential Manager에 저장되며 Android로 전송되지 않습니다.
 - 로그인 문제가 생기면 언제나 Windows 기본 PIN/비밀번호를 사용해야 합니다.
 - Phone Unlock은 기본 로그인 수단을 대체하거나 제거하지 않는 추가 Credential Provider로만 등록됩니다.
+- Android는 보안 정책상 APK를 완전 무인 설치할 수 없으므로 앱이 최신 APK 다운로드를 열어 준 뒤 시스템 설치 확인은 한 번 눌러야 합니다.
 
 자세한 내용은 [아키텍처](docs/ARCHITECTURE.md), [보안](docs/SECURITY.md), [테스트](docs/TESTING.md), [문제 해결](docs/TROUBLESHOOTING.md), [프로토콜](protocol/protocol.md)을 참고하세요.

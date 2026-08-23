@@ -26,7 +26,13 @@ AGP 9.0.1은 JDK 17과 Gradle 9.1.0이 필요하다. `JAVA_HOME`을 JDK 17 폴�
 
 ## 연결 QR 버튼을 눌러도 아무것도 나오지 않음
 
-설정 앱 실행 파일만 직접 열고 서비스 설치를 건너뛰면 QR을 만들 수 없다. 최신 릴리스 ZIP 전체를 푼 뒤 **Phone Unlock 설치.cmd**를 실행한다. 최신 설정 앱은 이 상태를 감지해 상단에 **이 PC에 설치** 버튼을 표시한다.
+이전 설치는 파일만 복사되고 Windows 서비스 생성 전에 실패할 수 있었다. 최신 릴리스의 **PhoneUnlock-Setup.exe**를 실행하면 서비스와 방화벽을 함께 복구한다. 설정 앱이 `설치되지 않음`을 표시하면 **설치 프로그램 받기**를 누르면 최신 설치 EXE를 직접 내려받는다.
+
+설치 후에도 같은 메시지가 나오면 `services.msc`에서 `PhoneUnlockService`가 `실행 중`인지 확인한다. 설치 EXE를 `/LOG=PhoneUnlock-install.log`와 함께 실행하면 실패한 Windows 명령과 오류 코드가 로그에 남는다.
+
+## Android APK를 업데이트할 수 없음
+
+`0.4.0-beta.1` 이전 GitHub Actions의 debug APK는 빌드할 때마다 서명이 달라질 수 있다. 이번 한 번만 기존 Phone Unlock 앱을 삭제하고 릴리스의 `PhoneUnlock-Android.apk`를 설치한다. 이후 버전은 고정 서명을 사용하므로 앱의 **새 버전 받기** 버튼으로 덮어쓰기 업데이트할 수 있다. Android 시스템의 설치 확인은 보안상 생략할 수 없다.
 
 ## Windows 암호를 확인하지 못함
 

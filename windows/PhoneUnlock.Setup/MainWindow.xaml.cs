@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Security.Principal;
 using System.Text.Json;
 using System.Windows;
@@ -31,39 +32,101 @@ public partial class MainWindow : Window
         DetectedAccountText.Text = currentQualifiedUsername;
     }
 
-    private async void Window_Loaded(object sender, RoutedEventArgs e) => await RefreshStatusAsync();
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        await RefreshStatusAsync();
+        await CheckForUpdateAsync(silent: true);
+    }
 
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshStatusAsync();
 
-    private void Install_Click(object sender, RoutedEventArgs e)
+    private async void Install_Click(object sender, RoutedEventArgs e)
     {
-        var script = FindNearbyFile("Install-PhoneUnlock.ps1");
-        if (script is null)
-        {
-            SetOperation("설치 파일을 찾을 수 없습니다. 릴리스 ZIP 전체를 푼 뒤 'Phone Unlock 설치.cmd'를 실행하세요.", success: false);
-            return;
-        }
+        await DownloadAndLaunchInstallerAsync();
+    }
 
+    private async void Update_Click(object sender, RoutedEventArgs e) => await CheckForUpdateAsync(silent: false);
+
+    private async Task CheckForUpdateAsync(bool silent)
+    {
+        UpdateButton.IsEnabled = false;
+        UpdateButton.Content = "확인 중…";
         try
         {
-            var startInfo = new ProcessStartInfo
+            var release = await ReleaseUpdateService.GetLatestInstallerAsync();
+            if (ReleaseUpdateService.IsNewerThanCurrent(release.Tag))
             {
-                FileName = "powershell.exe",
-                UseShellExecute = true,
-                Verb = "runas",
-                WorkingDirectory = Path.GetDirectoryName(script)!
-            };
-            startInfo.ArgumentList.Add("-NoProfile");
-            startInfo.ArgumentList.Add("-ExecutionPolicy");
-            startInfo.ArgumentList.Add("Bypass");
-            startInfo.ArgumentList.Add("-File");
-            startInfo.ArgumentList.Add(script);
-            Process.Start(startInfo);
+                UpdateButton.Content = $"{release.Tag} 설치";
+                UpdateButton.Tag = release;
+                UpdateButton.Click -= Update_Click;
+                UpdateButton.Click += InstallKnownUpdate_Click;
+                if (!silent)
+                {
+                    SetOperation($"새 버전 {release.Tag}이 있습니다. 위 버튼으로 바로 설치할 수 있습니다.", success: true);
+                }
+                return;
+            }
+
+            UpdateButton.Content = "최신 버전";
+            if (!silent)
+            {
+                SetOperation($"현재 {ReleaseUpdateService.CurrentVersion}이 최신 버전입니다.", success: true);
+            }
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or JsonException or TaskCanceledException)
+        {
+            UpdateButton.Content = "업데이트 재시도";
+            if (!silent)
+            {
+                SetOperation($"업데이트 확인 실패: {exception.Message}", success: false);
+            }
+        }
+        finally
+        {
+            UpdateButton.IsEnabled = true;
+        }
+    }
+
+    private async void InstallKnownUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        await DownloadAndLaunchInstallerAsync(UpdateButton.Tag as InstallerRelease);
+    }
+
+    private async Task DownloadAndLaunchInstallerAsync(InstallerRelease? knownRelease = null)
+    {
+        InstallButton.IsEnabled = false;
+        UpdateButton.IsEnabled = false;
+        try
+        {
+            var release = knownRelease ?? await ReleaseUpdateService.GetLatestInstallerAsync();
+            var progress = new Progress<int>(percent =>
+            {
+                InstallButton.Content = $"다운로드 {percent}%";
+                UpdateButton.Content = $"다운로드 {percent}%";
+            });
+            SetOperation($"{release.Tag} 설치 프로그램을 안전하게 내려받는 중입니다…", success: true);
+            var installer = await ReleaseUpdateService.DownloadInstallerAsync(release, progress);
+            SetOperation("Windows 관리자 확인 창에서 '예'를 누르면 설치가 계속됩니다.", success: true);
+            var process = ReleaseUpdateService.LaunchInstaller(installer);
+            if (process is null)
+            {
+                throw new InvalidOperationException("설치 프로그램을 시작하지 못했습니다.");
+            }
             Close();
         }
-        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (System.ComponentModel.Win32Exception exception) when (exception.NativeErrorCode == 1223)
         {
-            SetOperation($"설치를 시작하지 못했습니다: {exception.Message}", success: false);
+            SetOperation("관리자 확인이 취소되어 설치하지 않았습니다.", success: false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or JsonException or TaskCanceledException or InvalidOperationException)
+        {
+            SetOperation($"설치 프로그램을 시작하지 못했습니다: {exception.Message}", success: false);
+        }
+        finally
+        {
+            InstallButton.Content = "설치 프로그램 받기";
+            InstallButton.IsEnabled = true;
+            UpdateButton.IsEnabled = true;
         }
     }
 
@@ -239,7 +302,7 @@ public partial class MainWindow : Window
             LoginStateText.Text = "Windows 로그인 연동이 꺼져 있습니다.";
             ReadyBadgeText.Text = "설치 필요";
             ReadyBadge.Background = BrushFrom("#FFF0F0");
-            SetOperation("먼저 '이 PC에 설치'를 누르세요. 설치 후 설정 앱이 다시 열립니다.", success: false);
+            SetOperation("'설치 프로그램 받기'를 누르세요. ZIP이나 PowerShell 작업 없이 복구됩니다.", success: false);
         }
     }
 

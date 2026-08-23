@@ -2,8 +2,29 @@
 param()
 
 . (Join-Path $PSScriptRoot 'Common.ps1')
+
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = [Security.Principal.WindowsPrincipal]::new($identity)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    try {
+        $arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $PSCommandPath
+        $elevated = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -Wait -PassThru -ArgumentList $arguments
+        exit $elevated.ExitCode
+    }
+    catch {
+        Write-Host "관리자 확인 창을 열지 못했습니다: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+}
+
 Assert-Administrator
 
+$logDirectory = Join-Path $env:ProgramData 'PhoneUnlock\logs'
+New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+$logPath = Join-Path $logDirectory 'install-latest.log'
+Start-Transcript -LiteralPath $logPath -Force | Out-Null
+
+try {
 $installRoot = Get-PhoneUnlockInstallRoot
 $serviceSource = Join-Path $PSScriptRoot 'service'
 $setupSource = Join-Path $PSScriptRoot 'setup'
@@ -39,11 +60,19 @@ foreach ($scriptName in @('Common.ps1', 'Enable-CredentialProvider.ps1', 'Disabl
 
 $serviceExe = Join-Path $serviceTarget 'PhoneUnlock.Service.exe'
 if ($null -eq $existing) {
-    $quotedBinaryPath = '"{0}"' -f $serviceExe
-    & sc.exe create $script:PhoneUnlockServiceName "binPath= $quotedBinaryPath" 'start= auto' 'obj= LocalSystem' 'DisplayName= Phone Unlock Service' | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Windows 서비스를 만들지 못했습니다 (sc.exe $LASTEXITCODE)." }
+    New-Service `
+        -Name $script:PhoneUnlockServiceName `
+        -BinaryPathName ('"{0}"' -f $serviceExe) `
+        -DisplayName 'Phone Unlock Service' `
+        -Description 'Receives pinned Android biometric approvals for Windows login.' `
+        -StartupType Automatic | Out-Null
     & sc.exe description $script:PhoneUnlockServiceName 'Receives pinned Android biometric approvals for the Phone Unlock credential provider.' | Out-Null
     & sc.exe failure $script:PhoneUnlockServiceName 'reset= 86400' 'actions= restart/5000/restart/15000/none/0' | Out-Null
+}
+else {
+    $quotedBinaryPath = '"{0}"' -f $serviceExe
+    & sc.exe config $script:PhoneUnlockServiceName "binPath= $quotedBinaryPath" 'start= auto' 'obj= LocalSystem' 'DisplayName= Phone Unlock Service' | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Windows 서비스 구성을 갱신하지 못했습니다 (sc.exe $LASTEXITCODE)." }
 }
 
 Get-NetFirewallRule -DisplayName $script:PhoneUnlockFirewallName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
@@ -63,3 +92,13 @@ Start-Service -Name $script:PhoneUnlockServiceName
 Write-Host 'Phone Unlock 서비스와 설정 앱을 설치했습니다.' -ForegroundColor Green
 Write-Host 'Credential Provider 타일은 아직 활성화하지 않았습니다.' -ForegroundColor Yellow
 Start-Process -FilePath (Join-Path $setupTarget 'PhoneUnlock.Setup.exe')
+}
+catch {
+    Write-Host ''
+    Write-Host "설치 실패: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "설치 로그: $logPath" -ForegroundColor Yellow
+    throw
+}
+finally {
+    Stop-Transcript | Out-Null
+}

@@ -20,8 +20,12 @@
                     <TextBlock Margin="0,6,0,0" Foreground="{StaticResource MutedBrush}"
                                Text="휴대폰 지문으로 이 PC를 바로 잠금 해제합니다" />
                 </StackPanel>
-                <Button Grid.Column="1" Style="{StaticResource SecondaryButton}" Click="Refresh_Click"
-                        Content="새로 고침" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="UpdateButton" Style="{StaticResource SecondaryButton}" Click="Update_Click"
+                            Content="업데이트 확인" />
+                    <Button Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" Click="Refresh_Click"
+                            Content="새로 고침" />
+                </StackPanel>
             </Grid>
 
             <Border x:Name="InstallRequiredCard" Margin="0,22,0,0" Padding="20" Background="#FFF0F0"
@@ -35,10 +39,10 @@
                         <TextBlock FontSize="18" FontWeight="SemiBold" Foreground="#8A2424"
                                    Text="설치가 아직 끝나지 않았습니다" />
                         <TextBlock Margin="0,7,20,0" Foreground="#8A2424" TextWrapping="Wrap"
-                                   Text="설정 앱만 실행된 상태라 휴대폰 연결 코드를 만들 수 없습니다. 먼저 이 PC에 서비스를 설치하세요." />
+                                   Text="서비스 설치가 중간에 멈췄습니다. ZIP이나 PowerShell 없이 최신 설치 프로그램 하나로 복구할 수 있습니다." />
                     </StackPanel>
                     <Button x:Name="InstallButton" Grid.Column="1" Click="Install_Click"
-                            Content="이 PC에 설치" VerticalAlignment="Center" />
+                            Content="설치 프로그램 받기" VerticalAlignment="Center" />
                 </Grid>
             </Border>
 

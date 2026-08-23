@@ -2,8 +2,10 @@ package com.example.phoneunlock
 
 import android.Manifest
 import android.content.ClipboardManager
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -38,10 +40,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pasteCodeButton: MaterialButton
     private lateinit var pairButton: MaterialButton
     private lateinit var disconnectButton: MaterialButton
+    private lateinit var updateButton: MaterialButton
     private lateinit var keystoreSigner: KeystoreSigner
     private lateinit var pairingStore: SecurePairingStore
     private val pairingClient = PairingClient()
+    private val releaseUpdateChecker = ReleaseUpdateChecker()
     private lateinit var phoneId: String
+    private var availableUpdate: AndroidRelease? = null
 
     private val qrScanner = registerForActivityResult(ScanContract()) { result ->
         val code = result.contents
@@ -73,6 +78,7 @@ class MainActivity : AppCompatActivity() {
         pasteCodeButton = findViewById(R.id.pasteCodeButton)
         pairButton = findViewById(R.id.pairButton)
         disconnectButton = findViewById(R.id.disconnectButton)
+        updateButton = findViewById(R.id.updateButton)
         keystoreSigner = KeystoreSigner(this)
         pairingStore = SecurePairingStore(this)
         phoneId = loadOrCreatePhoneId()
@@ -81,12 +87,55 @@ class MainActivity : AppCompatActivity() {
         pasteCodeButton.setOnClickListener { connectFromClipboard() }
         pairButton.setOnClickListener { connectWithCode(pairingInput.text?.toString().orEmpty()) }
         disconnectButton.setOnClickListener { disconnectComputer() }
+        updateButton.setOnClickListener { handleUpdateClick() }
 
         pairingStore.load()?.let {
             displayPairedComputer(it)
             requestNotificationPermission()
             ConnectionService.connect(this)
         } ?: displayNoPairedComputer()
+
+        checkForUpdate(silent = true)
+    }
+
+    private fun handleUpdateClick() {
+        val update = availableUpdate
+        if (update == null) {
+            checkForUpdate(silent = false)
+            return
+        }
+
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.downloadUrl)))
+        showResult("APK 다운로드가 열렸습니다. Android 설치 확인만 한 번 눌러 주세요.", success = true)
+    }
+
+    private fun checkForUpdate(silent: Boolean) {
+        updateButton.isEnabled = false
+        updateButton.text = "업데이트 확인 중…"
+        lifecycleScope.launch {
+            try {
+                availableUpdate = releaseUpdateChecker.findUpdate(BuildConfig.VERSION_NAME)
+                val update = availableUpdate
+                updateButton.text = if (update == null) {
+                    "버전 ${BuildConfig.VERSION_NAME} · 최신"
+                } else {
+                    "새 버전 ${update.tag} 받기"
+                }
+                if (!silent) {
+                    showResult(
+                        if (update == null) "현재 최신 버전입니다." else "${update.tag}을 바로 설치할 수 있습니다.",
+                        success = true
+                    )
+                }
+            } catch (exception: Exception) {
+                updateButton.text = "업데이트 다시 확인"
+                if (!silent) {
+                    showResult(exception.message ?: "업데이트 확인에 실패했습니다.", success = false)
+                }
+            } finally {
+                updateButton.isEnabled = true
+            }
+        }
     }
 
     private fun scanPairingQr() {
