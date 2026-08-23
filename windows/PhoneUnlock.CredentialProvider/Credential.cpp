@@ -12,8 +12,8 @@ const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR PhoneUnlockFieldDescriptors[FieldCoun
 {
     { FieldTileImage, CPFT_TILE_IMAGE, const_cast<PWSTR>(L"Phone Unlock"), CPFG_CREDENTIAL_PROVIDER_LOGO },
     { FieldTitle, CPFT_SMALL_TEXT, const_cast<PWSTR>(L"Phone Unlock"), CPFG_CREDENTIAL_PROVIDER_LABEL },
-    { FieldStatus, CPFT_SMALL_TEXT, const_cast<PWSTR>(L"상태"), CPFG_NONE },
-    { FieldSubmit, CPFT_SUBMIT_BUTTON, const_cast<PWSTR>(L"휴대폰으로 잠금 해제"), CPFG_NONE },
+    { FieldStatus, CPFT_SMALL_TEXT, const_cast<PWSTR>(L"상태"), GUID_NULL },
+    { FieldSubmit, CPFT_SUBMIT_BUTTON, const_cast<PWSTR>(L"휴대폰으로 잠금 해제"), GUID_NULL },
 };
 
 const CREDENTIAL_PROVIDER_FIELD_STATE PhoneUnlockFieldStates[FieldCount] =
