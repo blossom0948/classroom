@@ -8,6 +8,7 @@ namespace PhoneUnlock.Service.Networking;
 
 public sealed class PhoneConnectionRegistry(
     ConfigurationStore configurationStore,
+    AuditLogStore auditLog,
     ILoggerFactory loggerFactory)
 {
     private readonly ConcurrentDictionary<string, PhoneConnection> connections = new(StringComparer.Ordinal);
@@ -15,6 +16,7 @@ public sealed class PhoneConnectionRegistry(
     public async Task<PairedPhoneRecord?> AuthenticateDeviceAsync(
         string? phoneId,
         string? authorizationHeader,
+        string? remoteIp,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(phoneId)
@@ -26,20 +28,37 @@ public sealed class PhoneConnectionRegistry(
 
         var token = authorizationHeader["Bearer ".Length..].Trim();
         var configuration = await configurationStore.GetAsync(cancellationToken);
-        return configuration.Phones.FirstOrDefault(phone =>
+        var matched = configuration.Phones.FirstOrDefault(phone =>
             phone.Enabled
             && string.Equals(phone.PhoneId, phoneId, StringComparison.Ordinal)
             && TokenSecurity.VerifyToken(token, phone.DeviceTokenHash));
+        if (matched is null)
+        {
+            await auditLog.AppendAsync(new AuditEntry(
+                DateTimeOffset.UtcNow,
+                "CONNECTION_ATTEMPT",
+                "REJECTED",
+                phoneId,
+                null,
+                remoteIp,
+                null,
+                "알 수 없거나 비활성화된 휴대폰 연결 요청",
+                Suspicious: true), cancellationToken);
+        }
+
+        return matched;
     }
 
     public async Task AcceptAsync(
         PairedPhoneRecord phone,
         WebSocket socket,
+        string? remoteIp,
         CancellationToken cancellationToken)
     {
         var connection = new PhoneConnection(
             phone,
             socket,
+            remoteIp,
             loggerFactory.CreateLogger<PhoneConnection>());
         if (connections.TryGetValue(phone.PhoneId, out var previous))
         {
@@ -61,10 +80,14 @@ public sealed class PhoneConnectionRegistry(
     }
 
     public async Task<(PairedPhoneRecord Phone, PhoneConnection Connection)?> GetConnectedPhoneAsync(
+        string? preferredPhoneId,
         CancellationToken cancellationToken)
     {
         var configuration = await configurationStore.GetAsync(cancellationToken);
-        foreach (var phone in configuration.Phones.Where(phone => phone.Enabled))
+        var phones = configuration.Phones
+            .Where(phone => phone.Enabled)
+            .OrderByDescending(phone => string.Equals(phone.PhoneId, preferredPhoneId, StringComparison.Ordinal));
+        foreach (var phone in phones)
         {
             if (connections.TryGetValue(phone.PhoneId, out var connection) && connection.IsOpen)
             {
@@ -77,6 +100,28 @@ public sealed class PhoneConnectionRegistry(
 
     public bool IsConnected(string phoneId) =>
         connections.TryGetValue(phoneId, out var connection) && connection.IsOpen;
+
+    public IReadOnlyList<PhoneConnectionStatus> GetStatuses(IReadOnlyList<PairedPhoneRecord> phones) =>
+        phones.Select(phone =>
+        {
+            connections.TryGetValue(phone.PhoneId, out var connection);
+            return new PhoneConnectionStatus(
+                phone.PhoneId,
+                phone.PhoneName,
+                phone.Enabled,
+                connection?.IsOpen == true,
+                phone.LastSeen,
+                connection?.LastHeartbeat,
+                connection?.RemoteIp);
+        }).ToArray();
+
+    public bool HasRecentHeartbeat(string phoneId, TimeSpan threshold)
+    {
+        return connections.TryGetValue(phoneId, out var connection)
+            && connection.IsOpen
+            && connection.LastHeartbeat is { } heartbeat
+            && DateTimeOffset.UtcNow - heartbeat <= threshold;
+    }
 
     private Task UpdateLastSeenAsync(string phoneId, CancellationToken cancellationToken) =>
         configurationStore.UpdateAsync(configuration => configuration with

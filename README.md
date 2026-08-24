@@ -8,7 +8,12 @@ Android의 강한 생체인증과 Android Keystore의 ECDSA P-256 키로 Windows
 
 - Windows QR 표시와 Android 카메라 스캔을 이용한 2분·1회용 LAN 페어링
 - Android Keystore의 내보낼 수 없는 P-256 키와 `BiometricPrompt.CryptoObject`
-- 인증된 `wss://` 연결, 로그인 요청 시 자동 생체인식 화면, 자동 재연결
+- 인증된 `wss://` 연결, 로그인 요청 시 자동 인증 화면, 자동 재연결
+- 여러 PC 등록·선택, 여러 휴대폰 등록과 Windows 설정 앱의 선호 휴대폰 선택
+- 성공·실패·의심스러운 인증 요청의 시간·휴대폰·원격 IP 감사 기록
+- 연결·알림·배터리·인증 상태를 한 번에 확인하는 Windows/Android 진단 화면
+- 선택한 휴대폰 연결이 일정 시간 끊기면 Windows를 잠그는 선택형 자동 잠금
+- 강한 지문·강한 얼굴인식 또는 휴대폰 PIN/패턴/비밀번호 인증 모드
 - Windows LocalSystem 서비스의 challenge/만료/replay/서명 검증
 - 관리자 전용 Named Pipe로 설정 앱과 Credential Provider 분리
 - 현재 로그인 계정 자동 선택과 Windows Credential Manager의 검증된 자격 증명 보호 저장
@@ -43,8 +48,10 @@ GitHub Releases에서 Windows용 `PhoneUnlock-Setup.exe`와 휴대폰용 `PhoneU
 2. Android 11 이상 실기기에 **PhoneUnlock-Android.apk**를 설치하고 알림을 허용합니다. Android 14 이상에서는 앱에 표시되는 **자동 팝업 허용**도 한 번 누릅니다.
 3. Windows 설정 앱에서 **연결 QR 코드 만들기**를 누르고 Android 앱으로 스캔합니다.
 4. 자동 선택된 현재 계정의 Windows 암호를 한 번 입력합니다. PIN 번호는 사용할 수 없습니다.
-5. **지문 로그인 켜기**를 누르고 휴대폰에서 지문을 인증합니다.
-6. 이후 PC가 잠기면 Phone Unlock이 기본으로 열리고 휴대폰에 요청이 자동 전송됩니다. 휴대폰 잠금 화면 위에 생체인식 창이 바로 열리며 별도의 승인 버튼은 필요하지 않습니다.
+5. **휴대폰 인증 로그인 켜기**를 누르고 휴대폰에서 설정한 인증을 완료합니다.
+6. Android 앱에서 필요하면 **휴대폰 PIN·강한 얼굴인식도 허용**을 켭니다. 인증 방식을 바꾸면 등록된 PC마다 한 번 다시 연결해야 합니다.
+7. 이후 PC가 잠기면 Phone Unlock이 기본으로 열리고 휴대폰에 요청이 자동 전송됩니다. 휴대폰 잠금 화면 위에 인증창이 바로 열리며 별도의 승인 버튼은 필요하지 않습니다.
+8. Windows 설정 앱의 **연결이 끊기면 자동 잠금**은 기본 꺼짐이며, 켜면 선택한 휴대폰의 안전한 LAN 연결이 설정한 유예 시간 동안 끊길 때 PC를 잠급니다.
 
 PC와 Android 앱 모두 실행 화면에서 새 버전을 확인할 수 있습니다. Android에서 이전 `debug` APK를 사용했다면 고정 서명판으로 바뀌는 이번 한 번만 기존 앱을 삭제하고 다시 설치해야 합니다. 이후 release APK는 연결 정보를 유지한 채 업데이트됩니다.
 
@@ -70,7 +77,7 @@ dotnet run --project .\windows\PhoneUnlock.Desktop\PhoneUnlock.Desktop.csproj
 
 개발용 debug APK는 `:app:assembleDebug`로 빌드할 수 있습니다. 배포용 `:app:assembleRelease`는 저장소 소유자의 고정 서명 환경 변수가 필요하며 GitHub Actions에서 생성합니다.
 
-실기기에서 Android 11(API 30) 이상과 강한 생체인증 등록이 필요합니다. 실제 로그인은 앱의 **QR 코드 스캔**으로 연결하면 이후 요청부터 생체인식 창이 자동으로 열립니다. 휴대폰 사용 중에는 Android 정책에 따라 전체 화면 대신 상단 알림으로 표시될 수 있으며, 이 경우 알림을 누르면 생체인식 창이 즉시 열립니다.
+실기기에서 Android 11(API 30) 이상이 필요합니다. 기본 모드는 강한 생체인증 등록이 필요하며, 선택적으로 Android 기기 PIN/패턴/비밀번호를 허용할 수 있습니다. Android가 강한 생체인증으로 분류한 얼굴인식은 사용할 수 있지만, 약한 얼굴인식은 서명 키 보호에 사용할 수 없습니다. 실제 로그인은 앱의 **QR 코드 스캔**으로 연결하면 이후 요청부터 인증창이 자동으로 열립니다. 휴대폰 사용 중에는 Android 정책에 따라 전체 화면 대신 상단 알림으로 표시될 수 있으며, 이 경우 알림을 누르면 인증창이 즉시 열립니다.
 
 ## 전체 검증
 
@@ -88,9 +95,11 @@ Android 빌드까지 검사하려면 JDK 17을 준비한 뒤 다음을 실행합
 
 - 이 앱은 지문 원본 데이터에 접근하지 않습니다.
 - Android 개인키는 Keystore 밖으로 내보내지 않습니다.
+- 휴대폰 PIN/패턴/비밀번호는 Android 시스템 인증창 안에서만 사용하며 PC로 전송하지 않습니다.
 - Windows 비밀번호, PIN, 개인키, pairing secret을 Git에 저장하지 않습니다. Windows 비밀번호는 서비스 계정의 Credential Manager에 저장되며 Android로 전송되지 않습니다.
 - 로그인 문제가 생기면 언제나 Windows 기본 PIN/비밀번호를 사용해야 합니다.
 - Phone Unlock은 기본 로그인 수단을 대체하거나 제거하지 않는 추가 Credential Provider로만 등록됩니다.
+- 휴대폰이 가까이 있다는 사실만으로 잠금이 자동 해제되지는 않습니다. 근접성만 이용한 자동 해제는 도난·오탐 시 Windows 인증을 우회할 수 있으므로, 잠금 해제에는 휴대폰의 생체인증 또는 PIN 인증이 계속 필요합니다.
 - Android는 보안 정책상 APK를 완전 무인 설치할 수 없으므로 앱이 최신 APK 다운로드를 열어 준 뒤 시스템 설치 확인은 한 번 눌러야 합니다.
 
 자세한 내용은 [아키텍처](docs/ARCHITECTURE.md), [보안](docs/SECURITY.md), [테스트](docs/TESTING.md), [문제 해결](docs/TROUBLESHOOTING.md), [프로토콜](protocol/protocol.md)을 참고하세요.

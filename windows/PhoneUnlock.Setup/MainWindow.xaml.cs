@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Security.Principal;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
@@ -23,6 +24,7 @@ public partial class MainWindow : Window
     private readonly SetupPipeClient client = new();
     private readonly string currentQualifiedUsername;
     private SetupStatus? currentStatus;
+    private bool updatingControls;
 
     public MainWindow()
     {
@@ -35,10 +37,79 @@ public partial class MainWindow : Window
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         await RefreshStatusAsync();
+        await RefreshAuditAsync(silent: true);
         await CheckForUpdateAsync(silent: true);
     }
 
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshStatusAsync();
+
+    private async void UseSelectedPhone_Click(object sender, RoutedEventArgs e)
+    {
+        if (PhoneSelectorComboBox.SelectedItem is not PhoneSelectionItem phone)
+        {
+            SetOperation("먼저 로그인에 사용할 휴대폰을 선택하세요.", success: false);
+            return;
+        }
+
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.SetPreferredPhone, PhoneId: phone.PhoneId),
+                TimeSpan.FromSeconds(10));
+            SetOperation(response.Message, response.Success);
+            if (response.Success) await RefreshStatusAsync();
+        });
+    }
+
+    private async void Diagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.Diagnostics),
+                TimeSpan.FromSeconds(10));
+            if (!response.Success || string.IsNullOrWhiteSpace(response.Data))
+            {
+                SetOperation(response.Message, success: false);
+                return;
+            }
+
+            var diagnostics = ProtocolJson.Deserialize<SetupDiagnostics>(response.Data);
+            var connected = diagnostics.Phones.Count(phone => phone.Connected);
+            DiagnosticsSummaryText.Text = connected == 0
+                ? $"PC 주소 {string.Join(", ", diagnostics.LocalAddresses)} · 연결된 휴대폰 없음"
+                : $"PC 주소 {string.Join(", ", diagnostics.LocalAddresses)} · 휴대폰 {connected}대 연결됨 · 포트 {diagnostics.ListeningPort}";
+            SetOperation("Windows 연결 진단을 완료했습니다. 알림·배터리 상태는 휴대폰 앱 진단에서 확인하세요.", success: true);
+        });
+    }
+
+    private async void AuditRefresh_Click(object sender, RoutedEventArgs e) => await RefreshAuditAsync(silent: false);
+
+    private async void ProximityLock_Click(object sender, RoutedEventArgs e)
+    {
+        if (updatingControls) return;
+        await SaveProximityLockAsync();
+    }
+
+    private async void ProximityGrace_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingControls || !IsLoaded || currentStatus is null || ProximityLockCheckBox.IsChecked != true) return;
+        await SaveProximityLockAsync();
+    }
+
+    private async Task SaveProximityLockAsync()
+    {
+        var enabled = ProximityLockCheckBox.IsChecked == true;
+        var grace = SelectedGraceSeconds();
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.SetProximityLock, Enabled: enabled, GraceSeconds: grace),
+                TimeSpan.FromSeconds(10));
+            SetOperation(response.Message, response.Success);
+            if (response.Success) await RefreshStatusAsync();
+        });
+    }
 
     private async void Install_Click(object sender, RoutedEventArgs e)
     {
@@ -209,7 +280,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        TestResultText.Text = "휴대폰에서 지문을 인증해 주세요…";
+        TestResultText.Text = "휴대폰에서 설정한 인증을 완료해 주세요…";
         TestResultText.Foreground = BrushFrom("#A15C00");
         await RunOperationAsync(async () =>
         {
@@ -218,13 +289,13 @@ public partial class MainWindow : Window
                 TimeSpan.FromSeconds(40));
             if (!response.Success)
             {
-                TestResultText.Text = $"지문 테스트 실패: {response.Message}";
+                TestResultText.Text = $"휴대폰 인증 테스트 실패: {response.Message}";
                 TestResultText.Foreground = BrushFrom("#A4262C");
                 SetOperation(response.Message, success: false);
                 return;
             }
 
-            TestResultText.Text = "✓ 휴대폰 지문 확인 성공";
+            TestResultText.Text = "✓ 휴대폰 인증 확인 성공";
             TestResultText.Foreground = BrushFrom("#217346");
             var scriptResult = await RunNearbyScriptAsync("Enable-CredentialProvider.ps1");
             if (!scriptResult.Success)
@@ -233,7 +304,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            SetOperation("설정 완료. 이제 잠금화면이 열리면 휴대폰에 지문 요청이 자동으로 갑니다.", success: true);
+            SetOperation("설정 완료. 이제 잠금화면이 열리면 휴대폰에 인증 요청이 자동으로 갑니다.", success: true);
             await RefreshStatusAsync();
         });
     }
@@ -244,7 +315,7 @@ public partial class MainWindow : Window
         {
             var result = await RunNearbyScriptAsync("Disable-CredentialProvider.ps1");
             SetOperation(result.Success
-                ? "지문 로그인을 껐습니다. 기존 PIN과 비밀번호 로그인은 그대로입니다."
+                ? "휴대폰 인증 로그인을 껐습니다. 기존 PIN과 비밀번호 로그인은 그대로입니다."
                 : result.Message, result.Success);
             await RefreshStatusAsync();
         });
@@ -274,12 +345,32 @@ public partial class MainWindow : Window
                 : string.Join(Environment.NewLine, currentStatus.Phones.Select(phone =>
                     $"{(phone.Connected ? "●" : "○")} {phone.PhoneName} · {(phone.Connected ? "연결됨" : "오프라인")}"));
 
+            updatingControls = true;
+            PhoneSelectorComboBox.Items.Clear();
+            foreach (var phone in currentStatus.Phones)
+            {
+                PhoneSelectorComboBox.Items.Add(new PhoneSelectionItem(
+                    phone.PhoneId,
+                    $"{phone.PhoneName} · {(phone.Connected ? "연결됨" : "오프라인")}"));
+            }
+            PhoneSelectorComboBox.SelectedItem = currentStatus.PreferredPhoneId is null
+                ? null
+                : PhoneSelectorComboBox.Items.OfType<PhoneSelectionItem>()
+                    .FirstOrDefault(item => item.PhoneId == currentStatus.PreferredPhoneId);
+            UseSelectedPhoneButton.IsEnabled = PhoneSelectorComboBox.Items.Count > 0;
+            ProximityLockCheckBox.IsChecked = currentStatus.ProximityLockEnabled;
+            ProximityGraceComboBox.SelectedItem = ProximityGraceComboBox.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), currentStatus.ProximityGraceSeconds.ToString(), StringComparison.Ordinal))
+                ?? ProximityGraceComboBox.Items.OfType<ComboBoxItem>().FirstOrDefault(item => item.Tag?.ToString() == "30");
+            updatingControls = false;
+
             var providerEnabled = IsCredentialProviderRegistered();
             var providerDefault = IsDefaultCredentialProvider();
             LoginStateText.Text = providerEnabled
                 ? providerDefault ? "잠금화면 기본 로그인: Phone Unlock" : "Phone Unlock 로그인 옵션이 켜져 있습니다."
                 : "아직 Windows 잠금화면에 연결되지 않았습니다.";
-            EnableLoginButton.Content = providerEnabled ? "지문 로그인 다시 테스트" : "지문 로그인 켜기";
+            EnableLoginButton.Content = providerEnabled ? "휴대폰 인증 다시 테스트" : "휴대폰 인증 로그인 켜기";
             DisableLoginButton.Visibility = providerEnabled ? Visibility.Visible : Visibility.Collapsed;
 
             var usable = providerEnabled
@@ -287,6 +378,7 @@ public partial class MainWindow : Window
                 && currentStatus.Phones.Any(phone => phone.Enabled);
             ReadyBadgeText.Text = usable ? "사용 가능" : "설정 필요";
             ReadyBadge.Background = BrushFrom(usable ? "#EAF7EF" : "#ECEEF2");
+            await RefreshAuditAsync(silent: true);
         }
         catch (Exception exception) when (exception is IOException or TimeoutException or JsonException or InvalidOperationException)
         {
@@ -312,12 +404,58 @@ public partial class MainWindow : Window
         StoreCredentialButton.IsEnabled = enabled;
         PasswordInput.IsEnabled = enabled;
         EnableLoginButton.IsEnabled = enabled;
+        PhoneSelectorComboBox.IsEnabled = enabled;
+        UseSelectedPhoneButton.IsEnabled = enabled && PhoneSelectorComboBox.Items.Count > 0;
+        DiagnosticsButton.IsEnabled = enabled;
+        AuditList.IsEnabled = enabled;
+        ProximityLockCheckBox.IsEnabled = enabled;
+        ProximityGraceComboBox.IsEnabled = enabled;
         if (!enabled)
         {
             DisableLoginButton.Visibility = Visibility.Collapsed;
             PairingPanel.Visibility = Visibility.Collapsed;
         }
     }
+
+    private async Task RefreshAuditAsync(bool silent)
+    {
+        try
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.GetAuditLog, Limit: 100),
+                TimeSpan.FromSeconds(10));
+            if (!response.Success || string.IsNullOrWhiteSpace(response.Data))
+            {
+                if (!silent) SetOperation(response.Message, success: false);
+                return;
+            }
+
+            var entries = ProtocolJson.Deserialize<AuditEntry[]>(response.Data);
+            AuditList.Items.Clear();
+            foreach (var entry in entries)
+            {
+                var prefix = entry.Suspicious ? "⚠ 의심 " : entry.Outcome == "SUCCESS" ? "✓ " : "• ";
+                var phone = string.IsNullOrWhiteSpace(entry.PhoneName) ? "알 수 없는 휴대폰" : entry.PhoneName;
+                var ip = string.IsNullOrWhiteSpace(entry.RemoteIp) ? "IP 미확인" : entry.RemoteIp;
+                AuditList.Items.Add(new ListBoxItem
+                {
+                    Content = $"{prefix}{entry.OccurredAt.ToLocalTime():yyyy-MM-dd HH:mm:ss} · {phone} · {ip}\n{entry.Message}",
+                    Foreground = BrushFrom(entry.Suspicious ? "#A4262C" : entry.Outcome == "SUCCESS" ? "#217346" : "#555A63"),
+                    Padding = new Thickness(8, 5, 8, 5)
+                });
+            }
+            if (!silent) SetOperation("보안 기록을 새로 고쳤습니다.", success: true);
+        }
+        catch (Exception exception) when (exception is IOException or TimeoutException or JsonException or InvalidOperationException)
+        {
+            if (!silent) SetOperation($"보안 기록을 불러오지 못했습니다: {exception.Message}", success: false);
+        }
+    }
+
+    private int SelectedGraceSeconds() =>
+        int.TryParse((ProximityGraceComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out var seconds)
+            ? seconds
+            : 30;
 
     private async Task RunOperationAsync(Func<Task> operation)
     {

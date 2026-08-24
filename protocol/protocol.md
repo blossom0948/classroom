@@ -28,6 +28,7 @@
 PAIR_REQUEST
 PAIR_RESPONSE
 DEVICE_HELLO
+DEVICE_HEARTBEAT
 DEVICE_STATUS
 AUTH_REQUEST
 AUTH_APPROVED
@@ -176,6 +177,8 @@ PC 검증 순서:
 ```
 
 `host`는 우선 주소이며 `hosts`는 여러 네트워크 어댑터가 있을 때의 연결 후보이다. Android는 fingerprint가 정확히 일치하는 TLS 인증서로 후보 주소에 `POST /pair`를 호출하고 `X-Pairing-Token` 헤더를 보낸다. body에는 `phoneId`, 표시용 `phoneName`, P-256 SubjectPublicKeyInfo `publicKey`가 들어간다. 성공 응답은 `computerId`, `phoneId`, 256비트 `deviceToken`, port와 같은 fingerprint를 반환한다.
+
+WSS 연결이 열리면 Android는 `DEVICE_HELLO`를 한 번 보내고 10초마다 `DEVICE_HEARTBEAT`를 보낸다. Windows는 마지막 heartbeat를 자동 잠금의 연결 상태 신호로만 사용하며, 인증 요청 승인 대신 사용할 수 없다.
 
 pairing token은 256비트 난수이며 2분 뒤 만료되고 한 번만 소비된다. 이후 전송은 `wss://<host>:48231/ws?phoneId=...`와 `Authorization: Bearer <deviceToken>`을 사용한다. Android는 device token을 Keystore AES-GCM 키로 암호화해 저장하고 PC는 token의 SHA-256 hash만 저장한다.
 

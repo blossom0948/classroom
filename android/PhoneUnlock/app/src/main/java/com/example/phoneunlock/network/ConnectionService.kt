@@ -31,6 +31,14 @@ class ConnectionService : Service() {
     private var webSocket: WebSocket? = null
     private var reconnectAttempt = 0
     private var stopping = false
+    private val heartbeat = object : Runnable {
+        override fun run() {
+            val socket = webSocket
+            if (socket?.send(deviceHeartbeat()) == true) {
+                handler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -93,6 +101,8 @@ class ConnectionService : Service() {
                 .put("timestamp", Instant.now().epochSecond)
                 .put("payload", JSONObject().put("phoneId", computer.phoneId))
             webSocket.send(hello.toString())
+            handler.removeCallbacks(heartbeat)
+            handler.postDelayed(heartbeat, HEARTBEAT_INTERVAL_MS)
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
@@ -158,13 +168,13 @@ class ConnectionService : Service() {
         val notification = Notification.Builder(this, AUTH_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_phone_unlock)
             .setContentTitle("Windows 로그인 요청")
-            .setContentText("$computerName 잠금 해제를 생체인증으로 승인")
+            .setContentText("$computerName 잠금 해제를 휴대폰 인증으로 승인")
             .setCategory(Notification.CATEGORY_REMINDER)
             .setPriority(Notification.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setTimeoutAfter(((expiresAt - Instant.now().epochSecond).coerceAtLeast(1)) * 1_000L)
             .setContentIntent(pendingIntent)
-            .addAction(R.drawable.ic_phone_unlock, "지문 인증", pendingIntent)
+            .addAction(R.drawable.ic_phone_unlock, "휴대폰 인증", pendingIntent)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .apply {
                 if (AuthPromptSettings.isAutoOpenEnabled(this@ConnectionService)) {
@@ -216,6 +226,14 @@ class ConnectionService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private fun deviceHeartbeat(): String = JSONObject()
+        .put("version", PhoneUnlockProtocol.VERSION)
+        .put("type", "DEVICE_HEARTBEAT")
+        .put("messageId", java.util.UUID.randomUUID().toString())
+        .put("timestamp", Instant.now().epochSecond)
+        .put("payload", JSONObject().put("phoneId", pairingStore.load()?.phoneId))
+        .toString()
+
     companion object {
         const val EXTRA_AUTH_REQUEST = "auth_request"
         const val EXTRA_AUTH_NOTIFICATION_ID = "auth_notification_id"
@@ -226,6 +244,7 @@ class ConnectionService : Service() {
         private const val CONNECTION_CHANNEL_ID = "phone_unlock_connection"
         private const val AUTH_CHANNEL_ID = "phone_unlock_auth"
         private const val CONNECTION_NOTIFICATION_ID = 48231
+        private const val HEARTBEAT_INTERVAL_MS = 10_000L
 
         fun connect(context: Context) {
             ContextCompat.startForegroundService(

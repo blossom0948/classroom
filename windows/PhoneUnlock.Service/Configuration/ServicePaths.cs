@@ -4,6 +4,7 @@ public sealed record ServicePaths(string DataDirectory, bool RestrictPermissions
 {
     public string ConfigurationFile => Path.Combine(DataDirectory, "service-config.json");
     public string CertificateFile => Path.Combine(DataDirectory, "phone-unlock.pfx");
+    public string AuditLogFile => Path.Combine(DataDirectory, "audit-log.jsonl");
 
     public static ServicePaths Resolve(IConfiguration configuration)
     {

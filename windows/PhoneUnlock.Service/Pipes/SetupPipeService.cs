@@ -17,6 +17,8 @@ public sealed class SetupPipeService(
     PairingCoordinator pairingCoordinator,
     PhoneAuthenticationCoordinator authenticationCoordinator,
     PhoneConnectionRegistry connectionRegistry,
+    AuditLogStore auditLog,
+    CertificateManager certificateManager,
     ILogger<SetupPipeService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -74,6 +76,10 @@ public sealed class SetupPipeService(
             SetupCommands.DeleteCredential => await DeleteCredentialAsync(cancellationToken),
             SetupCommands.RemovePhone => await RemovePhoneAsync(request, cancellationToken),
             SetupCommands.TestAuthentication => await TestAuthenticationAsync(cancellationToken),
+            SetupCommands.SetPreferredPhone => await SetPreferredPhoneAsync(request, cancellationToken),
+            SetupCommands.GetAuditLog => await GetAuditLogAsync(request, cancellationToken),
+            SetupCommands.Diagnostics => await GetDiagnosticsAsync(cancellationToken),
+            SetupCommands.SetProximityLock => await SetProximityLockAsync(request, cancellationToken),
             _ => new SetupResponse(false, "UNKNOWN_COMMAND", "Unknown setup command.")
         };
     }
@@ -93,6 +99,9 @@ public sealed class SetupPipeService(
                 phone.Enabled,
                 connectionRegistry.IsConnected(phone.PhoneId),
                 phone.LastSeen)).ToArray(),
+            configuration.PreferredPhoneId,
+            configuration.ProximityLockEnabled,
+            configuration.ProximityGraceSeconds,
             configuration.LastSuccessfulPhoneAuth,
             credentialStore.Exists()
                 && configuration.Phones.Any(phone => phone.Enabled)
@@ -141,8 +150,21 @@ public sealed class SetupPipeService(
             Phones = configuration.Phones
                 .Where(phone => !string.Equals(phone.PhoneId, phoneId, StringComparison.Ordinal))
                 .ToList(),
+            PreferredPhoneId = string.Equals(configuration.PreferredPhoneId, phoneId, StringComparison.Ordinal)
+                ? null
+                : configuration.PreferredPhoneId,
             LastSuccessfulPhoneAuth = null
         }, cancellationToken);
+        await auditLog.AppendAsync(new AuditEntry(
+            DateTimeOffset.UtcNow,
+            "PHONE",
+            "REMOVED",
+            phoneId,
+            null,
+            null,
+            null,
+            "등록된 휴대폰 삭제",
+            Suspicious: false), cancellationToken);
         return new SetupResponse(true, "OK", "Phone was removed.");
     }
 
@@ -150,5 +172,71 @@ public sealed class SetupPipeService(
     {
         var outcome = await authenticationCoordinator.RequestAsync(null, cancellationToken);
         return new SetupResponse(outcome.IsSuccess, outcome.Code.ToString().ToUpperInvariant(), outcome.Message);
+    }
+
+    private async Task<SetupResponse> SetPreferredPhoneAsync(
+        SetupRequest request,
+        CancellationToken cancellationToken)
+    {
+        var configuration = await configurationStore.GetAsync(cancellationToken);
+        if (request.PhoneId is not null
+            && !configuration.Phones.Any(phone => string.Equals(phone.PhoneId, request.PhoneId, StringComparison.Ordinal)))
+        {
+            return new SetupResponse(false, "PHONE_NOT_FOUND", "선택한 휴대폰이 등록되어 있지 않습니다.");
+        }
+
+        await configurationStore.UpdateAsync(
+            current => current with { PreferredPhoneId = request.PhoneId },
+            cancellationToken);
+        return new SetupResponse(true, "OK", request.PhoneId is null
+            ? "연결 가능한 휴대폰을 자동으로 선택합니다."
+            : "로그인에 사용할 휴대폰을 선택했습니다.");
+    }
+
+    private async Task<SetupResponse> GetAuditLogAsync(
+        SetupRequest request,
+        CancellationToken cancellationToken)
+    {
+        var entries = await auditLog.GetRecentAsync(request.Limit ?? 100, cancellationToken);
+        return new SetupResponse(true, "OK", "감사 기록을 불러왔습니다.", ProtocolJson.Serialize(entries));
+    }
+
+    private async Task<SetupResponse> GetDiagnosticsAsync(CancellationToken cancellationToken)
+    {
+        var configuration = await configurationStore.GetAsync(cancellationToken);
+        var certificate = certificateManager.LoadOrCreate();
+        var diagnostics = new SetupDiagnostics(
+            typeof(SetupPipeService).Assembly.GetName().Version?.ToString() ?? "unknown",
+            ServiceConstants.Port,
+            CertificateManager.GetLocalAddresses().Select(address => address.ToString()).ToArray(),
+            CertificateManager.GetSha256Fingerprint(certificate),
+            connectionRegistry.GetStatuses(configuration.Phones),
+            await auditLog.GetRecentAsync(20, cancellationToken));
+        return new SetupResponse(true, "OK", "진단 정보를 불러왔습니다.", ProtocolJson.Serialize(diagnostics));
+    }
+
+    private async Task<SetupResponse> SetProximityLockAsync(
+        SetupRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Enabled is null)
+        {
+            throw new ArgumentException("enabled 값이 필요합니다.");
+        }
+
+        var graceSeconds = request.GraceSeconds ?? 30;
+        if (graceSeconds is < 10 or > 600)
+        {
+            throw new ArgumentException("자동 잠금 대기 시간은 10초에서 600초 사이여야 합니다.");
+        }
+
+        await configurationStore.UpdateAsync(configuration => configuration with
+        {
+            ProximityLockEnabled = request.Enabled.Value,
+            ProximityGraceSeconds = graceSeconds
+        }, cancellationToken);
+        return new SetupResponse(true, "OK", request.Enabled.Value
+            ? $"휴대폰 연결이 {graceSeconds}초 이상 끊기면 자동 잠금합니다."
+            : "휴대폰 연결 끊김 자동 잠금을 껐습니다.");
     }
 }

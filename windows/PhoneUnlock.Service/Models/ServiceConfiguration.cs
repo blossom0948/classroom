@@ -7,6 +7,9 @@ public sealed record ServiceConfiguration
     public List<PairedPhoneRecord> Phones { get; init; } = [];
     public string? ConfiguredAccountSid { get; init; }
     public string? ConfiguredQualifiedUsername { get; init; }
+    public string? PreferredPhoneId { get; init; }
+    public bool ProximityLockEnabled { get; init; }
+    public int ProximityGraceSeconds { get; init; } = 30;
     public DateTimeOffset? LastSuccessfulPhoneAuth { get; init; }
 }
 

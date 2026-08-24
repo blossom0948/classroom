@@ -13,7 +13,7 @@ Android Phone Unlock
   잠금 화면 알림 → BiometricPrompt → Keystore ECDSA 서명
       ↓ AUTH_APPROVED
 PhoneUnlockService
-  phone/computer/request/challenge/만료/replay/서명 검증
+  phone/computer/request/challenge/만료/replay/서명 검증 + 감사 기록
       ↓ 승인된 경우에만 저장 자격 증명 반환
 Credential Provider
   CredProtectW → KERB_INTERACTIVE_UNLOCK_LOGON → Windows LSA
@@ -29,6 +29,10 @@ Credential Provider는 네트워크나 Android 키를 직접 다루지 않는다
 4. 서비스는 원문 장치 토큰 대신 SHA-256 hash만 구성 파일에 저장한다.
 5. Android는 장치 토큰을 Android Keystore AES-GCM 키로 암호화해 저장한다.
 6. 실제 휴대폰 인증 테스트 성공 후 10분 동안만 Credential Provider 활성화 조건이 충족된다.
+
+Windows 구성은 한 PC에 여러 휴대폰을 저장하고, `PreferredPhoneId`가 있으면 해당 휴대폰을 우선 사용한다. Android 구성은 여러 PC를 암호화된 목록으로 보관하고 선택된 PC의 WSS 연결만 유지한다. 모든 인증 결과에는 UTC 시각, 결과, 휴대폰 ID/이름, 요청 ID와 WSS 원격 IP를 남기며, 서명 불일치·등록되지 않은 연결·비정상 응답은 `Suspicious` 플래그를 기록한다.
+
+선택형 자동 잠금은 Windows 서비스의 `AgentPipeService`가 대화형 사용자 세션의 `PhoneUnlock.Agent`와 보안 Named Pipe로 연결되는 구조다. Android는 10초 간격으로 인증된 WebSocket heartbeat를 보내고, 설정한 유예 시간 동안 heartbeat가 끊기면 대화형 에이전트가 `LockWorkStation`을 호출한다. GPS나 단순 Wi-Fi 이름은 사용하지 않는다.
 
 ## 개발용 수동 경로
 

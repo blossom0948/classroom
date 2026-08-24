@@ -64,6 +64,7 @@ class PairingClient {
                 certificateFingerprint = fingerprint,
                 phoneId = value.getString("phoneId"),
                 deviceToken = value.getString("deviceToken"),
+                publicKey = publicKey,
             )
             require(paired.version == 1) { "지원하지 않는 PC 프로토콜 버전입니다." }
             require(paired.computerId == payload.computerId) { "PC 식별자가 페어링 정보와 다릅니다." }
@@ -71,5 +72,14 @@ class PairingClient {
             require(paired.deviceToken.length >= 43) { "PC 장치 토큰이 올바르지 않습니다." }
             paired
         }
+    }
+
+    suspend fun checkHealth(computer: PairedComputer): Boolean = withContext(Dispatchers.IO) {
+        val client = PinnedHttpClient.create(computer.certificateFingerprint)
+        val request = Request.Builder()
+            .url("https://${computer.host}:${computer.port}/health")
+            .get()
+            .build()
+        client.newCall(request).execute().use { response -> response.isSuccessful }
     }
 }

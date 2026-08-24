@@ -12,6 +12,8 @@
 - pairing token과 device token은 각각 256비트 난수이며 서버에는 device token hash만 저장한다.
 - Android는 최초 페어링 JSON의 TLS 인증서 SHA-256 fingerprint를 고정한다.
 - Windows 설정/인증 Named Pipe ACL은 운영 서비스에서 LocalSystem과 Administrators로 제한한다.
+- 자동 잠금 Named Pipe는 저장된 Windows 계정 SID를 추가 ACL로 허용하고, 대화형 `PhoneUnlock.Agent`가 `LockWorkStation`을 호출한다.
+- Android 인증은 `BIOMETRIC_STRONG`만 기본 허용하며, 사용자가 켠 경우에만 Android `DEVICE_CREDENTIAL`을 함께 허용한다. 약한 얼굴인식은 서명 키 보호에 사용하지 않는다.
 - 서비스 구성과 PFX 파일 ACL은 LocalSystem과 Administrators로 제한한다.
 - Credential Provider는 요청한 사용자 SID와 저장된 계정 SID가 일치할 때만 자격 증명을 받는다.
 - Credential Provider는 원문 비밀번호를 받은 즉시 `CredProtectW`로 보호하고 원문 버퍼를 지운다.
@@ -23,6 +25,7 @@
 - 잠금 해제 가능 여부는 같은 LAN, Android 백그라운드 실행/알림, 휴대폰 배터리 정책에 영향을 받는다.
 - 자체 서명 TLS 인증서는 공개 PKI가 아니라 최초 페어링 정보의 fingerprint 정확성에 의존한다.
 - 현재 릴리스는 코드 서명이 없다. Windows VM에서 DLL/설치/복구를 먼저 검증해야 한다.
+- 근접성만으로 자동 잠금 해제를 허용하지 않는다. 자동 잠금은 연결 이탈 후 보호 기능일 뿐이며, 해제에는 매번 휴대폰 인증과 Windows Credential Provider 검증이 필요하다.
 
 ## 기록 금지
 

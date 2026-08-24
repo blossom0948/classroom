@@ -10,6 +10,7 @@ import android.provider.Settings
 object AuthPromptSettings {
     private const val PREFERENCES = "phone_unlock"
     private const val AUTO_OPEN_KEY = "auto_open_biometric_prompt"
+    private const val DEVICE_CREDENTIAL_KEY = "allow_device_credential"
 
     fun isAutoOpenEnabled(context: Context): Boolean =
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
@@ -21,6 +22,20 @@ object AuthPromptSettings {
             .putBoolean(AUTO_OPEN_KEY, enabled)
             .apply()
     }
+
+    fun isDeviceCredentialEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+            .getBoolean(DEVICE_CREDENTIAL_KEY, false)
+
+    fun setDeviceCredentialEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(DEVICE_CREDENTIAL_KEY, enabled)
+            .apply()
+    }
+
+    fun currentAuthMode(context: Context): String =
+        if (isDeviceCredentialEnabled(context)) "credential" else "biometric"
 
     fun canUseFullScreenIntent(context: Context): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||

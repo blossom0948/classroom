@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging.Abstractions;
 using PhoneUnlock.Service.Configuration;
 using PhoneUnlock.Service.Models;
 using PhoneUnlock.Service.Security;
@@ -8,7 +9,8 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("device token is random and fixed-time verifiable", TestTokenAsync),
     ("pairing token is one-use and stores a P-256 phone", TestPairingAsync),
-    ("invalid phone public keys are rejected", TestInvalidPublicKeyAsync)
+    ("invalid phone public keys are rejected", TestInvalidPublicKeyAsync),
+    ("pairing audit records keep the phone and remote IP", TestAuditAsync)
 };
 
 var failures = new List<string>();
@@ -43,7 +45,7 @@ static Task TestTokenAsync()
 
 static async Task TestPairingAsync()
 {
-    await WithCoordinatorAsync(async (coordinator, store) =>
+    await WithCoordinatorAsync(async (coordinator, store, _) =>
     {
         var pairing = await coordinator.CreateAsync();
         Assert(pairing.ExpiresAt > DateTimeOffset.UtcNow.ToUnixTimeSeconds(), "pairing should not already be expired");
@@ -69,7 +71,7 @@ static async Task TestPairingAsync()
 
 static async Task TestInvalidPublicKeyAsync()
 {
-    await WithCoordinatorAsync(async (coordinator, _) =>
+    await WithCoordinatorAsync(async (coordinator, _, _) =>
     {
         var pairing = await coordinator.CreateAsync();
         await AssertThrowsAsync<ArgumentException>(() => coordinator.PairAsync(
@@ -78,7 +80,27 @@ static async Task TestInvalidPublicKeyAsync()
     });
 }
 
-static async Task WithCoordinatorAsync(Func<PairingCoordinator, ConfigurationStore, Task> test)
+static async Task TestAuditAsync()
+{
+    await WithCoordinatorAsync(async (coordinator, _, auditLog) =>
+    {
+        var pairing = await coordinator.CreateAsync();
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var phoneId = Guid.NewGuid().ToString();
+        await coordinator.PairAsync(
+            pairing.PairingToken,
+            new PairRequest(phoneId, "Audit phone", Convert.ToBase64String(key.ExportSubjectPublicKeyInfo())),
+            "192.168.10.24");
+
+        var entries = await auditLog.GetRecentAsync();
+        var entry = entries.FirstOrDefault(item => item.EventType == "PAIRING");
+        Assert(entry is not null, "pairing audit event was not persisted");
+        Assert(entry!.PhoneId == phoneId && entry.PhoneName == "Audit phone", "audit event lost phone identity");
+        Assert(entry.RemoteIp == "192.168.10.24", "audit event lost remote IP");
+    });
+}
+
+static async Task WithCoordinatorAsync(Func<PairingCoordinator, ConfigurationStore, AuditLogStore, Task> test)
 {
     var directory = Path.Combine(Path.GetTempPath(), "PhoneUnlockTests", Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(directory);
@@ -86,8 +108,9 @@ static async Task WithCoordinatorAsync(Func<PairingCoordinator, ConfigurationSto
     {
         var paths = new ServicePaths(directory, RestrictPermissions: false);
         var store = new ConfigurationStore(paths);
-        var coordinator = new PairingCoordinator(store, new CertificateManager(paths));
-        await test(coordinator, store);
+        var auditLog = new AuditLogStore(paths, NullLogger<AuditLogStore>.Instance);
+        var coordinator = new PairingCoordinator(store, new CertificateManager(paths), auditLog);
+        await test(coordinator, store, auditLog);
     }
     finally
     {

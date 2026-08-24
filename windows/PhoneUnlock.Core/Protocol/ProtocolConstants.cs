@@ -12,4 +12,6 @@ public static class ProtocolConstants
     public const string AuthApproved = "AUTH_APPROVED";
     public const string AuthDenied = "AUTH_DENIED";
     public const string AuthExpired = "AUTH_EXPIRED";
+    public const string DeviceHello = "DEVICE_HELLO";
+    public const string DeviceHeartbeat = "DEVICE_HEARTBEAT";
 }

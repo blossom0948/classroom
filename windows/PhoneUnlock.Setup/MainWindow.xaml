@@ -18,7 +18,7 @@
                 <StackPanel>
                     <TextBlock FontSize="30" FontWeight="SemiBold" Text="Phone Unlock" />
                     <TextBlock Margin="0,6,0,0" Foreground="{StaticResource MutedBrush}"
-                               Text="휴대폰 지문으로 이 PC를 바로 잠금 해제합니다" />
+                               Text="휴대폰 인증으로 이 PC를 안전하게 잠금 해제합니다" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="UpdateButton" Style="{StaticResource SecondaryButton}" Click="Update_Click"
@@ -100,6 +100,29 @@
                     </Grid>
                     <TextBlock x:Name="PhoneStateText" Margin="0,14,0,0" Foreground="{StaticResource MutedBrush}"
                                TextWrapping="Wrap" Text="연결된 휴대폰이 없습니다." />
+                    <Grid Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="PhoneSelectorComboBox" DisplayMemberPath="DisplayName"
+                                  VerticalContentAlignment="Center" MinHeight="38" />
+                        <Button x:Name="UseSelectedPhoneButton" Grid.Column="2" Style="{StaticResource SecondaryButton}"
+                                Click="UseSelectedPhone_Click" Content="로그인 폰으로 선택" />
+                    </Grid>
+                    <TextBlock x:Name="PhoneSelectionHint" Margin="0,8,0,0" Foreground="{StaticResource MutedBrush}"
+                               TextWrapping="Wrap" Text="여러 휴대폰을 등록하면 로그인에 사용할 폰을 여기서 선택할 수 있습니다." />
+                    <Grid Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="DiagnosticsButton" Click="Diagnostics_Click" Content="이 PC 연결 진단" />
+                        <TextBlock x:Name="DiagnosticsSummaryText" Grid.Column="2" VerticalAlignment="Center"
+                                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                    </Grid>
                 </StackPanel>
             </Border>
 
@@ -135,18 +158,59 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock FontSize="19" FontWeight="SemiBold" Text="3. 지문 로그인 켜기" />
+                        <TextBlock FontSize="19" FontWeight="SemiBold" Text="3. 휴대폰 인증 로그인 켜기" />
                         <TextBlock Margin="0,7,18,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
-                                   Text="휴대폰에 지문 테스트를 한 번 보냅니다. 성공하면 잠금화면에서 Phone Unlock이 기본으로 열리고 요청도 자동 전송됩니다." />
+                                   Text="휴대폰에 인증 테스트를 한 번 보냅니다. 성공하면 잠금화면에서 Phone Unlock이 기본으로 열리고 요청도 자동 전송됩니다." />
                         <TextBlock x:Name="TestResultText" Margin="0,12,0,0" FontWeight="SemiBold" Text="휴대폰과 암호 설정 후 진행하세요." />
                         <TextBlock x:Name="LoginStateText" Margin="0,6,0,0" Foreground="{StaticResource MutedBrush}" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <Button x:Name="EnableLoginButton" Click="TestAndEnable_Click" Content="지문 로그인 켜기" />
+                        <Button x:Name="EnableLoginButton" Click="TestAndEnable_Click" Content="휴대폰 인증 로그인 켜기" />
                         <Button x:Name="DisableLoginButton" Margin="0,8,0,0" Style="{StaticResource SecondaryButton}"
-                                Click="DisableLogin_Click" Content="지문 로그인 끄기" Visibility="Collapsed" />
+                                Click="DisableLogin_Click" Content="휴대폰 인증 로그인 끄기" Visibility="Collapsed" />
                     </StackPanel>
                 </Grid>
+            </Border>
+
+            <Border Margin="0,16,0,0" Padding="22" Background="White" BorderBrush="{StaticResource StrokeBrush}"
+                    BorderThickness="1" CornerRadius="12">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock FontSize="19" FontWeight="SemiBold" Text="보안 기록" />
+                            <TextBlock Margin="0,7,18,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                                       Text="언제, 어떤 휴대폰과 IP에서 요청이 성공·실패했는지 확인합니다. 서명 불일치나 알 수 없는 폰은 의심스러운 요청으로 표시됩니다." />
+                        </StackPanel>
+                        <Button Grid.Column="1" Style="{StaticResource SecondaryButton}" Click="AuditRefresh_Click" Content="기록 새로 고침" />
+                    </Grid>
+                    <ListBox x:Name="AuditList" Margin="0,14,0,0" Height="190" BorderThickness="0"
+                             Background="#F8F9FB" FontSize="12" />
+                </StackPanel>
+            </Border>
+
+            <Border Margin="0,16,0,0" Padding="22" Background="White" BorderBrush="{StaticResource StrokeBrush}"
+                    BorderThickness="1" CornerRadius="12">
+                <StackPanel>
+                    <TextBlock FontSize="19" FontWeight="SemiBold" Text="휴대폰 거리 이탈 보호" />
+                    <CheckBox x:Name="ProximityLockCheckBox" Margin="0,14,0,0" FontSize="15"
+                              Content="휴대폰 연결이 끊기면 PC 자동 잠금" Click="ProximityLock_Click" />
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <TextBlock VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" Text="연결 끊김 대기 시간" />
+                        <ComboBox x:Name="ProximityGraceComboBox" Margin="14,0,0,0" Width="120"
+                                  SelectionChanged="ProximityGrace_SelectionChanged">
+                            <ComboBoxItem Content="10초" Tag="10" />
+                            <ComboBoxItem Content="30초" Tag="30" />
+                            <ComboBoxItem Content="60초" Tag="60" />
+                            <ComboBoxItem Content="120초" Tag="120" />
+                        </ComboBox>
+                    </StackPanel>
+                    <TextBlock Margin="0,10,0,0" Foreground="#8A5A00" TextWrapping="Wrap"
+                               Text="안전한 기본값은 꺼짐입니다. 이 기능은 GPS 거리를 재는 것이 아니라 휴대폰과 PC의 보안 연결이 끊긴 뒤 잠그는 방식이며, Wi-Fi 절전·네트워크 변경 때도 작동할 수 있습니다." />
+                </StackPanel>
             </Border>
 
             <Border Margin="0,16,0,0" Padding="18" Background="#FFF4D6" CornerRadius="12">

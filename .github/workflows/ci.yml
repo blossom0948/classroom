@@ -26,6 +26,7 @@ jobs:
         run: |
           dotnet publish windows/PhoneUnlock.Service/PhoneUnlock.Service.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/package/service
           dotnet publish windows/PhoneUnlock.Setup/PhoneUnlock.Setup.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/package/setup
+          dotnet publish windows/PhoneUnlock.Agent/PhoneUnlock.Agent.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/package/agent
           New-Item -ItemType Directory -Path artifacts/package/credential-provider -Force | Out-Null
           Copy-Item windows/PhoneUnlock.CredentialProvider/x64/Release/PhoneUnlock.CredentialProvider.dll artifacts/package/credential-provider/
           Copy-Item windows/PhoneUnlock.Installer/*.ps1 artifacts/package/

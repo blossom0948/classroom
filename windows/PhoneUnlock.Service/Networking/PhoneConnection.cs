@@ -10,13 +10,24 @@ namespace PhoneUnlock.Service.Networking;
 public sealed class PhoneConnection(
     PairedPhoneRecord phone,
     WebSocket socket,
+    string? remoteIp,
     ILogger<PhoneConnection> logger) : IAsyncDisposable
 {
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<string>> pending = new();
     private readonly SemaphoreSlim sendGate = new(1, 1);
+    private long lastHeartbeatTicks;
 
     public string PhoneId => phone.PhoneId;
+    public string? RemoteIp => remoteIp;
     public bool IsOpen => socket.State == WebSocketState.Open;
+    public DateTimeOffset? LastHeartbeat
+    {
+        get
+        {
+            var ticks = Interlocked.Read(ref lastHeartbeatTicks);
+            return ticks == 0 ? null : new DateTimeOffset(ticks, TimeSpan.Zero);
+        }
+    }
 
     public async Task<string> SendAuthRequestAsync(
         Guid requestId,
@@ -112,6 +123,18 @@ public sealed class PhoneConnection(
             }
 
             var type = root.GetProperty("type").GetString();
+            if (type is ProtocolConstants.DeviceHello or ProtocolConstants.DeviceHeartbeat)
+            {
+                var payloadPhoneId = root.GetProperty("payload").GetProperty("phoneId").GetString();
+                if (!string.Equals(payloadPhoneId, PhoneId, StringComparison.Ordinal))
+                {
+                    logger.LogWarning("Rejected heartbeat with mismatched phone ID from {PhoneId}", PhoneId);
+                    return;
+                }
+                Interlocked.Exchange(ref lastHeartbeatTicks, DateTimeOffset.UtcNow.Ticks);
+                return;
+            }
+
             if (type is not (ProtocolConstants.AuthApproved or ProtocolConstants.AuthDenied or ProtocolConstants.AuthExpired))
             {
                 return;
@@ -123,9 +146,9 @@ public sealed class PhoneConnection(
                 completion.TrySetResult(json);
             }
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or FormatException)
         {
-            logger.LogWarning("Rejected malformed message from phone {PhoneId}", PhoneId);
+            logger.LogWarning(exception, "Rejected malformed message from phone {PhoneId}", PhoneId);
         }
     }
 

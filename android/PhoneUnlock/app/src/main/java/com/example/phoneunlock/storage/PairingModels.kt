@@ -64,6 +64,8 @@ data class PairedComputer(
     val certificateFingerprint: String,
     val phoneId: String,
     val deviceToken: String,
+    val publicKey: String = "",
+    val authMode: String = "",
 ) {
     fun toJson(): String = JSONObject()
         .put("version", version)
@@ -74,6 +76,8 @@ data class PairedComputer(
         .put("certificateFingerprint", certificateFingerprint)
         .put("phoneId", phoneId)
         .put("deviceToken", deviceToken)
+        .put("publicKey", publicKey)
+        .put("authMode", authMode)
         .toString()
 
     companion object {
@@ -88,6 +92,8 @@ data class PairedComputer(
                 certificateFingerprint = value.getString("certificateFingerprint"),
                 phoneId = value.getString("phoneId"),
                 deviceToken = value.getString("deviceToken"),
+                publicKey = value.optString("publicKey", ""),
+                authMode = value.optString("authMode", ""),
             )
         }
     }

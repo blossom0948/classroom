@@ -10,6 +10,7 @@ namespace PhoneUnlock.Service.Pipes;
 public sealed class AuthPipeService(
     PhoneAuthenticationCoordinator authenticationCoordinator,
     WindowsCredentialStore credentialStore,
+    AuditLogStore auditLog,
     ILogger<AuthPipeService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -39,6 +40,16 @@ public sealed class AuthPipeService(
                 var line = await PipeTextProtocol.ReadLineAsync(pipe, cancellationToken);
                 if (line is null || !line.StartsWith("AUTH|", StringComparison.Ordinal))
                 {
+                    await auditLog.AppendAsync(new Models.AuditEntry(
+                        DateTimeOffset.UtcNow,
+                        "CREDENTIAL_PROVIDER",
+                        "REJECTED",
+                        null,
+                        null,
+                        null,
+                        null,
+                        "Credential Provider 요청 형식이 올바르지 않음",
+                        Suspicious: true), CancellationToken.None);
                     await WriteErrorAsync(pipe, "INVALID_REQUEST", "Credential Provider request is invalid.", cancellationToken);
                     return;
                 }
@@ -46,6 +57,16 @@ public sealed class AuthPipeService(
                 var sid = line["AUTH|".Length..];
                 if (!IsSidText(sid))
                 {
+                    await auditLog.AppendAsync(new Models.AuditEntry(
+                        DateTimeOffset.UtcNow,
+                        "CREDENTIAL_PROVIDER",
+                        "REJECTED",
+                        null,
+                        null,
+                        null,
+                        null,
+                        "Credential Provider가 잘못된 사용자 SID를 보냄",
+                        Suspicious: true), CancellationToken.None);
                     await WriteErrorAsync(pipe, "INVALID_SID", "Windows account SID is invalid.", cancellationToken);
                     return;
                 }
@@ -60,6 +81,16 @@ public sealed class AuthPipeService(
                 var credential = credentialStore.Read();
                 if (credential is null || !string.Equals(credential.Sid, sid, StringComparison.OrdinalIgnoreCase))
                 {
+                    await auditLog.AppendAsync(new Models.AuditEntry(
+                        DateTimeOffset.UtcNow,
+                        "CREDENTIAL_PROVIDER",
+                        "REJECTED",
+                        null,
+                        null,
+                        null,
+                        null,
+                        "인증된 휴대폰 요청과 Windows 계정 자격 증명이 일치하지 않음",
+                        Suspicious: true), CancellationToken.None);
                     await WriteErrorAsync(pipe, "CREDENTIAL_MISMATCH", "Stored Windows account does not match this tile.", cancellationToken);
                     return;
                 }

@@ -6,7 +6,7 @@ namespace PhoneUnlock.Service.Pipes;
 
 public static class SecureNamedPipe
 {
-    public static NamedPipeServerStream Create(string pipeName)
+    public static NamedPipeServerStream Create(string pipeName, string? additionalUserSid = null)
     {
         var security = new PipeSecurity();
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
@@ -23,6 +23,25 @@ public static class SecureNamedPipe
         {
             security.AddAccessRule(new PipeAccessRule(
                 currentUser,
+                PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance,
+                AccessControlType.Allow));
+        }
+        SecurityIdentifier? configuredUser = null;
+        if (!string.IsNullOrWhiteSpace(additionalUserSid))
+        {
+            try
+            {
+                configuredUser = new SecurityIdentifier(additionalUserSid);
+            }
+            catch (ArgumentException)
+            {
+                configuredUser = null;
+            }
+        }
+        if (configuredUser is not null)
+        {
+            security.AddAccessRule(new PipeAccessRule(
+                configuredUser,
                 PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance,
                 AccessControlType.Allow));
         }

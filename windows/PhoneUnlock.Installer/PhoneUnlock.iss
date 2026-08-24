@@ -1,5 +1,5 @@
 #define MyAppName "Phone Unlock"
-#define MyAppVersion "0.4.0-beta.3"
+#define MyAppVersion "0.4.0-beta.4"
 #define MyAppPublisher "blossom0948"
 #define MyAppURL "https://github.com/blossom0948/windowslogin"
 #define MyServiceName "PhoneUnlockService"
@@ -41,6 +41,7 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 [Files]
 Source: "..\..\artifacts\package\service\*"; DestDir: "{app}\service"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\artifacts\package\setup\*"; DestDir: "{app}\setup"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace
+Source: "..\..\artifacts\package\agent\*"; DestDir: "{app}\agent"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace
 Source: "..\..\artifacts\package\credential-provider\PhoneUnlock.CredentialProvider.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace
 Source: "Common.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Enable-CredentialProvider.ps1"; DestDir: "{app}"; Flags: ignoreversion
@@ -52,9 +53,11 @@ Source: "..\..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{autoprograms}\Phone Unlock\Phone Unlock 설정"; Filename: "{app}\setup\PhoneUnlock.Setup.exe"; WorkingDir: "{app}\setup"
 Name: "{autodesktop}\Phone Unlock 설정"; Filename: "{app}\setup\PhoneUnlock.Setup.exe"; WorkingDir: "{app}\setup"; Tasks: desktopicon
+Name: "{userstartup}\Phone Unlock 자동 잠금"; Filename: "{app}\agent\PhoneUnlock.Agent.exe"; WorkingDir: "{app}\agent"; Tasks: agentstartup
 
 [Tasks]
 Name: "desktopicon"; Description: "바탕 화면에 Phone Unlock 설정 바로가기 만들기"; GroupDescription: "추가 바로가기:"
+Name: "agentstartup"; Description: "로그인할 때 휴대폰 거리 이탈 보호 감시 시작"; GroupDescription: "추가 보호 기능:"
 
 [Run]
 Filename: "{app}\setup\PhoneUnlock.Setup.exe"; Description: "Phone Unlock 설정 열기"; WorkingDir: "{app}\setup"; Flags: postinstall nowait skipifsilent

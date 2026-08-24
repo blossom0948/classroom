@@ -9,7 +9,8 @@ namespace PhoneUnlock.Service.Security;
 
 public sealed class PairingCoordinator(
     ConfigurationStore configurationStore,
-    CertificateManager certificateManager)
+    CertificateManager certificateManager,
+    AuditLogStore auditLog)
 {
     private readonly ConcurrentDictionary<string, PairingSession> sessions = new(StringComparer.Ordinal);
 
@@ -43,6 +44,7 @@ public sealed class PairingCoordinator(
     public async Task<PairResponse?> PairAsync(
         string pairingToken,
         PairRequest request,
+        string? remoteIp = null,
         CancellationToken cancellationToken = default)
     {
         ValidatePairRequest(request);
@@ -74,6 +76,16 @@ public sealed class PairingCoordinator(
         }, cancellationToken);
 
         var certificate = certificateManager.LoadOrCreate();
+        await auditLog.AppendAsync(new AuditEntry(
+            DateTimeOffset.UtcNow,
+            "PAIRING",
+            "SUCCESS",
+            request.PhoneId,
+            request.PhoneName.Trim(),
+            remoteIp,
+            null,
+            "휴대폰 페어링 완료",
+            Suspicious: false), cancellationToken);
         return new PairResponse(
             1,
             updated.ComputerId,

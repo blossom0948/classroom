@@ -9,6 +9,7 @@ import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
 import android.util.Base64
 import java.security.KeyFactory
+import java.security.GeneralSecurityException
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.PrivateKey
@@ -25,8 +26,8 @@ data class KeyMaterial(
 class KeystoreSigner(private val context: Context) {
     private val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 
-    fun getOrCreate(computerId: UUID): KeyMaterial {
-        val alias = aliasFor(computerId)
+    fun getOrCreate(computerId: UUID, allowDeviceCredential: Boolean = false): KeyMaterial {
+        val alias = aliasFor(computerId, allowDeviceCredential)
         if (!keyStore.containsAlias(alias)) {
             createKey(alias)
         }
@@ -47,7 +48,8 @@ class KeystoreSigner(private val context: Context) {
         Signature.getInstance("SHA256withECDSA").apply { initSign(privateKey) }
 
     fun delete(computerId: UUID) {
-        keyStore.deleteEntry(aliasFor(computerId))
+        keyStore.deleteEntry(aliasFor(computerId, allowDeviceCredential = false))
+        keyStore.deleteEntry(aliasFor(computerId, allowDeviceCredential = true))
     }
 
     private fun createKey(alias: String) {
@@ -58,6 +60,8 @@ class KeystoreSigner(private val context: Context) {
                 return
             } catch (_: StrongBoxUnavailableException) {
                 // The feature can be present while capacity is temporarily unavailable.
+            } catch (_: GeneralSecurityException) {
+                // Some devices expose StrongBox but do not support this authenticator combination.
             }
         }
 
@@ -65,12 +69,20 @@ class KeystoreSigner(private val context: Context) {
     }
 
     private fun generateKey(alias: String, useStrongBox: Boolean) {
+        val authenticators = if (alias.startsWith(DEVICE_CREDENTIAL_ALIAS_PREFIX)) {
+            KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL
+        } else {
+            KeyProperties.AUTH_BIOMETRIC_STRONG
+        }
         val specBuilder = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
             .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
             .setDigests(KeyProperties.DIGEST_SHA256)
             .setUserAuthenticationRequired(true)
-            .setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
-            .setInvalidatedByBiometricEnrollment(true)
+            .setUserAuthenticationParameters(0, authenticators)
+
+        if (!alias.startsWith(DEVICE_CREDENTIAL_ALIAS_PREFIX)) {
+            specBuilder.setInvalidatedByBiometricEnrollment(true)
+        }
 
         if (useStrongBox) {
             specBuilder.setIsStrongBoxBacked(true)
@@ -93,9 +105,12 @@ class KeystoreSigner(private val context: Context) {
         }
     }
 
-    private fun aliasFor(computerId: UUID): String = "phone_unlock_${computerId.toString().lowercase()}"
+    private fun aliasFor(computerId: UUID, allowDeviceCredential: Boolean): String =
+        "${if (allowDeviceCredential) DEVICE_CREDENTIAL_ALIAS_PREFIX else BIOMETRIC_ALIAS_PREFIX}${computerId.toString().lowercase()}"
 
     private companion object {
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        const val BIOMETRIC_ALIAS_PREFIX = "phone_unlock_"
+        const val DEVICE_CREDENTIAL_ALIAS_PREFIX = "phone_unlock_credential_"
     }
 }
