@@ -8,6 +8,7 @@ namespace PhoneUnlock.Service.Pipes;
 public sealed class ProximityPresenceService(
     ConfigurationStore configurationStore,
     PhoneConnectionRegistry connectionRegistry,
+    PresenceSensorClient presenceSensorClient,
     ProximityUnlockSignal proximityUnlockSignal,
     ILogger<ProximityPresenceService> logger) : BackgroundService
 {
@@ -25,13 +26,28 @@ public sealed class ProximityPresenceService(
                 continue;
             }
 
-            var present = IsSelectedPhonePresent(configuration);
+            var phonePresent = IsSelectedPhonePresent(configuration);
+            var sensorPresent = configuration.PresenceSensorEnabled
+                ? await presenceSensorClient.ReadPresenceAsync(configuration, stoppingToken)
+                : null;
+            var present = phonePresent || sensorPresent == true;
             if (present && !wasPresent)
             {
                 proximityUnlockSignal.Signal();
-                logger.LogInformation("Signaled trusted-phone proximity unlock.");
+                logger.LogInformation("Signaled automatic unlock after {Source} presence was detected.",
+                    phonePresent ? "trusted phone" : "room sensor");
             }
-            wasPresent = present;
+
+            // Do not treat a temporary API outage as an absence transition. A
+            // confirmed absence is required before the next arrival can unlock.
+            if (!phonePresent && (!configuration.PresenceSensorEnabled || sensorPresent == false))
+            {
+                wasPresent = false;
+            }
+            else if (present)
+            {
+                wasPresent = true;
+            }
             await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
         }
     }

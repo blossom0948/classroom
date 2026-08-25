@@ -17,6 +17,8 @@ Phone Unlock은 PC에서 SmartThings Station에 직접 Zigbee/Matter 무선 연�
 5. 센서가 하나면 바로 연결되고, 여러 개면 이름만 선택한 뒤 `선택한 센서로 연결`을 누릅니다.
 6. 감지 해제 후 잠글 시간만 고르면 됩니다. 토큰은 Windows Credential Manager에 보관되고 화면에는 다시 표시되지 않습니다.
 
+`휴대폰 또는 재실 센서가 감지되면 자동 로그인`을 켜면 재실 센서가 사람을 다시 감지했을 때 Windows 잠금 화면의 Phone Unlock이 자동으로 잠금 해제를 시도합니다. 센서가 잠시 오프라인이 된 경우에는 오탐 해제를 막기 위해 감지 신호가 확인될 때까지 해제하지 않습니다.
+
 주소, device ID, component, capability, attribute를 직접 입력할 필요가 없습니다. 센서 목록은 `occupancySensor`, `presenceSensor`, `motionSensor`를 자동으로 검색합니다.
 
 ## 토큰을 아예 쓰지 않는 방법

@@ -177,7 +177,7 @@
                             </ComboBox>
                         </Grid>
                         <CheckBox x:Name="ProximityUnlockCheckBox" Margin="0,12,0,0" FontSize="14"
-                                  Content="휴대폰이 가까워지면 자동 로그인" Click="ProximityUnlock_Click" />
+                                  Content="휴대폰 또는 재실 센서가 감지되면 자동 로그인" Click="ProximityUnlock_Click" />
                         <CheckBox x:Name="BluetoothRssiCheckBox" Margin="0,10,0,0" FontSize="14"
                                   Content="Bluetooth 거리 기준 사용" Click="BluetoothRssi_Click" />
                         <Grid Margin="0,8,0,0">
