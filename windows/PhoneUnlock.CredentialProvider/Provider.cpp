@@ -3,6 +3,12 @@
 #include "Credential.h"
 #include "Helpers.h"
 #include <new>
+#include <chrono>
+
+namespace
+{
+constexpr wchar_t ProximityUnlockEventName[] = L"Global\\PhoneUnlock.ProximityUnlock";
+}
 
 void DllAddRef();
 void DllRelease();
@@ -65,21 +71,29 @@ HRESULT PhoneUnlockProvider::SetSerialization(const CREDENTIAL_PROVIDER_CREDENTI
 
 HRESULT PhoneUnlockProvider::Advise(ICredentialProviderEvents* events, UINT_PTR adviseContext)
 {
-    if (events_ != nullptr) events_->Release();
-    events_ = events;
-    adviseContext_ = adviseContext;
-    if (events_ != nullptr) events_->AddRef();
+    {
+        std::lock_guard lock(eventsMutex_);
+        if (events_ != nullptr) events_->Release();
+        events_ = events;
+        adviseContext_ = adviseContext;
+        if (events_ != nullptr) events_->AddRef();
+    }
+    StartProximityWatcher();
     return S_OK;
 }
 
 HRESULT PhoneUnlockProvider::UnAdvise()
 {
-    if (events_ != nullptr)
     {
-        events_->Release();
-        events_ = nullptr;
+        std::lock_guard lock(eventsMutex_);
+        if (events_ != nullptr)
+        {
+            events_->Release();
+            events_ = nullptr;
+        }
+        adviseContext_ = 0;
     }
-    adviseContext_ = 0;
+    StopProximityWatcher();
     return S_OK;
 }
 
@@ -105,8 +119,9 @@ HRESULT PhoneUnlockProvider::GetCredentialCount(
 {
     if (count == nullptr || defaultCredential == nullptr || autoLogonWithDefault == nullptr) return E_INVALIDARG;
     *count = static_cast<DWORD>(credentials_.size());
+    const bool proximityUnlock = proximityUnlockPending_.exchange(false);
     *defaultCredential = credentials_.empty() ? CREDENTIAL_PROVIDER_NO_DEFAULT : 0;
-    *autoLogonWithDefault = FALSE;
+    *autoLogonWithDefault = proximityUnlock ? TRUE : FALSE;
     return S_OK;
 }
 
@@ -202,4 +217,61 @@ HRESULT PhoneUnlockProvider::RebuildCredentials()
         }
     }
     return S_OK;
+}
+
+void PhoneUnlockProvider::StartProximityWatcher()
+{
+    StopProximityWatcher();
+    proximityWatcherStopping_ = false;
+    proximityWatcher_ = std::thread([this]()
+    {
+        while (!proximityWatcherStopping_)
+        {
+            HANDLE event = OpenEventW(SYNCHRONIZE, FALSE, ProximityUnlockEventName);
+            if (event == nullptr)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                continue;
+            }
+
+            const DWORD result = WaitForSingleObject(event, 1000);
+            CloseHandle(event);
+            if (result == WAIT_OBJECT_0 && !proximityWatcherStopping_)
+            {
+                NotifyProximityUnlock();
+            }
+        }
+    });
+}
+
+void PhoneUnlockProvider::StopProximityWatcher()
+{
+    proximityWatcherStopping_ = true;
+    if (proximityWatcher_.joinable())
+    {
+        proximityWatcher_.join();
+    }
+}
+
+void PhoneUnlockProvider::NotifyProximityUnlock()
+{
+    proximityUnlockPending_ = true;
+
+    ICredentialProviderEvents* events = nullptr;
+    UINT_PTR adviseContext = 0;
+    {
+        std::lock_guard lock(eventsMutex_);
+        if (events_ != nullptr)
+        {
+            events = events_;
+            events->AddRef();
+            adviseContext = adviseContext_;
+        }
+    }
+
+    if (events != nullptr)
+    {
+        events->CredentialsChanged(adviseContext);
+        events->Release();
+    }
 }

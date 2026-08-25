@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var autoPromptStatusText: TextView
     private lateinit var fullScreenPermissionButton: MaterialButton
     private lateinit var deviceCredentialSwitch: MaterialSwitch
+    private lateinit var weakFaceSwitch: MaterialSwitch
     private lateinit var authMethodStatusText: TextView
     private lateinit var diagnosticsButton: MaterialButton
     private lateinit var diagnosticsText: TextView
@@ -101,6 +102,7 @@ class MainActivity : AppCompatActivity() {
         autoPromptStatusText = findViewById(R.id.autoPromptStatusText)
         fullScreenPermissionButton = findViewById(R.id.fullScreenPermissionButton)
         deviceCredentialSwitch = findViewById(R.id.deviceCredentialSwitch)
+        weakFaceSwitch = findViewById(R.id.weakFaceSwitch)
         authMethodStatusText = findViewById(R.id.authMethodStatusText)
         diagnosticsButton = findViewById(R.id.diagnosticsButton)
         diagnosticsText = findViewById(R.id.diagnosticsText)
@@ -129,6 +131,19 @@ class MainActivity : AppCompatActivity() {
                     "지문·강한 얼굴인식·휴대폰 PIN을 허용했습니다. 이미 연결한 PC는 이 PC 연결을 한 번 다시 해 주세요."
                 } else {
                     "강한 생체인증만 허용하도록 바꿨습니다. 이미 연결한 PC는 이 PC 연결을 한 번 다시 해 주세요."
+                },
+                success = true,
+            )
+        }
+        weakFaceSwitch.isChecked = AuthPromptSettings.isWeakFaceEnabled(this)
+        weakFaceSwitch.setOnCheckedChangeListener { _, enabled ->
+            AuthPromptSettings.setWeakFaceEnabled(this, enabled)
+            updateAuthMethodControls()
+            showResult(
+                if (enabled) {
+                    "약한 얼굴인식 호환 모드입니다. 보안 수준이 낮아지며, 이미 연결한 PC는 이 PC 연결을 한 번 다시 해 주세요."
+                } else {
+                    "강한 생체인증 모드로 돌아왔습니다. 이미 연결한 PC는 이 PC 연결을 한 번 다시 해 주세요."
                 },
                 success = true,
             )
@@ -179,7 +194,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateAuthMethodControls() {
         val enabled = AuthPromptSettings.isDeviceCredentialEnabled(this)
-        authMethodStatusText.text = if (enabled) {
+        val weakFace = AuthPromptSettings.isWeakFaceEnabled(this)
+        authMethodStatusText.text = if (weakFace) {
+            "제조사가 약한 얼굴인식으로 분류한 얼굴도 사용할 수 있습니다. 대신 생체인식과 서명 키가 암호학적으로 연결되지 않아 보안 수준이 낮습니다. 집에서만 사용하고, 연결한 PC는 다시 연결하세요."
+        } else if (enabled) {
             "지문·강한 얼굴인식 또는 휴대폰 PIN/패턴/비밀번호를 사용할 수 있습니다. PIN은 휴대폰 밖으로 전송되지 않습니다."
         } else {
             "강한 지문 또는 강한 얼굴인식만 사용합니다. 제조사가 약한 얼굴인식으로 분류한 얼굴인식은 보안 키 인증에 사용할 수 없습니다."
@@ -188,9 +206,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun authenticationMethodsText(): String = if (AuthPromptSettings.isDeviceCredentialEnabled(this)) {
-        "지문·강한 얼굴인식·휴대폰 PIN"
+        if (AuthPromptSettings.isWeakFaceEnabled(this)) "지문·얼굴인식·휴대폰 PIN" else "지문·강한 얼굴인식·휴대폰 PIN"
     } else {
-        "지문·강한 얼굴인식"
+        if (AuthPromptSettings.isWeakFaceEnabled(this)) "지문·얼굴인식" else "지문·강한 얼굴인식"
     }
 
     private fun handleUpdateClick() {
@@ -288,10 +306,14 @@ class MainActivity : AppCompatActivity() {
         showResult("PC 연결을 확인하고 있습니다…", success = true)
         lifecycleScope.launch {
             try {
-                val key = keystoreSigner.getOrCreate(
-                    payload.computerId,
-                    AuthPromptSettings.isDeviceCredentialEnabled(this@MainActivity),
-                )
+                val key = if (AuthPromptSettings.isWeakFaceEnabled(this@MainActivity)) {
+                    keystoreSigner.getOrCreateCompatibility(payload.computerId)
+                } else {
+                    keystoreSigner.getOrCreate(
+                        payload.computerId,
+                        AuthPromptSettings.isDeviceCredentialEnabled(this@MainActivity),
+                    )
+                }
                 val paired = pairingClient.pair(payload, phoneId, key.publicKeyBase64).copy(
                     authMode = AuthPromptSettings.currentAuthMode(this@MainActivity),
                 )
@@ -460,7 +482,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun allowedAuthenticators(): Int =
-        BiometricManager.Authenticators.BIOMETRIC_STRONG or
+        (if (AuthPromptSettings.isWeakFaceEnabled(this)) {
+            BiometricManager.Authenticators.BIOMETRIC_WEAK
+        } else {
+            BiometricManager.Authenticators.BIOMETRIC_STRONG
+        }) or
             if (AuthPromptSettings.isDeviceCredentialEnabled(this)) {
                 BiometricManager.Authenticators.DEVICE_CREDENTIAL
             } else {

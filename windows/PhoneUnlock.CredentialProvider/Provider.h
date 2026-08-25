@@ -2,6 +2,9 @@
 
 #include <windows.h>
 #include <credentialprovider.h>
+#include <atomic>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 class PhoneUnlockCredential;
@@ -30,6 +33,9 @@ private:
     ~PhoneUnlockProvider();
     void ClearCredentials();
     HRESULT RebuildCredentials();
+    void StartProximityWatcher();
+    void StopProximityWatcher();
+    void NotifyProximityUnlock();
 
     volatile long referenceCount_ = 1;
     CREDENTIAL_PROVIDER_USAGE_SCENARIO usageScenario_ = CPUS_INVALID;
@@ -37,4 +43,8 @@ private:
     UINT_PTR adviseContext_ = 0;
     ICredentialProviderUserArray* users_ = nullptr;
     std::vector<PhoneUnlockCredential*> credentials_;
+    std::atomic<bool> proximityWatcherStopping_ = false;
+    std::atomic<bool> proximityUnlockPending_ = false;
+    std::thread proximityWatcher_;
+    std::mutex eventsMutex_;
 };

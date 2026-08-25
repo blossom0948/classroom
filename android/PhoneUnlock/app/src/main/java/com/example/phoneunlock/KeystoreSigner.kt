@@ -28,6 +28,13 @@ class KeystoreSigner(private val context: Context) {
 
     fun getOrCreate(computerId: UUID, allowDeviceCredential: Boolean = false): KeyMaterial {
         val alias = aliasFor(computerId, allowDeviceCredential)
+        return getOrCreate(alias)
+    }
+
+    fun getOrCreateCompatibility(computerId: UUID): KeyMaterial =
+        getOrCreate("$COMPATIBILITY_ALIAS_PREFIX${computerId.toString().lowercase()}")
+
+    private fun getOrCreate(alias: String): KeyMaterial {
         if (!keyStore.containsAlias(alias)) {
             createKey(alias)
         }
@@ -50,6 +57,7 @@ class KeystoreSigner(private val context: Context) {
     fun delete(computerId: UUID) {
         keyStore.deleteEntry(aliasFor(computerId, allowDeviceCredential = false))
         keyStore.deleteEntry(aliasFor(computerId, allowDeviceCredential = true))
+        keyStore.deleteEntry("$COMPATIBILITY_ALIAS_PREFIX${computerId.toString().lowercase()}")
     }
 
     private fun createKey(alias: String) {
@@ -77,10 +85,14 @@ class KeystoreSigner(private val context: Context) {
         val specBuilder = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
             .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
             .setDigests(KeyProperties.DIGEST_SHA256)
-            .setUserAuthenticationRequired(true)
-            .setUserAuthenticationParameters(0, authenticators)
+        if (!alias.startsWith(COMPATIBILITY_ALIAS_PREFIX)) {
+            specBuilder
+                .setUserAuthenticationRequired(true)
+                .setUserAuthenticationParameters(0, authenticators)
+        }
 
-        if (!alias.startsWith(DEVICE_CREDENTIAL_ALIAS_PREFIX)) {
+        if (!alias.startsWith(DEVICE_CREDENTIAL_ALIAS_PREFIX) &&
+            !alias.startsWith(COMPATIBILITY_ALIAS_PREFIX)) {
             specBuilder.setInvalidatedByBiometricEnrollment(true)
         }
 
@@ -112,5 +124,6 @@ class KeystoreSigner(private val context: Context) {
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val BIOMETRIC_ALIAS_PREFIX = "phone_unlock_"
         const val DEVICE_CREDENTIAL_ALIAS_PREFIX = "phone_unlock_credential_"
+        const val COMPATIBILITY_ALIAS_PREFIX = "phone_unlock_compat_"
     }
 }

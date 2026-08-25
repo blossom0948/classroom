@@ -1,5 +1,6 @@
 using System.Net.WebSockets;
 using PhoneUnlock.Service.Configuration;
+using PhoneUnlock.Service.Interop;
 using PhoneUnlock.Service.Models;
 using PhoneUnlock.Service.Networking;
 using PhoneUnlock.Service.Pipes;
@@ -27,9 +28,12 @@ builder.Services.AddSingleton<WindowsAccountValidator>();
 builder.Services.AddSingleton<PairingCoordinator>();
 builder.Services.AddSingleton<PhoneConnectionRegistry>();
 builder.Services.AddSingleton<PhoneAuthenticationCoordinator>();
+builder.Services.AddSingleton<ProximityUnlockSignal>();
+builder.Services.AddSingleton<AgentConnectionState>();
 builder.Services.AddHostedService<SetupPipeService>();
 builder.Services.AddHostedService<AuthPipeService>();
 builder.Services.AddHostedService<AgentPipeService>();
+builder.Services.AddHostedService<ProximityPresenceService>();
 
 var app = builder.Build();
 app.UseWebSockets(new WebSocketOptions

@@ -12,6 +12,7 @@ public static class SetupCommands
     public const string GetAuditLog = "GET_AUDIT_LOG";
     public const string Diagnostics = "DIAGNOSTICS";
     public const string SetProximityLock = "SET_PROXIMITY_LOCK";
+    public const string SetProximityUnlock = "SET_PROXIMITY_UNLOCK";
 }
 
 public sealed record SetupRequest(
@@ -38,9 +39,11 @@ public sealed record SetupStatus(
     IReadOnlyList<PhoneStatus> Phones,
     string? PreferredPhoneId,
     bool ProximityLockEnabled,
+    bool ProximityUnlockEnabled,
     int ProximityGraceSeconds,
     DateTimeOffset? LastSuccessfulPhoneAuth,
-    bool ReadyToEnableCredentialProvider);
+    bool ReadyToEnableCredentialProvider,
+    bool InteractiveAgentConnected);
 
 public sealed record PhoneStatus(
     string PhoneId,
@@ -55,4 +58,8 @@ public sealed record SetupDiagnostics(
     IReadOnlyList<string> LocalAddresses,
     string CertificateFingerprint,
     IReadOnlyList<PhoneConnectionStatus> Phones,
-    IReadOnlyList<AuditEntry> RecentAudit);
+    IReadOnlyList<AuditEntry> RecentAudit,
+    bool ProximityLockEnabled,
+    bool ProximityUnlockEnabled,
+    int ProximityGraceSeconds,
+    bool InteractiveAgentConnected);

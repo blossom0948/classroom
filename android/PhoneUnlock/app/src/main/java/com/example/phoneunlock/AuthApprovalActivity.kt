@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import com.example.phoneunlock.network.ConnectionService
 import com.example.phoneunlock.storage.SecurePairingStore
 import com.google.android.material.button.MaterialButton
+import java.security.Signature
 import java.time.Instant
 
 class AuthApprovalActivity : AppCompatActivity() {
@@ -67,20 +68,29 @@ class AuthApprovalActivity : AppCompatActivity() {
         }
 
         val allowDeviceCredential = AuthPromptSettings.isDeviceCredentialEnabled(this)
+        val weakFaceCompatibility = AuthPromptSettings.isWeakFaceEnabled(this)
         val currentAuthMode = AuthPromptSettings.currentAuthMode(this)
-        if ((pairedComputer.authMode.isBlank() && allowDeviceCredential) ||
+        if ((pairedComputer.authMode.isBlank() && currentAuthMode != "biometric") ||
             (pairedComputer.authMode.isNotBlank() && pairedComputer.authMode != currentAuthMode)
         ) {
             statusText.text = "인증 방식이 바뀌었습니다. 이 PC를 휴대폰 앱에서 다시 연결하세요."
             authenticationStarted = false
             return
         }
-        val allowedAuthenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+        val biometricAuthenticator = if (weakFaceCompatibility) {
+            BiometricManager.Authenticators.BIOMETRIC_WEAK
+        } else {
+            BiometricManager.Authenticators.BIOMETRIC_STRONG
+        }
+        val allowedAuthenticators = biometricAuthenticator or
             if (allowDeviceCredential) BiometricManager.Authenticators.DEVICE_CREDENTIAL else 0
         if (BiometricManager.from(this).canAuthenticate(allowedAuthenticators)
             != BiometricManager.BIOMETRIC_SUCCESS
         ) {
-            statusText.text = if (allowDeviceCredential) {
+            statusText.text = if (weakFaceCompatibility) {
+                if (allowDeviceCredential) "얼굴인식 호환 모드 또는 휴대폰 PIN을 사용할 수 없습니다."
+                else "얼굴인식 호환 모드를 사용할 수 없습니다."
+            } else if (allowDeviceCredential) {
                 "강한 생체인증 또는 휴대폰 PIN을 사용할 수 없습니다."
             } else {
                 "강한 생체인증을 사용할 수 없습니다."
@@ -89,32 +99,50 @@ class AuthApprovalActivity : AppCompatActivity() {
             return
         }
 
-        val material = signer.getOrCreate(request.computerId, allowDeviceCredential)
+        val material = if (weakFaceCompatibility) {
+            signer.getOrCreateCompatibility(request.computerId)
+        } else {
+            signer.getOrCreate(request.computerId, allowDeviceCredential)
+        }
         if (pairedComputer.publicKey.isNotBlank() && pairedComputer.publicKey != material.publicKeyBase64) {
             statusText.text = "인증 방식이 바뀌어 PC 보안 키가 변경되었습니다. 이 PC를 다시 연결하세요."
             authenticationStarted = false
             return
         }
-        val signature = try {
-            signer.createSignature(material.privateKey)
-        } catch (_: KeyPermanentlyInvalidatedException) {
-            signer.delete(request.computerId)
-            statusText.text = "생체정보 변경으로 키가 무효화되었습니다. PC와 다시 연결하세요."
-            authenticationStarted = false
-            return
+        val signature = if (weakFaceCompatibility) {
+            null
+        } else {
+            try {
+                signer.createSignature(material.privateKey)
+            } catch (_: KeyPermanentlyInvalidatedException) {
+                signer.delete(request.computerId)
+                statusText.text = "생체정보 변경으로 키가 무효화되었습니다. PC와 다시 연결하세요."
+                authenticationStarted = false
+                return
+            }
         }
         val prompt = BiometricPrompt(
             this,
             ContextCompat.getMainExecutor(this),
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    val authorized = result.cryptoObject?.signature
-                    if (authorized == null || PhoneUnlockProtocol.hasExpired(request)) {
-                        sendAndFinish(PhoneUnlockProtocol.expiredResponse(request))
-                        return
+                    if (weakFaceCompatibility) {
+                        val authorized = try {
+                            signer.createSignature(material.privateKey)
+                        } catch (_: Exception) {
+                            statusText.text = "얼굴인식은 성공했지만 서명 키를 사용할 수 없습니다. PC를 다시 연결하세요."
+                            authenticationStarted = false
+                            return
+                        }
+                        sendApproved(authorized)
+                    } else {
+                        val authorized = result.cryptoObject?.signature
+                        if (authorized == null) {
+                            sendAndFinish(PhoneUnlockProtocol.expiredResponse(request))
+                            return
+                        }
+                        sendApproved(authorized)
                     }
-                    authorized.update(PhoneUnlockProtocol.canonicalPayload(request))
-                    sendAndFinish(PhoneUnlockProtocol.approvedResponse(request, loadPhoneId(), authorized.sign()))
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
@@ -136,12 +164,34 @@ class AuthApprovalActivity : AppCompatActivity() {
             promptBuilder.setNegativeButtonText(getString(R.string.biometric_cancel))
         }
         val info = promptBuilder.build()
-        statusText.text = if (allowDeviceCredential) {
+        statusText.text = if (weakFaceCompatibility && allowDeviceCredential) {
+            "지문·얼굴인식 호환 모드 또는 휴대폰 PIN을 기다리고 있습니다…"
+        } else if (weakFaceCompatibility) {
+            "지문 또는 얼굴인식 호환 모드를 기다리고 있습니다…"
+        } else if (allowDeviceCredential) {
             "지문·강한 얼굴인식 또는 휴대폰 PIN을 기다리고 있습니다…"
         } else {
             "지문 또는 강한 얼굴인식을 기다리고 있습니다…"
         }
-        prompt.authenticate(info, BiometricPrompt.CryptoObject(signature))
+        if (weakFaceCompatibility) {
+            prompt.authenticate(info)
+        } else {
+            prompt.authenticate(info, BiometricPrompt.CryptoObject(signature!!))
+        }
+    }
+
+    private fun sendApproved(signature: Signature) {
+        if (PhoneUnlockProtocol.hasExpired(request)) {
+            sendAndFinish(PhoneUnlockProtocol.expiredResponse(request))
+            return
+        }
+        try {
+            signature.update(PhoneUnlockProtocol.canonicalPayload(request))
+            sendAndFinish(PhoneUnlockProtocol.approvedResponse(request, loadPhoneId(), signature.sign()))
+        } catch (_: Exception) {
+            statusText.text = "인증은 성공했지만 서명을 만들지 못했습니다. PC를 다시 연결하세요."
+            authenticationStarted = false
+        }
     }
 
     private fun sendAndFinish(response: String) {

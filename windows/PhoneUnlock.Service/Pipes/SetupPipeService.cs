@@ -19,6 +19,7 @@ public sealed class SetupPipeService(
     PhoneConnectionRegistry connectionRegistry,
     AuditLogStore auditLog,
     CertificateManager certificateManager,
+    AgentConnectionState agentConnectionState,
     ILogger<SetupPipeService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -80,6 +81,7 @@ public sealed class SetupPipeService(
             SetupCommands.GetAuditLog => await GetAuditLogAsync(request, cancellationToken),
             SetupCommands.Diagnostics => await GetDiagnosticsAsync(cancellationToken),
             SetupCommands.SetProximityLock => await SetProximityLockAsync(request, cancellationToken),
+            SetupCommands.SetProximityUnlock => await SetProximityUnlockAsync(request, cancellationToken),
             _ => new SetupResponse(false, "UNKNOWN_COMMAND", "Unknown setup command.")
         };
     }
@@ -101,11 +103,13 @@ public sealed class SetupPipeService(
                 phone.LastSeen)).ToArray(),
             configuration.PreferredPhoneId,
             configuration.ProximityLockEnabled,
+            configuration.ProximityUnlockEnabled,
             configuration.ProximityGraceSeconds,
             configuration.LastSuccessfulPhoneAuth,
             credentialStore.Exists()
                 && configuration.Phones.Any(phone => phone.Enabled)
-                && configuration.LastSuccessfulPhoneAuth > DateTimeOffset.UtcNow.AddMinutes(-10));
+                && configuration.LastSuccessfulPhoneAuth > DateTimeOffset.UtcNow.AddMinutes(-10),
+            agentConnectionState.IsConnected);
         return new SetupResponse(true, "OK", "Service status loaded.", ProtocolJson.Serialize(status));
     }
 
@@ -211,7 +215,11 @@ public sealed class SetupPipeService(
             CertificateManager.GetLocalAddresses().Select(address => address.ToString()).ToArray(),
             CertificateManager.GetSha256Fingerprint(certificate),
             connectionRegistry.GetStatuses(configuration.Phones),
-            await auditLog.GetRecentAsync(20, cancellationToken));
+            await auditLog.GetRecentAsync(20, cancellationToken),
+            configuration.ProximityLockEnabled,
+            configuration.ProximityUnlockEnabled,
+            configuration.ProximityGraceSeconds,
+            agentConnectionState.IsConnected);
         return new SetupResponse(true, "OK", "진단 정보를 불러왔습니다.", ProtocolJson.Serialize(diagnostics));
     }
 
@@ -238,5 +246,22 @@ public sealed class SetupPipeService(
         return new SetupResponse(true, "OK", request.Enabled.Value
             ? $"휴대폰 연결이 {graceSeconds}초 이상 끊기면 자동 잠금합니다."
             : "휴대폰 연결 끊김 자동 잠금을 껐습니다.");
+    }
+
+    private async Task<SetupResponse> SetProximityUnlockAsync(
+        SetupRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Enabled is null)
+        {
+            throw new ArgumentException("enabled 값이 필요합니다.");
+        }
+
+        await configurationStore.UpdateAsync(
+            configuration => configuration with { ProximityUnlockEnabled = request.Enabled.Value },
+            cancellationToken);
+        return new SetupResponse(true, "OK", request.Enabled.Value
+            ? "휴대폰이 가까워지면 잠금화면의 Phone Unlock 인증을 자동으로 시작합니다. 보안 수준이 낮아지는 실험 기능입니다."
+            : "휴대폰 근접 자동 잠금 해제를 껐습니다.");
     }
 }

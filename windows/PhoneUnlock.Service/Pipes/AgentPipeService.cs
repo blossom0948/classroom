@@ -9,6 +9,7 @@ namespace PhoneUnlock.Service.Pipes;
 public sealed class AgentPipeService(
     ConfigurationStore configurationStore,
     PhoneConnectionRegistry connectionRegistry,
+    AgentConnectionState agentConnectionState,
     ILogger<AgentPipeService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -22,6 +23,7 @@ public sealed class AgentPipeService(
                 using var connectionTimeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 connectionTimeout.CancelAfter(TimeSpan.FromSeconds(10));
                 await pipe.WaitForConnectionAsync(connectionTimeout.Token);
+                agentConnectionState.SetConnected(true);
                 await HandleAgentAsync(pipe, stoppingToken);
             }
             catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
@@ -31,6 +33,10 @@ public sealed class AgentPipeService(
             catch (IOException exception) when (!stoppingToken.IsCancellationRequested)
             {
                 logger.LogInformation("Interactive agent pipe ended: {Message}", exception.Message);
+            }
+            finally
+            {
+                agentConnectionState.SetConnected(false);
             }
         }
     }
@@ -89,11 +95,14 @@ public sealed class AgentPipeService(
                 armed = true;
                 lastPresentAt = DateTimeOffset.UtcNow;
             }
-            else if (armed && DateTimeOffset.UtcNow - lastPresentAt >= TimeSpan.FromSeconds(configuration.ProximityGraceSeconds))
+            else
             {
-                await writer.WriteLineAsync("LOCK");
-                logger.LogInformation("Requested workstation lock after phone presence was lost.");
-                armed = false;
+                if (armed && DateTimeOffset.UtcNow - lastPresentAt >= TimeSpan.FromSeconds(configuration.ProximityGraceSeconds))
+                {
+                    await writer.WriteLineAsync("LOCK");
+                    logger.LogInformation("Requested workstation lock after phone presence was lost.");
+                    armed = false;
+                }
             }
 
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);

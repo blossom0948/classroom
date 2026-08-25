@@ -12,8 +12,10 @@ Android의 강한 생체인증과 Android Keystore의 ECDSA P-256 키로 Windows
 - 여러 PC 등록·선택, 여러 휴대폰 등록과 Windows 설정 앱의 선호 휴대폰 선택
 - 성공·실패·의심스러운 인증 요청의 시간·휴대폰·원격 IP 감사 기록
 - 연결·알림·배터리·인증 상태를 한 번에 확인하는 Windows/Android 진단 화면
-- 선택한 휴대폰 연결이 일정 시간 끊기면 Windows를 잠그는 선택형 자동 잠금
+- 선택한 휴대폰 연결이 일정 시간 끊기면 Windows를 잠그는 선택형 자동 잠금과 에이전트 상태 진단
 - 강한 지문·강한 얼굴인식 또는 휴대폰 PIN/패턴/비밀번호 인증 모드
+- 제조사가 약한 얼굴인식만 제공하는 기기를 위한 명시적 호환 모드
+- 사용자가 직접 켠 경우에만 휴대폰 근접으로 잠금화면 인증을 시작하는 실험적 자동 잠금 해제
 - Windows LocalSystem 서비스의 challenge/만료/replay/서명 검증
 - 관리자 전용 Named Pipe로 설정 앱과 Credential Provider 분리
 - 현재 로그인 계정 자동 선택과 Windows Credential Manager의 검증된 자격 증명 보호 저장
@@ -99,7 +101,8 @@ Android 빌드까지 검사하려면 JDK 17을 준비한 뒤 다음을 실행합
 - Windows 비밀번호, PIN, 개인키, pairing secret을 Git에 저장하지 않습니다. Windows 비밀번호는 서비스 계정의 Credential Manager에 저장되며 Android로 전송되지 않습니다.
 - 로그인 문제가 생기면 언제나 Windows 기본 PIN/비밀번호를 사용해야 합니다.
 - Phone Unlock은 기본 로그인 수단을 대체하거나 제거하지 않는 추가 Credential Provider로만 등록됩니다.
-- 휴대폰이 가까이 있다는 사실만으로 잠금이 자동 해제되지는 않습니다. 근접성만 이용한 자동 해제는 도난·오탐 시 Windows 인증을 우회할 수 있으므로, 잠금 해제에는 휴대폰의 생체인증 또는 PIN 인증이 계속 필요합니다.
+- 휴대폰 근접 자동 잠금 해제는 설정에서 직접 켜야 하는 실험 기능입니다. 켜면 근접 신호만으로 잠금화면의 Phone Unlock 인증을 시작하므로 보안 수준이 낮아집니다. 집에서만 사용하고, 기본값은 꺼짐으로 유지하세요.
+- 약한 얼굴인식 호환 모드는 Android의 암호화 키 사용자 인증과 직접 연결되지 않으므로 기본값이 꺼짐입니다. 강한 생체인식 또는 휴대폰 PIN/패턴/비밀번호 모드를 권장합니다.
 - Android는 보안 정책상 APK를 완전 무인 설치할 수 없으므로 앱이 최신 APK 다운로드를 열어 준 뒤 시스템 설치 확인은 한 번 눌러야 합니다.
 
 자세한 내용은 [아키텍처](docs/ARCHITECTURE.md), [보안](docs/SECURITY.md), [테스트](docs/TESTING.md), [문제 해결](docs/TROUBLESHOOTING.md), [프로토콜](protocol/protocol.md)을 참고하세요.

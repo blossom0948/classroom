@@ -5,7 +5,7 @@
 - challenge는 `RandomNumberGenerator`가 생성한 32바이트 난수다.
 - 요청은 `requestId`, `computerId`, challenge, 절대 만료시간에 함께 서명된다.
 - canonical payload는 UTF-8, LF, 고정 필드 순서, 끝 줄바꿈 없음으로 정의된다.
-- Android 개인키는 사용자 생체인증이 매번 필요한 Keystore 키다.
+- 기본 Android 개인키는 사용자 생체인증이 매번 필요한 Keystore 키다. 호환 모드의 별도 키는 예외이며, 약한 얼굴인식 성공 뒤 앱이 서명하도록 사용한다.
 - PC는 X.509 SubjectPublicKeyInfo 공개키만 받는다.
 - 검증 성공 후 request ID를 원자적으로 소비해 재전송을 거부한다.
 - 잘못된 서명은 요청을 소비하지 않아 단순한 네트워크 방해가 정상 승인을 차단하지 못한다.
@@ -13,7 +13,8 @@
 - Android는 최초 페어링 JSON의 TLS 인증서 SHA-256 fingerprint를 고정한다.
 - Windows 설정/인증 Named Pipe ACL은 운영 서비스에서 LocalSystem과 Administrators로 제한한다.
 - 자동 잠금 Named Pipe는 저장된 Windows 계정 SID를 추가 ACL로 허용하고, 대화형 `PhoneUnlock.Agent`가 `LockWorkStation`을 호출한다.
-- Android 인증은 `BIOMETRIC_STRONG`만 기본 허용하며, 사용자가 켠 경우에만 Android `DEVICE_CREDENTIAL`을 함께 허용한다. 약한 얼굴인식은 서명 키 보호에 사용하지 않는다.
+- Android 인증은 `BIOMETRIC_STRONG`만 기본 허용하며, 사용자가 켠 경우에만 Android `DEVICE_CREDENTIAL`을 함께 허용한다. 사용자가 별도로 켠 호환 모드에서만 `BIOMETRIC_WEAK`을 허용하고, 이 모드에서는 사용자 인증과 서명 키의 암호학적 연결이 약해진다.
+- 근접 자동 잠금 해제는 기본값이 꺼져 있으며, 사용자가 설정에서 켠 경우에만 보안 연결의 presence 전환으로 Credential Provider의 인증 요청을 시작한다. 이는 Windows 암호를 직접 제공하는 API가 아니며, 근접 신호만으로 인증을 시작하므로 집에서만 사용해야 한다.
 - 서비스 구성과 PFX 파일 ACL은 LocalSystem과 Administrators로 제한한다.
 - Credential Provider는 요청한 사용자 SID와 저장된 계정 SID가 일치할 때만 자격 증명을 받는다.
 - Credential Provider는 원문 비밀번호를 받은 즉시 `CredProtectW`로 보호하고 원문 버퍼를 지운다.
@@ -25,7 +26,7 @@
 - 잠금 해제 가능 여부는 같은 LAN, Android 백그라운드 실행/알림, 휴대폰 배터리 정책에 영향을 받는다.
 - 자체 서명 TLS 인증서는 공개 PKI가 아니라 최초 페어링 정보의 fingerprint 정확성에 의존한다.
 - 현재 릴리스는 코드 서명이 없다. Windows VM에서 DLL/설치/복구를 먼저 검증해야 한다.
-- 근접성만으로 자동 잠금 해제를 허용하지 않는다. 자동 잠금은 연결 이탈 후 보호 기능일 뿐이며, 해제에는 매번 휴대폰 인증과 Windows Credential Provider 검증이 필요하다.
+- 근접 자동 잠금 해제는 기본값으로 허용하지 않는다. 사용자가 명시적으로 켠 경우에만 근접 신호가 Credential Provider의 인증 요청을 시작하며, 이는 집에서만 사용해야 하는 편의 기능이다.
 
 ## 기록 금지
 

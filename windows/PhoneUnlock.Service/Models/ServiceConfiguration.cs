@@ -9,6 +9,7 @@ public sealed record ServiceConfiguration
     public string? ConfiguredQualifiedUsername { get; init; }
     public string? PreferredPhoneId { get; init; }
     public bool ProximityLockEnabled { get; init; }
+    public bool ProximityUnlockEnabled { get; init; }
     public int ProximityGraceSeconds { get; init; } = 30;
     public DateTimeOffset? LastSuccessfulPhoneAuth { get; init; }
 }

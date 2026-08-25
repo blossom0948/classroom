@@ -77,8 +77,8 @@ public partial class MainWindow : Window
             var diagnostics = ProtocolJson.Deserialize<SetupDiagnostics>(response.Data);
             var connected = diagnostics.Phones.Count(phone => phone.Connected);
             DiagnosticsSummaryText.Text = connected == 0
-                ? $"PC 주소 {string.Join(", ", diagnostics.LocalAddresses)} · 연결된 휴대폰 없음"
-                : $"PC 주소 {string.Join(", ", diagnostics.LocalAddresses)} · 휴대폰 {connected}대 연결됨 · 포트 {diagnostics.ListeningPort}";
+                ? $"PC 주소 {string.Join(", ", diagnostics.LocalAddresses)} · 연결된 휴대폰 없음 · 자동잠금 에이전트 {(diagnostics.InteractiveAgentConnected ? "연결됨" : "없음")}"
+                : $"PC 주소 {string.Join(", ", diagnostics.LocalAddresses)} · 휴대폰 {connected}대 연결됨 · 포트 {diagnostics.ListeningPort} · 자동잠금 에이전트 {(diagnostics.InteractiveAgentConnected ? "연결됨" : "없음")}";
             SetOperation("Windows 연결 진단을 완료했습니다. 알림·배터리 상태는 휴대폰 앱 진단에서 확인하세요.", success: true);
         });
     }
@@ -89,6 +89,36 @@ public partial class MainWindow : Window
     {
         if (updatingControls) return;
         await SaveProximityLockAsync();
+    }
+
+    private async void ProximityUnlock_Click(object sender, RoutedEventArgs e)
+    {
+        if (updatingControls) return;
+        await SaveProximityUnlockAsync();
+    }
+
+    private void StartAgent_Click(object sender, RoutedEventArgs e)
+    {
+        var agentPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "agent", "PhoneUnlock.Agent.exe"));
+        if (!File.Exists(agentPath))
+        {
+            SetOperation("자동잠금 에이전트가 없습니다. 최신 PhoneUnlock-Setup.exe로 Windows를 업데이트하세요.", success: false);
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(agentPath)
+            {
+                UseShellExecute = true,
+                WorkingDirectory = Path.GetDirectoryName(agentPath) ?? AppContext.BaseDirectory
+            });
+            SetOperation("자동잠금 감시를 시작했습니다. 이 창을 닫아도 백그라운드에서 계속 실행됩니다.", success: true);
+        }
+        catch (Exception exception)
+        {
+            SetOperation($"자동잠금 감시를 시작하지 못했습니다: {exception.Message}", success: false);
+        }
     }
 
     private async void ProximityGrace_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -105,6 +135,19 @@ public partial class MainWindow : Window
         {
             var response = await client.SendAsync(
                 new SetupRequest(SetupCommands.SetProximityLock, Enabled: enabled, GraceSeconds: grace),
+                TimeSpan.FromSeconds(10));
+            SetOperation(response.Message, response.Success);
+            if (response.Success) await RefreshStatusAsync();
+        });
+    }
+
+    private async Task SaveProximityUnlockAsync()
+    {
+        var enabled = ProximityUnlockCheckBox.IsChecked == true;
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.SetProximityUnlock, Enabled: enabled),
                 TimeSpan.FromSeconds(10));
             SetOperation(response.Message, response.Success);
             if (response.Success) await RefreshStatusAsync();
@@ -359,6 +402,13 @@ public partial class MainWindow : Window
                     .FirstOrDefault(item => item.PhoneId == currentStatus.PreferredPhoneId);
             UseSelectedPhoneButton.IsEnabled = PhoneSelectorComboBox.Items.Count > 0;
             ProximityLockCheckBox.IsChecked = currentStatus.ProximityLockEnabled;
+            ProximityUnlockCheckBox.IsChecked = currentStatus.ProximityUnlockEnabled;
+            ProximityAgentStatusText.Text = currentStatus.InteractiveAgentConnected
+                ? "✓ 자동잠금 에이전트 연결됨 · 휴대폰 연결 상태를 감시 중입니다."
+                : currentStatus.ProximityLockEnabled
+                    ? "○ 자동잠금 에이전트 연결 안 됨 · 버튼을 누르거나 Windows에 다시 로그인하세요."
+                    : "✓ 자동 잠금 해제 감시는 서비스에서 실행됩니다. 자동 잠금도 사용하려면 에이전트를 시작하세요.";
+            ProximityAgentStatusText.Foreground = BrushFrom(currentStatus.InteractiveAgentConnected ? "#217346" : "#A15C00");
             ProximityGraceComboBox.SelectedItem = ProximityGraceComboBox.Items
                 .OfType<ComboBoxItem>()
                 .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), currentStatus.ProximityGraceSeconds.ToString(), StringComparison.Ordinal))
@@ -409,7 +459,9 @@ public partial class MainWindow : Window
         DiagnosticsButton.IsEnabled = enabled;
         AuditList.IsEnabled = enabled;
         ProximityLockCheckBox.IsEnabled = enabled;
+        ProximityUnlockCheckBox.IsEnabled = enabled;
         ProximityGraceComboBox.IsEnabled = enabled;
+        StartAgentButton.IsEnabled = enabled;
         if (!enabled)
         {
             DisableLoginButton.Visibility = Visibility.Collapsed;
