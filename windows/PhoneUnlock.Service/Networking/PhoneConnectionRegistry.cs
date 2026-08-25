@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
+using System.Threading.Channels;
 using PhoneUnlock.Service.Models;
 using PhoneUnlock.Service.Security;
 using PhoneUnlock.Service.Storage;
@@ -12,6 +13,10 @@ public sealed class PhoneConnectionRegistry(
     ILoggerFactory loggerFactory)
 {
     private readonly ConcurrentDictionary<string, PhoneConnection> connections = new(StringComparer.Ordinal);
+    private readonly Channel<RemoteUnlockRequest> remoteUnlockRequests = Channel.CreateUnbounded<RemoteUnlockRequest>(
+        new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+
+    public ChannelReader<RemoteUnlockRequest> RemoteUnlockRequests => remoteUnlockRequests.Reader;
 
     public async Task<PairedPhoneRecord?> AuthenticateDeviceAsync(
         string? phoneId,
@@ -59,7 +64,8 @@ public sealed class PhoneConnectionRegistry(
             phone,
             socket,
             remoteIp,
-            loggerFactory.CreateLogger<PhoneConnection>());
+            loggerFactory.CreateLogger<PhoneConnection>(),
+            json => remoteUnlockRequests.Writer.TryWrite(new RemoteUnlockRequest(phone.PhoneId, remoteIp, json)));
         if (connections.TryGetValue(phone.PhoneId, out var previous))
         {
             await previous.DisposeAsync();

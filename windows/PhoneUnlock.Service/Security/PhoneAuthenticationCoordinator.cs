@@ -1,3 +1,4 @@
+using System.Net.WebSockets;
 using System.Text.Json;
 using PhoneUnlock.Core.Models;
 using PhoneUnlock.Core.Protocol;
@@ -236,6 +237,19 @@ public sealed class PhoneAuthenticationCoordinator(
             requestId,
             outcome.Message,
             suspicious), CancellationToken.None);
+        if (suspicious && connection is { IsOpen: true })
+        {
+            try
+            {
+                await connection.SendSecurityAlertAsync(
+                    "의심스러운 Windows 로그인 요청이 거부되었습니다. PC 보안 기록을 확인하세요.",
+                    CancellationToken.None);
+            }
+            catch (Exception exception) when (exception is IOException or WebSocketException)
+            {
+                logger.LogInformation("Could not deliver security alert to phone: {Message}", exception.Message);
+            }
+        }
         return outcome;
     }
 }

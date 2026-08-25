@@ -11,7 +11,8 @@ public sealed class PhoneConnection(
     PairedPhoneRecord phone,
     WebSocket socket,
     string? remoteIp,
-    ILogger<PhoneConnection> logger) : IAsyncDisposable
+    ILogger<PhoneConnection> logger,
+    Action<string> remoteUnlockHandler) : IAsyncDisposable
 {
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<string>> pending = new();
     private readonly SemaphoreSlim sendGate = new(1, 1);
@@ -54,6 +55,19 @@ public sealed class PhoneConnection(
         {
             pending.TryRemove(requestId, out _);
         }
+    }
+
+    public Task SendSecurityAlertAsync(string message, CancellationToken cancellationToken)
+    {
+        var envelope = new
+        {
+            version = ProtocolConstants.Version,
+            type = ProtocolConstants.SecurityAlert,
+            messageId = Guid.NewGuid(),
+            timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            payload = new { message }
+        };
+        return SendTextAsync(ProtocolJson.SerializeCompact(envelope), cancellationToken);
     }
 
     public async Task RunReceiveLoopAsync(CancellationToken cancellationToken)
@@ -132,6 +146,12 @@ public sealed class PhoneConnection(
                     return;
                 }
                 Interlocked.Exchange(ref lastHeartbeatTicks, DateTimeOffset.UtcNow.Ticks);
+                return;
+            }
+
+            if (type == ProtocolConstants.RemoteUnlockRequest)
+            {
+                remoteUnlockHandler(json);
                 return;
             }
 

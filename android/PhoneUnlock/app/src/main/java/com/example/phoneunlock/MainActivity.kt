@@ -12,6 +12,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.security.keystore.KeyPermanentlyInvalidatedException
+import android.util.Base64
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.RadioGroup
@@ -19,6 +21,7 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.phoneunlock.network.ConnectionService
@@ -34,9 +37,16 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.launch
 import org.json.JSONException
+import java.security.SecureRandom
+import java.security.Signature
+import java.time.Instant
 import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
+    private lateinit var homePanel: LinearLayout
+    private lateinit var settingsPanel: LinearLayout
+    private lateinit var settingsBackButton: MaterialButton
+    private lateinit var settingsTitleText: TextView
     private lateinit var computerNameText: TextView
     private lateinit var networkStatusText: TextView
     private lateinit var resultText: TextView
@@ -59,6 +69,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var diagnosticsText: TextView
     private lateinit var notificationSettingsButton: MaterialButton
     private lateinit var batterySettingsButton: MaterialButton
+    private lateinit var remoteUnlockButton: MaterialButton
     private lateinit var keystoreSigner: KeystoreSigner
     private lateinit var pairingStore: SecurePairingStore
     private val pairingClient = PairingClient()
@@ -82,10 +93,21 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    private val bluetoothPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+            if (result.values.any { !it }) {
+                showResult("Bluetooth RSSI 거리 측정을 사용하려면 Bluetooth 권한을 허용하세요.", success = false)
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        homePanel = findViewById(R.id.homePanel)
+        settingsPanel = findViewById(R.id.settingsPanel)
+        settingsBackButton = findViewById(R.id.settingsBackButton)
+        settingsTitleText = findViewById(R.id.settingsTitleText)
         computerNameText = findViewById(R.id.computerNameText)
         networkStatusText = findViewById(R.id.networkStatusText)
         resultText = findViewById(R.id.resultText)
@@ -108,6 +130,7 @@ class MainActivity : AppCompatActivity() {
         diagnosticsText = findViewById(R.id.diagnosticsText)
         notificationSettingsButton = findViewById(R.id.notificationSettingsButton)
         batterySettingsButton = findViewById(R.id.batterySettingsButton)
+        remoteUnlockButton = findViewById(R.id.remoteUnlockButton)
         keystoreSigner = KeystoreSigner(this)
         pairingStore = SecurePairingStore(this)
         phoneId = loadOrCreatePhoneId()
@@ -116,6 +139,8 @@ class MainActivity : AppCompatActivity() {
         pasteCodeButton.setOnClickListener { connectFromClipboard() }
         pairButton.setOnClickListener { connectWithCode(pairingInput.text?.toString().orEmpty()) }
         disconnectButton.setOnClickListener { disconnectComputer() }
+        settingsBackButton.setOnClickListener { showHome() }
+        remoteUnlockButton.setOnClickListener { requestRemoteUnlock() }
         updateButton.setOnClickListener { handleUpdateClick() }
         autoPromptSwitch.isChecked = AuthPromptSettings.isAutoOpenEnabled(this)
         autoPromptSwitch.setOnCheckedChangeListener { _, enabled ->
@@ -166,7 +191,9 @@ class MainActivity : AppCompatActivity() {
         pairingStore.load()?.let {
             displayPairedComputer(it)
             requestNotificationPermission()
+            requestBluetoothPermission()
             ConnectionService.connect(this)
+            showHome()
         } ?: displayNoPairedComputer()
 
         checkForUpdate(silent = true)
@@ -184,9 +211,9 @@ class MainActivity : AppCompatActivity() {
         val permissionGranted = AuthPromptSettings.canUseFullScreenIntent(this)
         val methods = authenticationMethodsText()
         autoPromptStatusText.text = when {
-            !enabled -> "알림만 표시합니다. 알림을 누르면 $methods 인증창이 열립니다."
-            !permissionGranted -> "Android 설정에서 전체 화면 알림을 허용하면 잠금화면 위로 $methods 인증창을 바로 열 수 있습니다."
-            else -> "Windows 요청이 오면 $methods 인증창을 바로 엽니다."
+            !enabled -> "알림을 눌러 인증합니다"
+            !permissionGranted -> "전체 화면 알림 권한이 필요합니다"
+            else -> "$methods 인증창을 바로 표시합니다"
         }
         fullScreenPermissionButton.visibility =
             if (enabled && !permissionGranted) View.VISIBLE else View.GONE
@@ -196,11 +223,11 @@ class MainActivity : AppCompatActivity() {
         val enabled = AuthPromptSettings.isDeviceCredentialEnabled(this)
         val weakFace = AuthPromptSettings.isWeakFaceEnabled(this)
         authMethodStatusText.text = if (weakFace) {
-            "제조사가 약한 얼굴인식으로 분류한 얼굴도 사용할 수 있습니다. 대신 생체인식과 서명 키가 암호학적으로 연결되지 않아 보안 수준이 낮습니다. 집에서만 사용하고, 연결한 PC는 다시 연결하세요."
+            "지문·얼굴인식·${if (enabled) "PIN" else "강한 생체인식"}"
         } else if (enabled) {
-            "지문·강한 얼굴인식 또는 휴대폰 PIN/패턴/비밀번호를 사용할 수 있습니다. PIN은 휴대폰 밖으로 전송되지 않습니다."
+            "지문·강한 얼굴인식·PIN"
         } else {
-            "강한 지문 또는 강한 얼굴인식만 사용합니다. 제조사가 약한 얼굴인식으로 분류한 얼굴인식은 보안 키 인증에 사용할 수 없습니다."
+            "지문·강한 얼굴인식"
         }
         updateAutoPromptControls()
     }
@@ -320,9 +347,10 @@ class MainActivity : AppCompatActivity() {
                 pairingStore.save(paired, select = true)
                 pairingInput.text?.clear()
                 displayPairedComputer(paired)
+                showSettings(paired)
                 requestNotificationPermission()
                 ConnectionService.connect(this@MainActivity)
-                showResult("연결 완료. 이제 Windows 요청이 오면 휴대폰 인증창이 자동으로 열립니다.", success = true)
+                showResult("연결 완료", success = true)
             } catch (exception: Exception) {
                 networkStatusText.text = "연결 실패 · QR을 새로 만들어 다시 시도하세요."
                 showRequestError(exception)
@@ -345,6 +373,7 @@ class MainActivity : AppCompatActivity() {
             showResult("등록된 PC가 없습니다.", success = true)
         } else {
             displayPairedComputer(next)
+            showHome()
             ConnectionService.connect(this)
             showResult("선택한 PC 연결을 삭제했습니다. 다른 등록 PC를 선택했습니다.", success = true)
         }
@@ -352,21 +381,38 @@ class MainActivity : AppCompatActivity() {
 
     private fun displayPairedComputer(computer: PairedComputer) {
         computerNameText.text = computer.computerName
-        networkStatusText.text = "● 연결 준비 완료 · 로그인 요청 대기 중"
-        networkStatusText.setTextColor(Color.parseColor("#217346"))
+        settingsTitleText.text = computer.computerName
+        val online = ConnectionService.isConnected(computer.computerId)
+        networkStatusText.text = if (online) "● 온라인" else "○ 오프라인 · 연결 대기 중"
+        networkStatusText.setTextColor(Color.parseColor(if (online) "#217346" else "#737780"))
         refreshComputerChoices(computer)
         pairingControls.visibility = View.VISIBLE
         disconnectButton.visibility = View.VISIBLE
     }
 
     private fun displayNoPairedComputer() {
-        computerNameText.text = "연결된 PC 없음"
-        networkStatusText.text = "Windows 앱에서 QR 코드를 만들어 주세요."
+        networkStatusText.text = "등록된 PC가 없습니다"
         networkStatusText.setTextColor(Color.parseColor("#737780"))
         pairingControls.visibility = View.VISIBLE
         computerListGroup.removeAllViews()
         manualCodeGroup.visibility = View.GONE
         disconnectButton.visibility = View.GONE
+        showHome()
+    }
+
+    private fun showHome() {
+        homePanel.visibility = View.VISIBLE
+        settingsPanel.visibility = View.GONE
+        pairingStore.load()?.let { refreshComputerChoices(it) }
+    }
+
+    private fun showSettings(computer: PairedComputer) {
+        homePanel.visibility = View.GONE
+        settingsPanel.visibility = View.VISIBLE
+        computerNameText.text = computer.computerName
+        settingsTitleText.text = computer.computerName
+        updateAutoPromptControls()
+        updateAuthMethodControls()
     }
 
     private fun refreshComputerChoices(selected: PairedComputer) {
@@ -374,7 +420,8 @@ class MainActivity : AppCompatActivity() {
         pairingStore.loadAll().forEach { computer ->
             val radio = MaterialRadioButton(this).apply {
                 id = View.generateViewId()
-                text = "${computer.computerName}\n${computer.host}"
+                val online = ConnectionService.isConnected(computer.computerId)
+                text = "${computer.computerName}\n${if (online) "온라인" else "오프라인"} · ${computer.host}"
                 textSize = 14f
                 isChecked = computer.computerId == selected.computerId
                 setPadding(0, 8.dp, 0, 8.dp)
@@ -383,7 +430,8 @@ class MainActivity : AppCompatActivity() {
                         ConnectionService.disconnect(this@MainActivity)
                         ConnectionService.connect(this@MainActivity)
                         displayPairedComputer(computer)
-                        showResult("${computer.computerName}을(를) 현재 로그인 PC로 선택했습니다.", success = true)
+                        showSettings(computer)
+                        showResult("${computer.computerName} 선택됨", success = true)
                     }
                 }
             }
@@ -402,6 +450,21 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun requestBluetoothPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val permissions = arrayOf(
+            Manifest.permission.BLUETOOTH_ADVERTISE,
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_SCAN,
+        )
+        val missing = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            bluetoothPermissionLauncher.launch(missing.toTypedArray())
         }
     }
 
@@ -454,12 +517,129 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     "△ 잠금화면 팝업: 전체 화면 알림 허용 필요"
                 }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val bluetoothReady = listOf(
+                        Manifest.permission.BLUETOOTH_ADVERTISE,
+                        Manifest.permission.BLUETOOTH_CONNECT,
+                        Manifest.permission.BLUETOOTH_SCAN,
+                    ).all {
+                        ContextCompat.checkSelfPermission(this@MainActivity, it) == PackageManager.PERMISSION_GRANTED
+                    }
+                    lines += if (bluetoothReady) {
+                        "✓ Bluetooth RSSI: 권한 준비됨"
+                    } else {
+                        "△ Bluetooth RSSI: Bluetooth 권한 필요"
+                    }
+                }
                 diagnosticsText.text = lines.joinToString("\n")
             } catch (exception: Exception) {
                 diagnosticsText.text = "진단을 완료하지 못했습니다: ${exception.message ?: "Android 설정을 확인하세요."}"
             } finally {
                 diagnosticsButton.isEnabled = true
             }
+        }
+    }
+
+    private fun requestRemoteUnlock() {
+        val computer = pairingStore.load()
+        if (computer == null) {
+            showResult("먼저 PC를 연결하세요", success = false)
+            return
+        }
+
+        val authStatus = BiometricManager.from(this).canAuthenticate(allowedAuthenticators())
+        if (authStatus != BiometricManager.BIOMETRIC_SUCCESS) {
+            showResult("휴대폰 생체인식을 설정하세요", success = false)
+            return
+        }
+
+        val request = RemoteUnlockRequest(
+            requestId = UUID.randomUUID(),
+            computerId = computer.computerId,
+            challenge = Base64.encodeToString(ByteArray(32).also { SecureRandom().nextBytes(it) }, Base64.NO_WRAP),
+            expiresAt = Instant.now().epochSecond + 30,
+            phoneId = computer.phoneId,
+        )
+        val weakFaceCompatibility = AuthPromptSettings.isWeakFaceEnabled(this)
+        val allowDeviceCredential = AuthPromptSettings.isDeviceCredentialEnabled(this)
+        val material = try {
+            if (weakFaceCompatibility) {
+                keystoreSigner.getOrCreateCompatibility(computer.computerId)
+            } else {
+                keystoreSigner.getOrCreate(computer.computerId, allowDeviceCredential)
+            }
+        } catch (exception: Exception) {
+            showResult(exception.message ?: "보안 키를 준비하지 못했습니다", success = false)
+            return
+        }
+        if (computer.publicKey.isNotBlank() && computer.publicKey != material.publicKeyBase64) {
+            showResult("인증 방식이 바뀌었습니다. 이 PC를 다시 연결하세요", success = false)
+            return
+        }
+
+        val signature = if (weakFaceCompatibility) {
+            null
+        } else {
+            try {
+                keystoreSigner.createSignature(material.privateKey)
+            } catch (_: KeyPermanentlyInvalidatedException) {
+                keystoreSigner.delete(computer.computerId)
+                showResult("생체정보 변경으로 키가 무효화되었습니다. PC를 다시 연결하세요", success = false)
+                return
+            }
+        }
+
+        remoteUnlockButton.isEnabled = false
+        val prompt = BiometricPrompt(
+            this,
+            ContextCompat.getMainExecutor(this),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    val authorized = if (weakFaceCompatibility) {
+                        runCatching { keystoreSigner.createSignature(material.privateKey) }.getOrNull()
+                    } else {
+                        result.cryptoObject?.signature
+                    }
+                    if (authorized == null) {
+                        remoteUnlockButton.isEnabled = true
+                        showResult("인증 서명을 만들지 못했습니다", success = false)
+                        return
+                    }
+                    try {
+                        authorized.update(PhoneUnlockProtocol.canonicalRemoteUnlockPayload(request))
+                        ConnectionService.sendRemoteUnlockRequest(
+                            this@MainActivity,
+                            PhoneUnlockProtocol.remoteUnlockResponse(request, authorized.sign()),
+                        )
+                        showResult("PC에 잠금 해제를 요청했습니다", success = true)
+                    } catch (exception: Exception) {
+                        showResult(exception.message ?: "잠금 해제 요청을 보내지 못했습니다", success = false)
+                    } finally {
+                        remoteUnlockButton.isEnabled = true
+                    }
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    remoteUnlockButton.isEnabled = true
+                    showResult(errString.toString(), success = false)
+                }
+
+                override fun onAuthenticationFailed() {
+                    showResult("생체인식에 실패했습니다. 다시 시도하세요", success = false)
+                }
+            },
+        )
+        val promptBuilder = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("${computer.computerName} 잠금 해제")
+            .setSubtitle("휴대폰에서 인증하면 PC가 열립니다")
+            .setAllowedAuthenticators(allowedAuthenticators())
+        if (!allowDeviceCredential) {
+            promptBuilder.setNegativeButtonText(getString(R.string.biometric_cancel))
+        }
+        if (weakFaceCompatibility) {
+            prompt.authenticate(promptBuilder.build())
+        } else {
+            prompt.authenticate(promptBuilder.build(), BiometricPrompt.CryptoObject(signature!!))
         }
     }
 
@@ -506,6 +686,10 @@ class MainActivity : AppCompatActivity() {
         resultText.setTextColor(Color.parseColor(if (success) "#24503A" else "#8A2424"))
         resultText.setBackgroundColor(Color.parseColor(if (success) "#EAF7EF" else "#FFF0F0"))
         resultText.setPadding(16.dp, 14.dp, 16.dp, 14.dp)
+        if (homePanel.visibility == View.VISIBLE) {
+            networkStatusText.text = message
+            networkStatusText.setTextColor(Color.parseColor(if (success) "#217346" else "#A4262C"))
+        }
     }
 
     private fun loadOrCreatePhoneId(): String {

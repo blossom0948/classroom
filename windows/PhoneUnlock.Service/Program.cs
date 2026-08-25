@@ -24,16 +24,20 @@ builder.Services.AddSingleton(certificateManager);
 builder.Services.AddSingleton<ConfigurationStore>();
 builder.Services.AddSingleton<AuditLogStore>();
 builder.Services.AddSingleton<WindowsCredentialStore>();
+builder.Services.AddSingleton<WindowsSecretStore>();
+builder.Services.AddSingleton<PresenceSensorClient>();
 builder.Services.AddSingleton<WindowsAccountValidator>();
 builder.Services.AddSingleton<PairingCoordinator>();
 builder.Services.AddSingleton<PhoneConnectionRegistry>();
 builder.Services.AddSingleton<PhoneAuthenticationCoordinator>();
 builder.Services.AddSingleton<ProximityUnlockSignal>();
+builder.Services.AddSingleton<RemoteUnlockGrantStore>();
 builder.Services.AddSingleton<AgentConnectionState>();
 builder.Services.AddHostedService<SetupPipeService>();
 builder.Services.AddHostedService<AuthPipeService>();
 builder.Services.AddHostedService<AgentPipeService>();
 builder.Services.AddHostedService<ProximityPresenceService>();
+builder.Services.AddHostedService<RemoteUnlockService>();
 
 var app = builder.Build();
 app.UseWebSockets(new WebSocketOptions

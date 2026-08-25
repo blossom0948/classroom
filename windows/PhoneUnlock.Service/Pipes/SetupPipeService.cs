@@ -19,6 +19,8 @@ public sealed class SetupPipeService(
     PhoneConnectionRegistry connectionRegistry,
     AuditLogStore auditLog,
     CertificateManager certificateManager,
+    PresenceSensorClient presenceSensorClient,
+    WindowsSecretStore secretStore,
     AgentConnectionState agentConnectionState,
     ILogger<SetupPipeService> logger) : BackgroundService
 {
@@ -82,6 +84,11 @@ public sealed class SetupPipeService(
             SetupCommands.Diagnostics => await GetDiagnosticsAsync(cancellationToken),
             SetupCommands.SetProximityLock => await SetProximityLockAsync(request, cancellationToken),
             SetupCommands.SetProximityUnlock => await SetProximityUnlockAsync(request, cancellationToken),
+            SetupCommands.SetAutoLockProfile => await SetAutoLockProfileAsync(request, cancellationToken),
+            SetupCommands.SetBluetoothRssi => await SetBluetoothRssiAsync(request, cancellationToken),
+            SetupCommands.SetRemoteUnlock => await SetRemoteUnlockAsync(request, cancellationToken),
+            SetupCommands.SetPresenceSensor => await SetPresenceSensorAsync(request, cancellationToken),
+            SetupCommands.ListSmartThingsSensors => await ListSmartThingsSensorsAsync(request, cancellationToken),
             _ => new SetupResponse(false, "UNKNOWN_COMMAND", "Unknown setup command.")
         };
     }
@@ -105,6 +112,18 @@ public sealed class SetupPipeService(
             configuration.ProximityLockEnabled,
             configuration.ProximityUnlockEnabled,
             configuration.ProximityGraceSeconds,
+            configuration.AutoLockProfile,
+            configuration.BluetoothRssiEnabled,
+            configuration.BluetoothRssiThreshold,
+            configuration.RemoteUnlockEnabled,
+            configuration.PresenceSensorEnabled,
+            configuration.PresenceSensorProtocol,
+            configuration.PresenceSensorBaseUrl,
+            configuration.PresenceSensorEntityId,
+            configuration.PresenceSensorComponentId,
+            configuration.PresenceSensorCapabilityId,
+            configuration.PresenceSensorAttributeName,
+            configuration.PresenceSensorGraceSeconds,
             configuration.LastSuccessfulPhoneAuth,
             credentialStore.Exists()
                 && configuration.Phones.Any(phone => phone.Enabled)
@@ -219,6 +238,18 @@ public sealed class SetupPipeService(
             configuration.ProximityLockEnabled,
             configuration.ProximityUnlockEnabled,
             configuration.ProximityGraceSeconds,
+            configuration.AutoLockProfile,
+            configuration.BluetoothRssiEnabled,
+            configuration.BluetoothRssiThreshold,
+            configuration.RemoteUnlockEnabled,
+            configuration.PresenceSensorEnabled,
+            configuration.PresenceSensorProtocol,
+            configuration.PresenceSensorBaseUrl,
+            configuration.PresenceSensorEntityId,
+            configuration.PresenceSensorComponentId,
+            configuration.PresenceSensorCapabilityId,
+            configuration.PresenceSensorAttributeName,
+            configuration.PresenceSensorGraceSeconds,
             agentConnectionState.IsConnected);
         return new SetupResponse(true, "OK", "진단 정보를 불러왔습니다.", ProtocolJson.Serialize(diagnostics));
     }
@@ -263,5 +294,197 @@ public sealed class SetupPipeService(
         return new SetupResponse(true, "OK", request.Enabled.Value
             ? "휴대폰 heartbeat만 확인해 잠금화면에서 Phone Unlock을 인증 없이 자동 로그인합니다. 보안 수준이 낮아지는 실험 기능입니다."
             : "휴대폰 근접 자동 잠금 해제를 껐습니다.");
+    }
+
+    private async Task<SetupResponse> SetAutoLockProfileAsync(
+        SetupRequest request,
+        CancellationToken cancellationToken)
+    {
+        var profile = request.Profile?.Trim().ToLowerInvariant();
+        if (profile is not ("standard" or "home" or "away"))
+        {
+            throw new ArgumentException("자동 잠금 프로필은 standard, home, away 중 하나여야 합니다.");
+        }
+
+        var graceSeconds = profile switch
+        {
+            "home" => 120,
+            "away" => 10,
+            _ => 30
+        };
+
+        await configurationStore.UpdateAsync(
+            configuration => configuration with
+            {
+                AutoLockProfile = profile,
+                ProximityGraceSeconds = graceSeconds
+            },
+            cancellationToken);
+        return new SetupResponse(true, "OK", profile switch
+        {
+            "home" => "집 프로필 · 휴대폰 이탈 120초 후 잠금",
+            "away" => "외출 프로필 · 휴대폰 이탈 10초 후 잠금",
+            _ => "표준 프로필 · 휴대폰 이탈 30초 후 잠금"
+        });
+    }
+
+    private async Task<SetupResponse> SetBluetoothRssiAsync(
+        SetupRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Enabled is null)
+        {
+            throw new ArgumentException("enabled 값이 필요합니다.");
+        }
+
+        var threshold = request.RssiThreshold ?? -75;
+        if (threshold is < -100 or > -30)
+        {
+            throw new ArgumentException("Bluetooth RSSI 기준은 -100에서 -30 사이여야 합니다.");
+        }
+
+        await configurationStore.UpdateAsync(configuration => configuration with
+        {
+            BluetoothRssiEnabled = request.Enabled.Value,
+            BluetoothRssiThreshold = threshold
+        }, cancellationToken);
+        return new SetupResponse(true, "OK", request.Enabled.Value
+            ? $"Bluetooth RSSI 거리 기준을 {threshold} dBm으로 설정했습니다."
+            : "Bluetooth RSSI 거리 측정을 껐습니다.");
+    }
+
+    private async Task<SetupResponse> SetRemoteUnlockAsync(
+        SetupRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Enabled is null)
+        {
+            throw new ArgumentException("enabled 값이 필요합니다.");
+        }
+
+        await configurationStore.UpdateAsync(
+            configuration => configuration with { RemoteUnlockEnabled = request.Enabled.Value },
+            cancellationToken);
+        return new SetupResponse(true, "OK", request.Enabled.Value
+            ? "휴대폰 앱의 원격 잠금 해제를 허용했습니다."
+            : "휴대폰 원격 잠금 해제를 껐습니다.");
+    }
+
+    private async Task<SetupResponse> SetPresenceSensorAsync(
+        SetupRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Enabled is null)
+        {
+            throw new ArgumentException("enabled 값이 필요합니다.");
+        }
+
+        var graceSeconds = request.GraceSeconds ?? 10;
+        if (graceSeconds is < 10 or > 600)
+        {
+            throw new ArgumentException("재실 센서 자동 잠금 대기 시간은 10초에서 600초 사이여야 합니다.");
+        }
+
+        var protocol = request.SensorProtocol?.Trim().ToLowerInvariant() ?? "zigbee";
+        if (protocol is not ("zigbee" or "matter" or "smartthings"))
+        {
+            throw new ArgumentException("재실 센서 방식은 Zigbee, Matter, SmartThings 중 하나여야 합니다.");
+        }
+
+        var componentId = string.IsNullOrWhiteSpace(request.ComponentId)
+            ? "main"
+            : request.ComponentId.Trim();
+        var capabilityId = string.IsNullOrWhiteSpace(request.CapabilityId)
+            ? "occupancySensor"
+            : request.CapabilityId.Trim();
+        var attributeName = string.IsNullOrWhiteSpace(request.AttributeName)
+            ? "occupancy"
+            : request.AttributeName.Trim();
+        if (componentId.Length > 64 || capabilityId.Length > 64 || attributeName.Length > 64)
+        {
+            throw new ArgumentException("센서 component, capability, attribute 이름이 너무 깁니다.");
+        }
+
+        if (!request.Enabled.Value)
+        {
+            await configurationStore.UpdateAsync(configuration => configuration with
+            {
+                PresenceSensorEnabled = false,
+                PresenceSensorProtocol = protocol,
+                PresenceSensorGraceSeconds = graceSeconds
+            }, cancellationToken);
+            return new SetupResponse(true, "OK", "재실 센서 자동 잠금을 껐습니다.");
+        }
+
+        var baseUrl = string.IsNullOrWhiteSpace(request.Url)
+            && protocol == "smartthings"
+            ? "https://api.smartthings.com/v1"
+            : request.Url?.Trim();
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var endpoint)
+            || endpoint.Scheme is not ("http" or "https")
+            || string.IsNullOrWhiteSpace(request.EntityId)
+            || request.EntityId.Length > 256)
+        {
+            throw new ArgumentException(protocol == "smartthings"
+                ? "SmartThings API 주소와 device ID를 확인하세요."
+                : "Home Assistant 주소와 entity_id를 확인하세요.");
+        }
+
+        var currentToken = secretStore.Read("PhoneUnlock/PresenceSensor");
+        if (!string.IsNullOrWhiteSpace(request.Token))
+        {
+            presenceSensorClient.SaveToken(request.Token.Trim());
+        }
+        else if (string.IsNullOrWhiteSpace(currentToken))
+        {
+            throw new ArgumentException(protocol == "smartthings"
+                ? "SmartThings Personal Access Token을 입력하세요."
+                : "Home Assistant 장기 액세스 토큰을 입력하세요.");
+        }
+
+        await configurationStore.UpdateAsync(configuration => configuration with
+        {
+            PresenceSensorEnabled = true,
+            PresenceSensorProtocol = protocol,
+            PresenceSensorBaseUrl = endpoint.ToString().TrimEnd('/'),
+            PresenceSensorEntityId = request.EntityId.Trim(),
+            PresenceSensorComponentId = componentId,
+            PresenceSensorCapabilityId = capabilityId,
+            PresenceSensorAttributeName = attributeName,
+            PresenceSensorGraceSeconds = graceSeconds
+        }, cancellationToken);
+        var source = protocol == "smartthings" ? "SmartThings" : protocol == "matter" ? "Matter" : "Zigbee";
+        return new SetupResponse(true, "OK", $"{source} 재실 센서 연동 완료 · 감지 해제 후 {graceSeconds}초 뒤 잠금합니다.");
+    }
+
+    private async Task<SetupResponse> ListSmartThingsSensorsAsync(
+        SetupRequest request,
+        CancellationToken cancellationToken)
+    {
+        var baseUrl = string.IsNullOrWhiteSpace(request.Url)
+            ? "https://api.smartthings.com/v1"
+            : request.Url.Trim();
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var endpoint)
+            || endpoint.Scheme is not ("http" or "https"))
+        {
+            throw new ArgumentException("SmartThings API 주소를 확인하세요.");
+        }
+
+        var token = string.IsNullOrWhiteSpace(request.Token)
+            ? secretStore.Read("PhoneUnlock/PresenceSensor")
+            : request.Token.Trim();
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            throw new ArgumentException("SmartThings Personal Access Token을 입력하세요.");
+        }
+
+        var sensors = await presenceSensorClient.ListSmartThingsSensorsAsync(
+            endpoint.ToString().TrimEnd('/'),
+            token,
+            cancellationToken);
+        return new SetupResponse(true, "OK", sensors.Count == 0
+            ? "SmartThings에서 재실·동작 센서를 찾지 못했습니다."
+            : $"SmartThings 센서 {sensors.Count}개를 찾았습니다.",
+            ProtocolJson.Serialize(sensors));
     }
 }

@@ -13,6 +13,11 @@ public static class SetupCommands
     public const string Diagnostics = "DIAGNOSTICS";
     public const string SetProximityLock = "SET_PROXIMITY_LOCK";
     public const string SetProximityUnlock = "SET_PROXIMITY_UNLOCK";
+    public const string SetAutoLockProfile = "SET_AUTO_LOCK_PROFILE";
+    public const string SetBluetoothRssi = "SET_BLUETOOTH_RSSI";
+    public const string SetRemoteUnlock = "SET_REMOTE_UNLOCK";
+    public const string SetPresenceSensor = "SET_PRESENCE_SENSOR";
+    public const string ListSmartThingsSensors = "LIST_SMARTTHINGS_SENSORS";
 }
 
 public sealed record SetupRequest(
@@ -22,7 +27,16 @@ public sealed record SetupRequest(
     string? PhoneId = null,
     bool? Enabled = null,
     int? GraceSeconds = null,
-    int? Limit = null);
+    int? Limit = null,
+    string? Url = null,
+    string? EntityId = null,
+    string? Token = null,
+    string? Profile = null,
+    int? RssiThreshold = null,
+    string? SensorProtocol = null,
+    string? ComponentId = null,
+    string? CapabilityId = null,
+    string? AttributeName = null);
 
 public sealed record SetupResponse(bool Success, string Code, string Message, string? Data);
 
@@ -37,6 +51,18 @@ public sealed record SetupStatus(
     bool ProximityLockEnabled,
     bool ProximityUnlockEnabled,
     int ProximityGraceSeconds,
+    string AutoLockProfile,
+    bool BluetoothRssiEnabled,
+    int BluetoothRssiThreshold,
+    bool RemoteUnlockEnabled,
+    bool PresenceSensorEnabled,
+    string PresenceSensorProtocol,
+    string? PresenceSensorBaseUrl,
+    string? PresenceSensorEntityId,
+    string PresenceSensorComponentId,
+    string PresenceSensorCapabilityId,
+    string PresenceSensorAttributeName,
+    int PresenceSensorGraceSeconds,
     DateTimeOffset? LastSuccessfulPhoneAuth,
     bool ReadyToEnableCredentialProvider,
     bool InteractiveAgentConnected);
@@ -47,6 +73,17 @@ public sealed record PhoneStatus(
     bool Enabled,
     bool Connected,
     DateTimeOffset? LastSeen);
+
+public sealed record SmartThingsSensorOption(
+    string DeviceId,
+    string Label,
+    string ComponentId,
+    string CapabilityId,
+    string AttributeName,
+    string? CurrentState)
+{
+    public string DisplayName => $"{Label} · {CapabilityId}/{AttributeName} · {CurrentState ?? "상태 미확인"}";
+}
 
 public sealed record AuditEntry(
     DateTimeOffset OccurredAt,
@@ -78,6 +115,18 @@ public sealed record SetupDiagnostics(
     bool ProximityLockEnabled,
     bool ProximityUnlockEnabled,
     int ProximityGraceSeconds,
+    string AutoLockProfile,
+    bool BluetoothRssiEnabled,
+    int BluetoothRssiThreshold,
+    bool RemoteUnlockEnabled,
+    bool PresenceSensorEnabled,
+    string PresenceSensorProtocol,
+    string? PresenceSensorBaseUrl,
+    string? PresenceSensorEntityId,
+    string PresenceSensorComponentId,
+    string PresenceSensorCapabilityId,
+    string PresenceSensorAttributeName,
+    int PresenceSensorGraceSeconds,
     bool InteractiveAgentConnected);
 
 public sealed record PhoneSelectionItem(string PhoneId, string DisplayName);

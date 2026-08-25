@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text;
+using PhoneUnlock.Agent;
 
 if (!OperatingSystem.IsWindows())
 {
@@ -20,6 +21,32 @@ while (true)
         using var reader = new StreamReader(pipe, Encoding.UTF8, false, leaveOpen: true);
         await using var writer = new StreamWriter(pipe, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
         await writer.WriteLineAsync("READY");
+        using var rssiWatcher = new BluetoothRssiWatcher((phoneId, rssi) =>
+        {
+            try
+            {
+                lock (writer)
+                {
+                    if (pipe.IsConnected)
+                    {
+                        writer.WriteLine($"RSSI|{phoneId}|{rssi}");
+                    }
+                }
+            }
+            catch (IOException)
+            {
+                // The service will recreate the pipe after a disconnect.
+            }
+        });
+        try
+        {
+            rssiWatcher.Start();
+        }
+        catch (Exception) when (OperatingSystem.IsWindows())
+        {
+            // Bluetooth is optional. Phone heartbeat and presence sensors remain available.
+        }
+
         while (pipe.IsConnected)
         {
             var command = await reader.ReadLineAsync();

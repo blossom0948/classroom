@@ -12,7 +12,7 @@ void DllRelease();
 namespace
 {
 constexpr wchar_t ReadyStatus[] =
-    L"\uD734\uB300\uD3F0\uC5D0\uC11C \uC0DD\uCCB4\uC778\uC2DD\uC73C\uB85C \uC7A0\uAE08 \uD574\uC81C";
+    L"휴대폰에서 생체인식으로 잠금 해제";
 }
 
 const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR PhoneUnlockFieldDescriptors[FieldCount] =
@@ -148,7 +148,7 @@ HRESULT PhoneUnlockCredential::GetStringValue(DWORD fieldId, PWSTR* value)
     {
     case FieldTitle: return SHStrDupW(L"Phone Unlock", value);
     case FieldStatus: return SHStrDupW(status_.c_str(), value);
-    case FieldSubmit: return SHStrDupW(L"지문 요청 다시 보내기", value);
+    case FieldSubmit: return SHStrDupW(L"휴대폰 생체인식 요청", value);
     default: return E_INVALIDARG;
     }
 }

@@ -13,6 +13,7 @@ public sealed class AuthPipeService(
     WindowsCredentialStore credentialStore,
     ConfigurationStore configurationStore,
     PhoneConnectionRegistry connectionRegistry,
+    RemoteUnlockGrantStore remoteUnlockGrantStore,
     AuditLogStore auditLog,
     ILogger<AuthPipeService> logger) : BackgroundService
 {
@@ -130,6 +131,42 @@ public sealed class AuthPipeService(
         CancellationToken cancellationToken)
     {
         var configuration = await configurationStore.GetAsync(cancellationToken);
+        if (remoteUnlockGrantStore.TryConsume(sid, out var remotePhoneId))
+        {
+            var remotePhone = configuration.Phones.FirstOrDefault(phone => phone.PhoneId == remotePhoneId);
+            var remoteCredential = credentialStore.Read();
+            if (remoteCredential is null
+                || !string.Equals(configuration.ConfiguredAccountSid, sid, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(remoteCredential.Sid, sid, StringComparison.OrdinalIgnoreCase))
+            {
+                await auditLog.AppendAsync(new Models.AuditEntry(
+                    DateTimeOffset.UtcNow,
+                    "REMOTE_UNLOCK",
+                    "CREDENTIAL_MISMATCH",
+                    remotePhone?.PhoneId,
+                    remotePhone?.PhoneName,
+                    null,
+                    null,
+                    "원격 잠금 해제 승인과 Windows 계정이 일치하지 않음",
+                    Suspicious: true), CancellationToken.None);
+                await WriteErrorAsync(pipe, "CREDENTIAL_MISMATCH", "Stored Windows account does not match this tile.", cancellationToken);
+                return;
+            }
+
+            await auditLog.AppendAsync(new Models.AuditEntry(
+                DateTimeOffset.UtcNow,
+                "REMOTE_UNLOCK",
+                "SUCCESS",
+                remotePhone?.PhoneId,
+                remotePhone?.PhoneName,
+                null,
+                null,
+                "휴대폰 원격 잠금 해제 승인으로 Windows 잠금 해제",
+                Suspicious: false), CancellationToken.None);
+            await WriteCredentialAsync(pipe, remoteCredential, cancellationToken);
+            return;
+        }
+
         if (!configuration.ProximityUnlockEnabled)
         {
             await auditLog.AppendAsync(new Models.AuditEntry(

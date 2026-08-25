@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
@@ -23,6 +24,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 import java.time.Instant
+import java.util.UUID
 import kotlin.math.min
 
 class ConnectionService : Service() {
@@ -31,6 +33,8 @@ class ConnectionService : Service() {
     private var webSocket: WebSocket? = null
     private var reconnectAttempt = 0
     private var stopping = false
+    private var pendingMessage: String? = null
+    private var beaconAdvertiser: BleBeaconAdvertiser? = null
     private val heartbeat = object : Runnable {
         override fun run() {
             val socket = webSocket
@@ -53,7 +57,13 @@ class ConnectionService : Service() {
             ACTION_SEND_RESPONSE -> {
                 val response = intent?.getStringExtra(EXTRA_RESPONSE)
                 if (!response.isNullOrBlank()) {
-                    webSocket?.send(response)
+                    sendOrQueue(response)
+                }
+            }
+            ACTION_SEND_REMOTE_UNLOCK -> {
+                val request = intent?.getStringExtra(EXTRA_REMOTE_UNLOCK)
+                if (!request.isNullOrBlank()) {
+                    sendOrQueue(request)
                 }
             }
             ACTION_DISCONNECT -> {
@@ -101,6 +111,14 @@ class ConnectionService : Service() {
                 .put("timestamp", Instant.now().epochSecond)
                 .put("payload", JSONObject().put("phoneId", computer.phoneId))
             webSocket.send(hello.toString())
+            startBleBeacon(computer.phoneId)
+            activeComputerId = computer.computerId
+            activeConnection = true
+            pendingMessage?.let { queued ->
+                if (webSocket.send(queued)) {
+                    pendingMessage = null
+                }
+            }
             handler.removeCallbacks(heartbeat)
             handler.postDelayed(heartbeat, HEARTBEAT_INTERVAL_MS)
         }
@@ -108,9 +126,14 @@ class ConnectionService : Service() {
         override fun onMessage(webSocket: WebSocket, text: String) {
             try {
                 val root = JSONObject(text)
-                if (root.getInt("version") != 1 || root.getString("type") != "AUTH_REQUEST") {
+                if (root.getInt("version") != 1) {
                     return
                 }
+                if (root.getString("type") == "SECURITY_ALERT") {
+                    showSecurityAlertNotification(root.optJSONObject("payload")?.optString("message").orEmpty())
+                    return
+                }
+                if (root.getString("type") != "AUTH_REQUEST") return
                 val request = PhoneUnlockProtocol.parseAuthRequest(text)
                 showAuthenticationNotification(
                     text,
@@ -129,11 +152,19 @@ class ConnectionService : Service() {
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             this@ConnectionService.webSocket = null
+            stopBleBeacon()
+            if (activeComputerId == computer.computerId) {
+                activeConnection = false
+            }
             scheduleReconnect(computer)
         }
 
         override fun onFailure(webSocket: WebSocket, throwable: Throwable, response: Response?) {
             this@ConnectionService.webSocket = null
+            stopBleBeacon()
+            if (activeComputerId == computer.computerId) {
+                activeConnection = false
+            }
             updateConnectionNotification("${computer.computerName} · 오프라인, 재연결 대기")
             scheduleReconnect(computer)
         }
@@ -155,10 +186,19 @@ class ConnectionService : Service() {
         requestCode: Int,
         expiresAt: Long,
     ) {
-        val intent = Intent(this, AuthApprovalActivity::class.java)
-            .putExtra(EXTRA_AUTH_REQUEST, requestJson)
-            .putExtra(EXTRA_AUTH_NOTIFICATION_ID, requestCode)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val intent = authIntent(requestJson, requestCode)
+        if (AuthPromptSettings.isAutoOpenEnabled(this)
+            && AuthPromptSettings.canUseFullScreenIntent(this)) {
+            try {
+                startActivity(intent)
+                return
+            } catch (_: SecurityException) {
+                // Android background-activity rules can reject this path. Use the notification fallback.
+            } catch (_: ActivityNotFoundException) {
+                // Use the notification fallback.
+            }
+        }
+
         val pendingIntent = PendingIntent.getActivity(
             this,
             requestCode,
@@ -168,13 +208,13 @@ class ConnectionService : Service() {
         val notification = Notification.Builder(this, AUTH_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_phone_unlock)
             .setContentTitle("Windows 로그인 요청")
-            .setContentText("$computerName 잠금 해제를 휴대폰 인증으로 승인")
+            .setContentText("$computerName · 휴대폰 생체인식으로 승인")
             .setCategory(Notification.CATEGORY_REMINDER)
             .setPriority(Notification.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setTimeoutAfter(((expiresAt - Instant.now().epochSecond).coerceAtLeast(1)) * 1_000L)
             .setContentIntent(pendingIntent)
-            .addAction(R.drawable.ic_phone_unlock, "휴대폰 인증", pendingIntent)
+            .addAction(R.drawable.ic_phone_unlock, "생체인식", pendingIntent)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .apply {
                 if (AuthPromptSettings.isAutoOpenEnabled(this@ConnectionService)) {
@@ -183,6 +223,47 @@ class ConnectionService : Service() {
             }
             .build()
         getSystemService(NotificationManager::class.java).notify(requestCode, notification)
+    }
+
+    private fun showSecurityAlertNotification(message: String) {
+        val notification = Notification.Builder(this, AUTH_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_phone_unlock)
+            .setContentTitle("의심스러운 연결 차단")
+            .setContentText(message.ifBlank { "PC에서 의심스러운 요청을 차단했습니다." })
+            .setCategory(Notification.CATEGORY_ERROR)
+            .setPriority(Notification.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .build()
+        getSystemService(NotificationManager::class.java).notify(SECURITY_NOTIFICATION_ID, notification)
+    }
+
+    private fun authIntent(requestJson: String, requestCode: Int): Intent = Intent(this, AuthApprovalActivity::class.java)
+            .putExtra(EXTRA_AUTH_REQUEST, requestJson)
+            .putExtra(EXTRA_AUTH_NOTIFICATION_ID, requestCode)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+
+    private fun sendOrQueue(message: String) {
+        if (webSocket?.send(message) == true) {
+            return
+        }
+        pendingMessage = message
+        stopping = false
+        connect()
+    }
+
+    private fun startBleBeacon(phoneId: String) {
+        try {
+            beaconAdvertiser = BleBeaconAdvertiser(this).also { it.start(phoneId) }
+        } catch (_: Exception) {
+            // Bluetooth RSSI is optional; the WebSocket heartbeat remains the source of truth.
+            beaconAdvertiser = null
+        }
+    }
+
+    private fun stopBleBeacon() {
+        beaconAdvertiser?.stop()
+        beaconAdvertiser = null
     }
 
     private fun connectionNotification(message: String): Notification =
@@ -221,6 +302,8 @@ class ConnectionService : Service() {
         handler.removeCallbacksAndMessages(null)
         webSocket?.cancel()
         webSocket = null
+        stopBleBeacon()
+        activeConnection = false
         super.onDestroy()
     }
 
@@ -238,13 +321,20 @@ class ConnectionService : Service() {
         const val EXTRA_AUTH_REQUEST = "auth_request"
         const val EXTRA_AUTH_NOTIFICATION_ID = "auth_notification_id"
         private const val EXTRA_RESPONSE = "auth_response"
+        private const val EXTRA_REMOTE_UNLOCK = "remote_unlock_request"
         private const val ACTION_CONNECT = "com.example.phoneunlock.CONNECT"
         private const val ACTION_SEND_RESPONSE = "com.example.phoneunlock.SEND_RESPONSE"
+        private const val ACTION_SEND_REMOTE_UNLOCK = "com.example.phoneunlock.SEND_REMOTE_UNLOCK"
         private const val ACTION_DISCONNECT = "com.example.phoneunlock.DISCONNECT"
         private const val CONNECTION_CHANNEL_ID = "phone_unlock_connection"
         private const val AUTH_CHANNEL_ID = "phone_unlock_auth"
         private const val CONNECTION_NOTIFICATION_ID = 48231
+        private const val SECURITY_NOTIFICATION_ID = 48232
         private const val HEARTBEAT_INTERVAL_MS = 10_000L
+        @Volatile private var activeComputerId: UUID? = null
+        @Volatile private var activeConnection: Boolean = false
+
+        fun isConnected(computerId: UUID): Boolean = activeConnection && activeComputerId == computerId
 
         fun connect(context: Context) {
             ContextCompat.startForegroundService(
@@ -258,6 +348,15 @@ class ConnectionService : Service() {
                 Intent(context, ConnectionService::class.java)
                     .setAction(ACTION_SEND_RESPONSE)
                     .putExtra(EXTRA_RESPONSE, response),
+            )
+        }
+
+        fun sendRemoteUnlockRequest(context: Context, request: String) {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, ConnectionService::class.java)
+                    .setAction(ACTION_SEND_REMOTE_UNLOCK)
+                    .putExtra(EXTRA_REMOTE_UNLOCK, request),
             )
         }
 

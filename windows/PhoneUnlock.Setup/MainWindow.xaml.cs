@@ -43,6 +43,36 @@ public partial class MainWindow : Window
 
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshStatusAsync();
 
+    private void HomePhoneList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingControls || HomePhoneList.SelectedItem is not ListBoxItem item
+            || item.Tag is not string phoneId || currentStatus is null)
+        {
+            return;
+        }
+
+        var phone = currentStatus.Phones.FirstOrDefault(candidate => candidate.PhoneId == phoneId);
+        if (phone is null) return;
+        PhoneSelectorComboBox.SelectedItem = PhoneSelectorComboBox.Items
+            .OfType<PhoneSelectionItem>()
+            .FirstOrDefault(candidate => candidate.PhoneId == phone.PhoneId);
+        SettingsHeaderText.Text = phone.PhoneName;
+        HomePanel.Visibility = Visibility.Collapsed;
+        SettingsPanel.Visibility = Visibility.Visible;
+    }
+
+    private void BackToHome_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsPanel.Visibility = Visibility.Collapsed;
+        HomePanel.Visibility = Visibility.Visible;
+        if (currentStatus is not null)
+        {
+            updatingControls = true;
+            HomePhoneList.SelectedItem = null;
+            updatingControls = false;
+        }
+    }
+
     private async void UseSelectedPhone_Click(object sender, RoutedEventArgs e)
     {
         if (PhoneSelectorComboBox.SelectedItem is not PhoneSelectionItem phone)
@@ -97,6 +127,117 @@ public partial class MainWindow : Window
         await SaveProximityUnlockAsync();
     }
 
+    private async void RemoteUnlock_Click(object sender, RoutedEventArgs e)
+    {
+        if (updatingControls) return;
+        var enabled = RemoteUnlockCheckBox.IsChecked == true;
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.SetRemoteUnlock, Enabled: enabled),
+                TimeSpan.FromSeconds(10));
+            SetOperation(response.Message, response.Success);
+            if (response.Success) await RefreshStatusAsync();
+        });
+    }
+
+    private async void AutoLockProfile_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingControls || !IsLoaded || currentStatus is null) return;
+        await SaveAutoLockProfileAsync();
+    }
+
+    private async void BluetoothRssi_Click(object sender, RoutedEventArgs e)
+    {
+        if (updatingControls) return;
+        await SaveBluetoothRssiAsync();
+    }
+
+    private async void BluetoothRssiThreshold_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingControls || !IsLoaded || currentStatus is null || BluetoothRssiCheckBox.IsChecked != true) return;
+        await SaveBluetoothRssiAsync();
+    }
+
+    private async void PresenceSensor_Click(object sender, RoutedEventArgs e)
+    {
+        if (updatingControls) return;
+        await SavePresenceSensorAsync();
+    }
+
+    private async void PresenceSensorProtocol_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingControls || !IsLoaded) return;
+        ApplyPresenceSensorProtocolUi(updateDefaults: true);
+        if (currentStatus is not null && PresenceSensorCheckBox.IsChecked == true)
+        {
+            await SavePresenceSensorAsync();
+        }
+    }
+
+    private async void FindSmartThingsSensors_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.Equals(SelectedPresenceSensorProtocol(), "smartthings", StringComparison.OrdinalIgnoreCase))
+        {
+            SetOperation("연결 방식에서 SmartThings Station을 먼저 선택하세요.", success: false);
+            return;
+        }
+
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(
+                    SetupCommands.ListSmartThingsSensors,
+                    Url: PresenceSensorUrlInput.Text,
+                    Token: PresenceSensorTokenInput.Password,
+                    SensorProtocol: "smartthings"),
+                TimeSpan.FromSeconds(15));
+            if (!response.Success || string.IsNullOrWhiteSpace(response.Data))
+            {
+                SetOperation(response.Message, success: false);
+                return;
+            }
+
+            var sensors = ProtocolJson.Deserialize<SmartThingsSensorOption[]>(response.Data);
+            updatingControls = true;
+            SmartThingsSensorComboBox.Items.Clear();
+            foreach (var sensor in sensors)
+            {
+                SmartThingsSensorComboBox.Items.Add(sensor);
+            }
+            SmartThingsSensorComboBox.Visibility = sensors.Length == 0
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+            updatingControls = false;
+            SetOperation(response.Message, sensors.Length > 0);
+        });
+    }
+
+    private async void SmartThingsSensor_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingControls || SmartThingsSensorComboBox.SelectedItem is not SmartThingsSensorOption sensor)
+        {
+            return;
+        }
+
+        updatingControls = true;
+        PresenceSensorEntityInput.Text = sensor.DeviceId;
+        PresenceSensorComponentInput.Text = sensor.ComponentId;
+        PresenceSensorCapabilityInput.Text = sensor.CapabilityId;
+        PresenceSensorAttributeInput.Text = sensor.AttributeName;
+        updatingControls = false;
+        if (PresenceSensorCheckBox.IsChecked == true)
+        {
+            await SavePresenceSensorAsync();
+        }
+    }
+
+    private async void PresenceSensorGrace_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingControls || !IsLoaded || currentStatus is null || PresenceSensorCheckBox.IsChecked != true) return;
+        await SavePresenceSensorAsync();
+    }
+
     private void StartAgent_Click(object sender, RoutedEventArgs e)
     {
         var agentPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "agent", "PhoneUnlock.Agent.exe"));
@@ -149,6 +290,62 @@ public partial class MainWindow : Window
             var response = await client.SendAsync(
                 new SetupRequest(SetupCommands.SetProximityUnlock, Enabled: enabled),
                 TimeSpan.FromSeconds(10));
+            SetOperation(response.Message, response.Success);
+            if (response.Success) await RefreshStatusAsync();
+        });
+    }
+
+    private async Task SaveAutoLockProfileAsync()
+    {
+        var profile = SelectedAutoLockProfile();
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.SetAutoLockProfile, Profile: profile),
+                TimeSpan.FromSeconds(10));
+            SetOperation(response.Message, response.Success);
+            if (response.Success) await RefreshStatusAsync();
+        });
+    }
+
+    private async Task SaveBluetoothRssiAsync()
+    {
+        var enabled = BluetoothRssiCheckBox.IsChecked == true;
+        var threshold = SelectedBluetoothRssiThreshold();
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(
+                    SetupCommands.SetBluetoothRssi,
+                    Enabled: enabled,
+                    RssiThreshold: threshold),
+                TimeSpan.FromSeconds(10));
+            SetOperation(response.Message, response.Success);
+            if (response.Success) await RefreshStatusAsync();
+        });
+    }
+
+    private async Task SavePresenceSensorAsync()
+    {
+        var enabled = PresenceSensorCheckBox.IsChecked == true;
+        var grace = SelectedPresenceGraceSeconds();
+        var protocol = SelectedPresenceSensorProtocol();
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(
+                    SetupCommands.SetPresenceSensor,
+                    Enabled: enabled,
+                    GraceSeconds: grace,
+                    Url: PresenceSensorUrlInput.Text,
+                    EntityId: PresenceSensorEntityInput.Text,
+                    Token: PresenceSensorTokenInput.Password,
+                    SensorProtocol: protocol,
+                    ComponentId: PresenceSensorComponentInput.Text,
+                    CapabilityId: PresenceSensorCapabilityInput.Text,
+                    AttributeName: PresenceSensorAttributeInput.Text),
+                TimeSpan.FromSeconds(15));
+            PresenceSensorTokenInput.Clear();
             SetOperation(response.Message, response.Success);
             if (response.Success) await RefreshStatusAsync();
         });
@@ -389,6 +586,17 @@ public partial class MainWindow : Window
                     $"{(phone.Connected ? "●" : "○")} {phone.PhoneName} · {(phone.Connected ? "연결됨" : "오프라인")}"));
 
             updatingControls = true;
+            HomePhoneList.Items.Clear();
+            foreach (var phone in currentStatus.Phones)
+            {
+                HomePhoneList.Items.Add(new ListBoxItem
+                {
+                    Tag = phone.PhoneId,
+                    Content = $"{(phone.Connected ? "●" : "○")}  {phone.PhoneName}    {(phone.Connected ? "연결됨" : "오프라인")}",
+                    Padding = new Thickness(10, 8, 10, 8),
+                    Foreground = BrushFrom(phone.Connected ? "#217346" : "#555A63")
+                });
+            }
             PhoneSelectorComboBox.Items.Clear();
             foreach (var phone in currentStatus.Phones)
             {
@@ -401,8 +609,18 @@ public partial class MainWindow : Window
                 : PhoneSelectorComboBox.Items.OfType<PhoneSelectionItem>()
                     .FirstOrDefault(item => item.PhoneId == currentStatus.PreferredPhoneId);
             UseSelectedPhoneButton.IsEnabled = PhoneSelectorComboBox.Items.Count > 0;
+            RemoteUnlockCheckBox.IsChecked = currentStatus.RemoteUnlockEnabled;
+            AutoLockProfileComboBox.SelectedItem = AutoLockProfileComboBox.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), currentStatus.AutoLockProfile, StringComparison.OrdinalIgnoreCase))
+                ?? AutoLockProfileComboBox.Items.OfType<ComboBoxItem>().FirstOrDefault(item => item.Tag?.ToString() == "standard");
             ProximityLockCheckBox.IsChecked = currentStatus.ProximityLockEnabled;
             ProximityUnlockCheckBox.IsChecked = currentStatus.ProximityUnlockEnabled;
+            BluetoothRssiCheckBox.IsChecked = currentStatus.BluetoothRssiEnabled;
+            BluetoothRssiThresholdComboBox.SelectedItem = BluetoothRssiThresholdComboBox.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), currentStatus.BluetoothRssiThreshold.ToString(), StringComparison.Ordinal))
+                ?? BluetoothRssiThresholdComboBox.Items.OfType<ComboBoxItem>().FirstOrDefault(item => item.Tag?.ToString() == "-75");
             ProximityAgentStatusText.Text = currentStatus.InteractiveAgentConnected
                 ? "✓ 자동잠금 에이전트 연결됨 · 휴대폰 연결 상태를 감시 중입니다."
                 : currentStatus.ProximityLockEnabled
@@ -413,6 +631,27 @@ public partial class MainWindow : Window
                 .OfType<ComboBoxItem>()
                 .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), currentStatus.ProximityGraceSeconds.ToString(), StringComparison.Ordinal))
                 ?? ProximityGraceComboBox.Items.OfType<ComboBoxItem>().FirstOrDefault(item => item.Tag?.ToString() == "30");
+            PresenceSensorCheckBox.IsChecked = currentStatus.PresenceSensorEnabled;
+            PresenceSensorProtocolComboBox.SelectedItem = PresenceSensorProtocolComboBox.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), currentStatus.PresenceSensorProtocol, StringComparison.OrdinalIgnoreCase))
+                ?? PresenceSensorProtocolComboBox.Items.OfType<ComboBoxItem>().FirstOrDefault();
+            PresenceSensorUrlInput.Text = currentStatus.PresenceSensorBaseUrl ?? string.Empty;
+            PresenceSensorEntityInput.Text = currentStatus.PresenceSensorEntityId ?? string.Empty;
+            PresenceSensorComponentInput.Text = currentStatus.PresenceSensorComponentId;
+            PresenceSensorCapabilityInput.Text = currentStatus.PresenceSensorCapabilityId;
+            PresenceSensorAttributeInput.Text = currentStatus.PresenceSensorAttributeName;
+            ApplyPresenceSensorProtocolUi(updateDefaults: false);
+            SmartThingsSensorComboBox.Items.Clear();
+            SmartThingsSensorComboBox.Visibility = Visibility.Collapsed;
+            PresenceSensorTokenInput.Clear();
+            PresenceSensorStateText.Text = currentStatus.PresenceSensorEnabled
+                ? $"{PresenceSensorProtocolLabel(currentStatus.PresenceSensorProtocol)} 센서 사용 중 · 토큰 저장됨"
+                : "사용 안 함";
+            PresenceSensorGraceComboBox.SelectedItem = PresenceSensorGraceComboBox.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), currentStatus.PresenceSensorGraceSeconds.ToString(), StringComparison.Ordinal))
+                ?? PresenceSensorGraceComboBox.Items.OfType<ComboBoxItem>().FirstOrDefault(item => item.Tag?.ToString() == "10");
             updatingControls = false;
 
             var providerEnabled = IsCredentialProviderRegistered();
@@ -434,6 +673,8 @@ public partial class MainWindow : Window
         {
             currentStatus = null;
             SetServiceControls(enabled: false);
+            HomePanel.Visibility = Visibility.Visible;
+            SettingsPanel.Visibility = Visibility.Collapsed;
             InstallRequiredCard.Visibility = Visibility.Visible;
             InstallButton.IsEnabled = true;
             ServiceStatusText.Text = "● 설치되지 않음";
@@ -454,6 +695,7 @@ public partial class MainWindow : Window
         StoreCredentialButton.IsEnabled = enabled;
         PasswordInput.IsEnabled = enabled;
         EnableLoginButton.IsEnabled = enabled;
+        HomePhoneList.IsEnabled = enabled;
         PhoneSelectorComboBox.IsEnabled = enabled;
         UseSelectedPhoneButton.IsEnabled = enabled && PhoneSelectorComboBox.Items.Count > 0;
         DiagnosticsButton.IsEnabled = enabled;
@@ -461,11 +703,27 @@ public partial class MainWindow : Window
         ProximityLockCheckBox.IsEnabled = enabled;
         ProximityUnlockCheckBox.IsEnabled = enabled;
         ProximityGraceComboBox.IsEnabled = enabled;
+        RemoteUnlockCheckBox.IsEnabled = enabled;
+        AutoLockProfileComboBox.IsEnabled = enabled;
+        PresenceSensorCheckBox.IsEnabled = enabled;
+        PresenceSensorProtocolComboBox.IsEnabled = enabled;
+        PresenceSensorUrlInput.IsEnabled = enabled;
+        PresenceSensorEntityInput.IsEnabled = enabled;
+        PresenceSensorComponentInput.IsEnabled = enabled;
+        PresenceSensorCapabilityInput.IsEnabled = enabled;
+        PresenceSensorAttributeInput.IsEnabled = enabled;
+        PresenceSensorTokenInput.IsEnabled = enabled;
+        PresenceSensorGraceComboBox.IsEnabled = enabled;
+        BluetoothRssiCheckBox.IsEnabled = enabled;
+        BluetoothRssiThresholdComboBox.IsEnabled = enabled;
+        FindSmartThingsSensorsButton.IsEnabled = enabled;
+        SmartThingsSensorComboBox.IsEnabled = enabled;
         StartAgentButton.IsEnabled = enabled;
         if (!enabled)
         {
             DisableLoginButton.Visibility = Visibility.Collapsed;
             PairingPanel.Visibility = Visibility.Collapsed;
+            HomePhoneList.Items.Clear();
         }
     }
 
@@ -508,6 +766,80 @@ public partial class MainWindow : Window
         int.TryParse((ProximityGraceComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out var seconds)
             ? seconds
             : 30;
+
+    private int SelectedPresenceGraceSeconds() =>
+        int.TryParse((PresenceSensorGraceComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out var seconds)
+            ? seconds
+            : 10;
+
+    private string SelectedAutoLockProfile() =>
+        (AutoLockProfileComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "standard";
+
+    private int SelectedBluetoothRssiThreshold() =>
+        int.TryParse((BluetoothRssiThresholdComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out var threshold)
+            ? threshold
+            : -75;
+
+    private string SelectedPresenceSensorProtocol() =>
+        (PresenceSensorProtocolComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "zigbee";
+
+    private void ApplyPresenceSensorProtocolUi(bool updateDefaults)
+    {
+        var protocol = SelectedPresenceSensorProtocol();
+        var smartThings = string.Equals(protocol, "smartthings", StringComparison.OrdinalIgnoreCase);
+        SmartThingsFieldsPanel.Visibility = smartThings ? Visibility.Visible : Visibility.Collapsed;
+        FindSmartThingsSensorsButton.Visibility = smartThings ? Visibility.Visible : Visibility.Collapsed;
+        if (!smartThings)
+        {
+            SmartThingsSensorComboBox.Visibility = Visibility.Collapsed;
+        }
+        PresenceSensorTargetHint.Text = smartThings
+            ? "SmartThings device ID · capability와 attribute는 아래에 입력"
+            : "Home Assistant entity_id · Zigbee/Matter 센서는 HA에 추가되어 있어야 합니다.";
+        PresenceSensorUrlInput.ToolTip = smartThings
+            ? "SmartThings API 주소 (기본값: https://api.smartthings.com/v1)"
+            : "Home Assistant 주소";
+        PresenceSensorEntityInput.ToolTip = smartThings
+            ? "SmartThings device ID"
+            : "sensor 또는 binary_sensor entity_id";
+        PresenceSensorTokenInput.ToolTip = smartThings
+            ? "SmartThings Personal Access Token"
+            : "Home Assistant 장기 액세스 토큰";
+
+        if (!updateDefaults) return;
+        if (smartThings)
+        {
+            if (string.IsNullOrWhiteSpace(PresenceSensorUrlInput.Text)
+                || PresenceSensorUrlInput.Text.Contains("homeassistant.local", StringComparison.OrdinalIgnoreCase))
+            {
+                PresenceSensorUrlInput.Text = "https://api.smartthings.com/v1";
+            }
+            if (string.IsNullOrWhiteSpace(PresenceSensorCapabilityInput.Text))
+            {
+                PresenceSensorCapabilityInput.Text = "occupancySensor";
+            }
+            if (string.IsNullOrWhiteSpace(PresenceSensorAttributeInput.Text))
+            {
+                PresenceSensorAttributeInput.Text = "occupancy";
+            }
+            if (string.IsNullOrWhiteSpace(PresenceSensorComponentInput.Text))
+            {
+                PresenceSensorComponentInput.Text = "main";
+            }
+        }
+        else if (PresenceSensorUrlInput.Text.Contains("api.smartthings.com", StringComparison.OrdinalIgnoreCase))
+        {
+            PresenceSensorUrlInput.Text = "http://homeassistant.local:8123";
+        }
+    }
+
+    private static string PresenceSensorProtocolLabel(string protocol) =>
+        protocol.ToLowerInvariant() switch
+        {
+            "smartthings" => "SmartThings Station",
+            "matter" => "Matter",
+            _ => "Zigbee"
+        };
 
     private async Task RunOperationAsync(Func<Task> operation)
     {

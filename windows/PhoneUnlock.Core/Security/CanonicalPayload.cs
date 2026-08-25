@@ -17,11 +17,20 @@ public static class CanonicalPayload
         response.Challenge,
         response.ExpiresAt);
 
+    public static string Create(RemoteUnlockRequestPayload request) => Create(
+        request.RequestId,
+        request.ComputerId,
+        request.Challenge,
+        request.ExpiresAt);
+
     public static byte[] GetBytes(AuthRequestPayload request) =>
         Encoding.UTF8.GetBytes(Create(request));
 
     public static byte[] GetBytes(AuthApprovedPayload response) =>
         Encoding.UTF8.GetBytes(Create(response));
+
+    public static byte[] GetBytes(RemoteUnlockRequestPayload request) =>
+        Encoding.UTF8.GetBytes(Create(request));
 
     private static string Create(Guid requestId, Guid computerId, string challenge, long expiresAt)
     {

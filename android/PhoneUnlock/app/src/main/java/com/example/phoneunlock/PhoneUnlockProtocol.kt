@@ -14,6 +14,14 @@ data class AuthRequest(
     val expiresAt: Long,
 )
 
+data class RemoteUnlockRequest(
+    val requestId: UUID,
+    val computerId: UUID,
+    val challenge: String,
+    val expiresAt: Long,
+    val phoneId: String,
+)
+
 object PhoneUnlockProtocol {
     const val VERSION = 1
     const val MAX_AUTH_LIFETIME_SECONDS = 30L
@@ -88,6 +96,28 @@ object PhoneUnlockProtocol {
             .put("computerId", request.computerId.toString().lowercase())
             .put("reason", "REQUEST_EXPIRED")
         return envelope("AUTH_EXPIRED", payload).toString(2)
+    }
+
+    fun canonicalRemoteUnlockPayload(request: RemoteUnlockRequest): ByteArray {
+        validateChallenge(request.challenge)
+        return listOf(
+            "PHONE-UNLOCK-V1",
+            "requestId=${request.requestId.toString().lowercase()}",
+            "computerId=${request.computerId.toString().lowercase()}",
+            "challenge=${request.challenge}",
+            "expiresAt=${request.expiresAt}",
+        ).joinToString("\n").toByteArray(Charsets.UTF_8)
+    }
+
+    fun remoteUnlockResponse(request: RemoteUnlockRequest, signature: ByteArray): String {
+        val payload = JSONObject()
+            .put("requestId", request.requestId.toString().lowercase())
+            .put("computerId", request.computerId.toString().lowercase())
+            .put("challenge", request.challenge)
+            .put("expiresAt", request.expiresAt)
+            .put("phoneId", request.phoneId)
+            .put("signature", Base64.encodeToString(signature, Base64.NO_WRAP))
+        return envelope("REMOTE_UNLOCK_REQUEST", payload).toString(2)
     }
 
     private fun envelope(type: String, payload: JSONObject): JSONObject = JSONObject()
