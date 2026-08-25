@@ -11,7 +11,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
-import android.provider.Settings
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.util.Base64
 import android.view.View
@@ -29,6 +28,7 @@ import com.example.phoneunlock.network.PairingClient
 import com.example.phoneunlock.storage.PairedComputer
 import com.example.phoneunlock.storage.PairingPayload
 import com.example.phoneunlock.storage.SecurePairingStore
+import com.example.phoneunlock.widget.PcWidgetProvider
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.radiobutton.MaterialRadioButton
@@ -67,9 +67,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var authMethodStatusText: TextView
     private lateinit var diagnosticsButton: MaterialButton
     private lateinit var diagnosticsText: TextView
-    private lateinit var notificationSettingsButton: MaterialButton
-    private lateinit var batterySettingsButton: MaterialButton
     private lateinit var remoteUnlockButton: MaterialButton
+    private lateinit var remoteLockButton: MaterialButton
     private lateinit var keystoreSigner: KeystoreSigner
     private lateinit var pairingStore: SecurePairingStore
     private val pairingClient = PairingClient()
@@ -128,9 +127,8 @@ class MainActivity : AppCompatActivity() {
         authMethodStatusText = findViewById(R.id.authMethodStatusText)
         diagnosticsButton = findViewById(R.id.diagnosticsButton)
         diagnosticsText = findViewById(R.id.diagnosticsText)
-        notificationSettingsButton = findViewById(R.id.notificationSettingsButton)
-        batterySettingsButton = findViewById(R.id.batterySettingsButton)
         remoteUnlockButton = findViewById(R.id.remoteUnlockButton)
+        remoteLockButton = findViewById(R.id.remoteLockButton)
         keystoreSigner = KeystoreSigner(this)
         pairingStore = SecurePairingStore(this)
         phoneId = loadOrCreatePhoneId()
@@ -141,6 +139,7 @@ class MainActivity : AppCompatActivity() {
         disconnectButton.setOnClickListener { disconnectComputer() }
         settingsBackButton.setOnClickListener { showHome() }
         remoteUnlockButton.setOnClickListener { requestRemoteUnlock() }
+        remoteLockButton.setOnClickListener { requestRemoteLock() }
         updateButton.setOnClickListener { handleUpdateClick() }
         autoPromptSwitch.isChecked = AuthPromptSettings.isAutoOpenEnabled(this)
         autoPromptSwitch.setOnCheckedChangeListener { _, enabled ->
@@ -174,8 +173,6 @@ class MainActivity : AppCompatActivity() {
             )
         }
         diagnosticsButton.setOnClickListener { runDiagnostics() }
-        notificationSettingsButton.setOnClickListener { openNotificationSettings() }
-        batterySettingsButton.setOnClickListener { openBatterySettings() }
         fullScreenPermissionButton.setOnClickListener {
             val permissionIntent = AuthPromptSettings.permissionIntent(this)
                 ?: return@setOnClickListener
@@ -197,12 +194,17 @@ class MainActivity : AppCompatActivity() {
         } ?: displayNoPairedComputer()
 
         checkForUpdate(silent = true)
+        if (savedInstanceState == null && intent?.action == ACTION_WIDGET_UNLOCK) {
+            window.decorView.post { requestRemoteUnlock() }
+        }
     }
 
     override fun onResume() {
         super.onResume()
         if (::autoPromptSwitch.isInitialized) {
             updateAutoPromptControls()
+            pairingStore.load()?.let { refreshComputerChoices(it) }
+            PcWidgetProvider.refresh(this)
         }
     }
 
@@ -345,6 +347,7 @@ class MainActivity : AppCompatActivity() {
                     authMode = AuthPromptSettings.currentAuthMode(this@MainActivity),
                 )
                 pairingStore.save(paired, select = true)
+                PcWidgetProvider.refresh(this@MainActivity)
                 pairingInput.text?.clear()
                 displayPairedComputer(paired)
                 showSettings(paired)
@@ -366,6 +369,7 @@ class MainActivity : AppCompatActivity() {
         ConnectionService.disconnect(this)
         pairingStore.remove(paired.computerId)
         keystoreSigner.delete(paired.computerId)
+        PcWidgetProvider.refresh(this)
         pairingInput.text?.clear()
         val next = pairingStore.load()
         if (next == null) {
@@ -431,6 +435,7 @@ class MainActivity : AppCompatActivity() {
                         ConnectionService.connect(this@MainActivity)
                         displayPairedComputer(computer)
                         showSettings(computer)
+                        PcWidgetProvider.refresh(this@MainActivity)
                         showResult("${computer.computerName} 선택됨", success = true)
                     }
                 }
@@ -643,21 +648,30 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun openNotificationSettings() {
-        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-        startActivity(intent)
-    }
+    private fun requestRemoteLock() {
+        val computer = pairingStore.load()
+        if (computer == null) {
+            showResult("먼저 PC를 연결하세요", success = false)
+            return
+        }
 
-    private fun openBatterySettings() {
-        val requestIntent = Intent(
-            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-            Uri.parse("package:$packageName"),
+        val request = RemoteLockRequest(
+            requestId = UUID.randomUUID(),
+            computerId = computer.computerId,
+            expiresAt = Instant.now().epochSecond + 30,
+            phoneId = computer.phoneId,
         )
+        remoteLockButton.isEnabled = false
         try {
-            startActivity(requestIntent)
-        } catch (_: ActivityNotFoundException) {
-            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            ConnectionService.sendRemoteLockRequest(
+                this,
+                PhoneUnlockProtocol.remoteLockResponse(request),
+            )
+            showResult("PC에 잠금을 요청했습니다", success = true)
+        } catch (exception: Exception) {
+            showResult(exception.message ?: "잠금 요청을 보내지 못했습니다", success = false)
+        } finally {
+            remoteLockButton.isEnabled = true
         }
     }
 
@@ -706,4 +720,8 @@ class MainActivity : AppCompatActivity() {
 
     private val Int.dp: Int
         get() = (this * resources.displayMetrics.density).toInt()
+
+    companion object {
+        const val ACTION_WIDGET_UNLOCK = "com.example.phoneunlock.WIDGET_UNLOCK"
+    }
 }

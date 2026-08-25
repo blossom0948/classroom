@@ -12,7 +12,8 @@ public sealed class PhoneConnection(
     WebSocket socket,
     string? remoteIp,
     ILogger<PhoneConnection> logger,
-    Action<string> remoteUnlockHandler) : IAsyncDisposable
+    Action<string> remoteUnlockHandler,
+    Action<string> remoteLockHandler) : IAsyncDisposable
 {
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<string>> pending = new();
     private readonly SemaphoreSlim sendGate = new(1, 1);
@@ -152,6 +153,12 @@ public sealed class PhoneConnection(
             if (type == ProtocolConstants.RemoteUnlockRequest)
             {
                 remoteUnlockHandler(json);
+                return;
+            }
+
+            if (type == ProtocolConstants.RemoteLockRequest)
+            {
+                remoteLockHandler(json);
                 return;
             }
 

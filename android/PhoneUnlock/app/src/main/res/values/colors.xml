@@ -4,4 +4,5 @@
     <color name="brand_on_primary">#FFFFFF</color>
     <color name="brand_surface">#F7F8FC</color>
     <color name="brand_on_surface">#18191B</color>
+    <color name="brand_muted">#5F6368</color>
 </resources>

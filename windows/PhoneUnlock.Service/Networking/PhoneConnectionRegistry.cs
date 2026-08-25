@@ -15,8 +15,11 @@ public sealed class PhoneConnectionRegistry(
     private readonly ConcurrentDictionary<string, PhoneConnection> connections = new(StringComparer.Ordinal);
     private readonly Channel<RemoteUnlockRequest> remoteUnlockRequests = Channel.CreateUnbounded<RemoteUnlockRequest>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+    private readonly Channel<RemoteUnlockRequest> remoteLockRequests = Channel.CreateUnbounded<RemoteUnlockRequest>(
+        new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
     public ChannelReader<RemoteUnlockRequest> RemoteUnlockRequests => remoteUnlockRequests.Reader;
+    public ChannelReader<RemoteUnlockRequest> RemoteLockRequests => remoteLockRequests.Reader;
 
     public async Task<PairedPhoneRecord?> AuthenticateDeviceAsync(
         string? phoneId,
@@ -65,7 +68,8 @@ public sealed class PhoneConnectionRegistry(
             socket,
             remoteIp,
             loggerFactory.CreateLogger<PhoneConnection>(),
-            json => remoteUnlockRequests.Writer.TryWrite(new RemoteUnlockRequest(phone.PhoneId, remoteIp, json)));
+            json => remoteUnlockRequests.Writer.TryWrite(new RemoteUnlockRequest(phone.PhoneId, remoteIp, json)),
+            json => remoteLockRequests.Writer.TryWrite(new RemoteUnlockRequest(phone.PhoneId, remoteIp, json)));
         if (connections.TryGetValue(phone.PhoneId, out var previous))
         {
             await previous.DisposeAsync();

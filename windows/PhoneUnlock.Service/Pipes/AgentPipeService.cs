@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using PhoneUnlock.Service.Configuration;
 using PhoneUnlock.Service.Networking;
+using PhoneUnlock.Service.Security;
 using PhoneUnlock.Service.Storage;
 
 namespace PhoneUnlock.Service.Pipes;
@@ -12,6 +13,7 @@ public sealed class AgentPipeService(
     PhoneConnectionRegistry connectionRegistry,
     PresenceSensorClient presenceSensorClient,
     AgentConnectionState agentConnectionState,
+    WorkstationLockSignal lockSignal,
     ILogger<AgentPipeService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -56,7 +58,18 @@ public sealed class AgentPipeService(
         using var agentLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var readTask = ReadAgentMessagesAsync(reader, agentLifetime.Token);
         var monitorTask = MonitorPresenceAsync(writer, agentLifetime.Token);
-        await Task.WhenAny(readTask, monitorTask);
+        while (!agentLifetime.IsCancellationRequested)
+        {
+            var lockTask = lockSignal.WaitAsync(agentLifetime.Token).AsTask();
+            var completed = await Task.WhenAny(readTask, monitorTask, lockTask);
+            if (completed != lockTask)
+            {
+                break;
+            }
+
+            await writer.WriteLineAsync("LOCK");
+        }
+
         agentLifetime.Cancel();
         try
         {

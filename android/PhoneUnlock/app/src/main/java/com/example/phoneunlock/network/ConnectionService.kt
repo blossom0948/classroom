@@ -66,6 +66,12 @@ class ConnectionService : Service() {
                     sendOrQueue(request)
                 }
             }
+            ACTION_SEND_REMOTE_LOCK -> {
+                val request = intent?.getStringExtra(EXTRA_REMOTE_LOCK)
+                if (!request.isNullOrBlank()) {
+                    sendOrQueue(request)
+                }
+            }
             ACTION_DISCONNECT -> {
                 stopping = true
                 handler.removeCallbacksAndMessages(null)
@@ -322,9 +328,11 @@ class ConnectionService : Service() {
         const val EXTRA_AUTH_NOTIFICATION_ID = "auth_notification_id"
         private const val EXTRA_RESPONSE = "auth_response"
         private const val EXTRA_REMOTE_UNLOCK = "remote_unlock_request"
+        private const val EXTRA_REMOTE_LOCK = "remote_lock_request"
         private const val ACTION_CONNECT = "com.example.phoneunlock.CONNECT"
         private const val ACTION_SEND_RESPONSE = "com.example.phoneunlock.SEND_RESPONSE"
         private const val ACTION_SEND_REMOTE_UNLOCK = "com.example.phoneunlock.SEND_REMOTE_UNLOCK"
+        private const val ACTION_SEND_REMOTE_LOCK = "com.example.phoneunlock.SEND_REMOTE_LOCK"
         private const val ACTION_DISCONNECT = "com.example.phoneunlock.DISCONNECT"
         private const val CONNECTION_CHANNEL_ID = "phone_unlock_connection"
         private const val AUTH_CHANNEL_ID = "phone_unlock_auth"
@@ -357,6 +365,15 @@ class ConnectionService : Service() {
                 Intent(context, ConnectionService::class.java)
                     .setAction(ACTION_SEND_REMOTE_UNLOCK)
                     .putExtra(EXTRA_REMOTE_UNLOCK, request),
+            )
+        }
+
+        fun sendRemoteLockRequest(context: Context, request: String) {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, ConnectionService::class.java)
+                    .setAction(ACTION_SEND_REMOTE_LOCK)
+                    .putExtra(EXTRA_REMOTE_LOCK, request),
             )
         }
 

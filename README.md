@@ -10,6 +10,7 @@ Android의 강한 생체인증과 Android Keystore의 ECDSA P-256 키로 Windows
 - Android Keystore의 내보낼 수 없는 P-256 키와 `BiometricPrompt.CryptoObject`
 - 인증된 `wss://` 연결, 로그인 요청 시 자동 인증 화면, 자동 재연결
 - 여러 PC 등록·선택, 여러 휴대폰 등록과 Windows 설정 앱의 선호 휴대폰 선택
+- Android PC 상세 화면의 원격 잠금·잠금 해제와 홈 화면 위젯
 - 성공·실패·의심스러운 인증 요청의 시간·휴대폰·원격 IP 감사 기록
 - 연결·알림·배터리·인증 상태를 한 번에 확인하는 Windows/Android 진단 화면
 - 선택한 휴대폰 연결이 일정 시간 끊기면 Windows를 잠그는 선택형 자동 잠금과 에이전트 상태 진단
@@ -47,7 +48,7 @@ scripts/uninstall/                     향후 복구 스크립트 위치
 GitHub Releases에서 Windows용 `PhoneUnlock-Setup.exe`와 휴대폰용 `PhoneUnlock-Android.apk`만 받으면 됩니다.
 
 1. Windows에서 **PhoneUnlock-Setup.exe**를 더블클릭하고 설치합니다. ZIP 압축 해제나 PowerShell 작업은 필요하지 않습니다.
-2. Android 11 이상 실기기에 **PhoneUnlock-Android.apk**를 설치하고 알림을 허용합니다. Android 14 이상에서는 앱에 표시되는 **자동 팝업 허용**도 한 번 누릅니다.
+2. Android 11 이상 실기기에 **PhoneUnlock-Android.apk**를 설치하고 알림을 허용합니다. Android 14 이상에서는 앱에 표시되는 **자동 팝업 허용**도 한 번 누릅니다. 위젯은 Android 홈 화면 편집에서 `Phone Unlock`을 추가합니다.
 3. Windows 설정 앱에서 **연결 QR 코드 만들기**를 누르고 Android 앱으로 스캔합니다.
 4. 자동 선택된 현재 계정의 Windows 암호를 한 번 입력합니다. PIN 번호는 사용할 수 없습니다.
 5. **휴대폰 인증 로그인 켜기**를 누르고 휴대폰에서 설정한 인증을 완료합니다.

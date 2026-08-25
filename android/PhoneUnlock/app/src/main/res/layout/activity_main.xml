@@ -11,9 +11,9 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingStart="20dp"
-        android:paddingTop="24dp"
+        android:paddingTop="18dp"
         android:paddingEnd="20dp"
-        android:paddingBottom="32dp">
+        android:paddingBottom="28dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -27,7 +27,7 @@
                 android:layout_weight="1"
                 android:text="Phone Unlock"
                 android:textColor="@color/brand_on_surface"
-                android:textSize="26sp"
+                android:textSize="25sp"
                 android:textStyle="bold" />
 
             <com.google.android.material.button.MaterialButton
@@ -40,6 +40,15 @@
                 android:textSize="12sp" />
         </LinearLayout>
 
+        <TextView
+            android:id="@+id/networkStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="등록된 PC가 없습니다"
+            android:textColor="@color/brand_muted"
+            android:textSize="13sp" />
+
         <LinearLayout
             android:id="@+id/homePanel"
             android:layout_width="match_parent"
@@ -49,51 +58,28 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="28dp"
+                android:layout_marginTop="24dp"
                 android:text="내 PC"
                 android:textColor="@color/brand_on_surface"
                 android:textSize="20sp"
                 android:textStyle="bold" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="연결할 PC를 선택하세요"
-                android:textColor="#737780"
-                android:textSize="13sp" />
-
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
+                android:layout_marginTop="12dp"
                 app:cardBackgroundColor="#FFFFFF"
                 app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
-                app:strokeColor="#E3E5EA"
+                app:strokeColor="#DCE1EA"
                 app:strokeWidth="1dp">
 
-                <LinearLayout
+                <RadioGroup
+                    android:id="@+id/computerListGroup"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <RadioGroup
-                        android:id="@+id/computerListGroup"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical" />
-
-                    <TextView
-                        android:id="@+id/networkStatusText"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="등록된 PC가 없습니다"
-                        android:textColor="#737780"
-                        android:textSize="13sp" />
-                </LinearLayout>
+                    android:padding="14dp" />
             </com.google.android.material.card.MaterialCardView>
 
             <LinearLayout
@@ -101,54 +87,58 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
-                android:orientation="vertical">
+                android:orientation="horizontal">
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/scanQrButton"
-                    android:layout_width="match_parent"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:minHeight="52dp"
+                    android:layout_marginEnd="5dp"
+                    android:layout_weight="1"
+                    android:minHeight="50dp"
                     android:text="새 PC 연결" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/pasteCodeButton"
                     style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="5dp"
+                    android:layout_weight="1"
+                    android:minHeight="50dp"
+                    android:text="연결 코드" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/manualCodeGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="연결 코드"
+                    app:boxBackgroundMode="outline">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/pairingInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="92dp"
+                        android:fontFamily="monospace"
+                        android:gravity="top|start"
+                        android:inputType="textMultiLine|textNoSuggestions"
+                        android:textSize="11sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pairButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="연결 코드 붙여넣기" />
-
-                <LinearLayout
-                    android:id="@+id/manualCodeGroup"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:orientation="vertical"
-                    android:visibility="gone">
-
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="연결 코드"
-                        app:boxBackgroundMode="outline">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/pairingInput"
-                            android:layout_width="match_parent"
-                            android:layout_height="96dp"
-                            android:fontFamily="monospace"
-                            android:gravity="top|start"
-                            android:inputType="textMultiLine|textNoSuggestions"
-                            android:textSize="11sp" />
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/pairButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="연결" />
-                </LinearLayout>
+                    android:text="연결" />
             </LinearLayout>
         </LinearLayout>
 
@@ -193,7 +183,7 @@
                 app:cardBackgroundColor="#FFFFFF"
                 app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
-                app:strokeColor="#E3E5EA"
+                app:strokeColor="#DCE1EA"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
@@ -204,38 +194,60 @@
 
                     <TextView
                         android:id="@+id/computerNameText"
-                        android:layout_width="wrap_content"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
                         android:text="PC"
                         android:textColor="@color/brand_on_surface"
-                        android:textSize="22sp"
+                        android:textSize="21sp"
                         android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/resultText"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/result_background"
                         android:text="연결 대기 중"
                         android:textColor="#24503A"
                         android:textSize="13sp" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/remoteUnlockButton"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:minHeight="52dp"
-                        android:text="이 PC 잠금 해제"
-                        android:textSize="15sp" />
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/remoteLockButton"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="5dp"
+                            android:layout_weight="1"
+                            android:minHeight="50dp"
+                            android:text="PC 잠금" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/remoteUnlockButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="5dp"
+                            android:layout_weight="1"
+                            android:minHeight="50dp"
+                            android:text="PC 잠금 해제"
+                            android:textSize="14sp" />
+                    </LinearLayout>
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/disconnectButton"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="match_parent"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="이 PC 등록 해제" />
+                        android:layout_marginTop="4dp"
+                        android:text="이 PC 등록 해제"
+                        android:textSize="12sp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -246,7 +258,7 @@
                 app:cardBackgroundColor="#FFFFFF"
                 app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
-                app:strokeColor="#E3E5EA"
+                app:strokeColor="#DCE1EA"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
@@ -268,9 +280,9 @@
                         android:id="@+id/autoPromptStatusText"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="인증 요청이 오면 생체인식 창을 표시합니다"
-                        android:textColor="#737780"
+                        android:layout_marginTop="1dp"
+                        android:text="생체인식 창을 바로 표시합니다"
+                        android:textColor="@color/brand_muted"
                         android:textSize="12sp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -278,8 +290,9 @@
                         style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="전체 화면 알림 허용"
+                        android:layout_marginTop="6dp"
+                        android:text="자동 팝업 권한"
+                        android:textSize="12sp"
                         android:visibility="gone" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
@@ -287,7 +300,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="PIN·얼굴인식 허용"
+                        android:text="휴대폰 PIN 허용"
                         android:textColor="@color/brand_on_surface"
                         android:textSize="15sp" />
 
@@ -295,8 +308,8 @@
                         android:id="@+id/weakFaceSwitch"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="약한 얼굴인식 호환"
+                        android:layout_marginTop="2dp"
+                        android:text="얼굴인식 호환 모드"
                         android:textColor="@color/brand_on_surface"
                         android:textSize="15sp" />
 
@@ -304,9 +317,9 @@
                         android:id="@+id/authMethodStatusText"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
+                        android:layout_marginTop="2dp"
                         android:text="지문·강한 얼굴인식"
-                        android:textColor="#737780"
+                        android:textColor="@color/brand_muted"
                         android:textSize="12sp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -318,7 +331,7 @@
                 app:cardBackgroundColor="#FFFFFF"
                 app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
-                app:strokeColor="#E3E5EA"
+                app:strokeColor="#DCE1EA"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
@@ -331,7 +344,8 @@
                         android:id="@+id/diagnosticsButton"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="연결·알림·배터리 진단" />
+                        android:minHeight="48dp"
+                        android:text="연결 진단" />
 
                     <TextView
                         android:id="@+id/diagnosticsText"
@@ -339,31 +353,8 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:text=""
-                        android:textColor="#737780"
+                        android:textColor="@color/brand_muted"
                         android:textSize="12sp" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/notificationSettingsButton"
-                            style="@style/Widget.Material3.Button.TextButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="알림 설정" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/batterySettingsButton"
-                            style="@style/Widget.Material3.Button.TextButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="배터리 설정" />
-                    </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
         </LinearLayout>

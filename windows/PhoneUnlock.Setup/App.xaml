@@ -19,7 +19,10 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="7" Padding="{TemplateBinding Padding}">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" />
                         </Border>
                     </ControlTemplate>
@@ -27,8 +30,10 @@
             </Setter>
         </Style>
         <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="#ECEEF2" />
+            <Setter Property="Background" Value="#FFFFFF" />
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="#C9CED8" />
+            <Setter Property="BorderThickness" Value="1" />
         </Style>
         <Style TargetType="TextBox">
             <Setter Property="Padding" Value="11" />

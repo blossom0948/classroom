@@ -32,6 +32,17 @@ public static class CanonicalPayload
     public static byte[] GetBytes(RemoteUnlockRequestPayload request) =>
         Encoding.UTF8.GetBytes(Create(request));
 
+    public static string Create(RemoteLockRequestPayload request) => string.Join(
+        '\n',
+        "PHONE-UNLOCK-V1-LOCK",
+        $"requestId={request.RequestId.ToString("D").ToLowerInvariant()}",
+        $"computerId={request.ComputerId.ToString("D").ToLowerInvariant()}",
+        $"expiresAt={request.ExpiresAt}",
+        $"phoneId={request.PhoneId}");
+
+    public static byte[] GetBytes(RemoteLockRequestPayload request) =>
+        Encoding.UTF8.GetBytes(Create(request));
+
     private static string Create(Guid requestId, Guid computerId, string challenge, long expiresAt)
     {
         ValidateChallenge(challenge);

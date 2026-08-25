@@ -22,6 +22,13 @@ data class RemoteUnlockRequest(
     val phoneId: String,
 )
 
+data class RemoteLockRequest(
+    val requestId: UUID,
+    val computerId: UUID,
+    val expiresAt: Long,
+    val phoneId: String,
+)
+
 object PhoneUnlockProtocol {
     const val VERSION = 1
     const val MAX_AUTH_LIFETIME_SECONDS = 30L
@@ -118,6 +125,15 @@ object PhoneUnlockProtocol {
             .put("phoneId", request.phoneId)
             .put("signature", Base64.encodeToString(signature, Base64.NO_WRAP))
         return envelope("REMOTE_UNLOCK_REQUEST", payload).toString(2)
+    }
+
+    fun remoteLockResponse(request: RemoteLockRequest): String {
+        val payload = JSONObject()
+            .put("requestId", request.requestId.toString().lowercase())
+            .put("computerId", request.computerId.toString().lowercase())
+            .put("expiresAt", request.expiresAt)
+            .put("phoneId", request.phoneId)
+        return envelope("REMOTE_LOCK_REQUEST", payload).toString(2)
     }
 
     private fun envelope(type: String, payload: JSONObject): JSONObject = JSONObject()

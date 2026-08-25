@@ -446,6 +446,7 @@ public partial class MainWindow : Window
         if (string.IsNullOrEmpty(PasswordInput.Password))
         {
             SetOperation("PIN이 아닌 현재 Windows 계정 암호를 입력하세요.", success: false);
+            CredentialExpander.IsExpanded = true;
             PasswordInput.Focus();
             return;
         }
@@ -511,6 +512,7 @@ public partial class MainWindow : Window
         if (!currentStatus.CredentialConfigured)
         {
             SetOperation("먼저 현재 Windows 계정 암호를 확인해 주세요.", success: false);
+            CredentialExpander.IsExpanded = true;
             PasswordInput.Focus();
             return;
         }
@@ -787,6 +789,10 @@ public partial class MainWindow : Window
     {
         var protocol = SelectedPresenceSensorProtocol();
         var smartThings = string.Equals(protocol, "smartthings", StringComparison.OrdinalIgnoreCase);
+        if (updateDefaults && smartThings)
+        {
+            PresenceConnectionExpander.IsExpanded = true;
+        }
         SmartThingsFieldsPanel.Visibility = smartThings ? Visibility.Visible : Visibility.Collapsed;
         FindSmartThingsSensorsButton.Visibility = smartThings ? Visibility.Visible : Visibility.Collapsed;
         if (!smartThings)

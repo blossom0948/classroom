@@ -36,6 +36,26 @@ AUTH_DENIED
 AUTH_EXPIRED
 PING
 PONG
+REMOTE_LOCK_REQUEST
+```
+
+## REMOTE_LOCK_REQUEST
+
+휴대폰 앱의 상세 화면 또는 홈 화면 위젯에서 PC를 잠글 때 사용한다. 이미 인증된 `wss` 연결을 통해 전달되므로 별도의 생체 서명은 사용하지 않으며, PC 서비스는 활성 페어링 휴대폰·자기 PC ID·30초 내 만료·timestamp·replay를 검증한다.
+
+```json
+{
+  "version": 1,
+  "type": "REMOTE_LOCK_REQUEST",
+  "messageId": "94145d99-e1f4-403a-8675-83caac130dce",
+  "timestamp": 1787490004,
+  "payload": {
+    "requestId": "c6a60298-33c4-49dc-b1ed-b1a046fa7347",
+    "computerId": "e66aa175-932a-4986-8b7d-1156640470a1",
+    "expiresAt": 1787490030,
+    "phoneId": "phone-installation-uuid"
+  }
+}
 ```
 
 ## AUTH_REQUEST

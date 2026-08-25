@@ -4,4 +4,5 @@
     <string name="biometric_title">PC 로그인 승인</string>
     <string name="biometric_subtitle">본인 확인 후 요청에 서명합니다</string>
     <string name="biometric_cancel">취소</string>
+    <string name="widget_description">선택한 PC를 잠그거나 잠금 해제합니다.</string>
 </resources>
