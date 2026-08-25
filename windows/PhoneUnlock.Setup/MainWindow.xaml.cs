@@ -169,13 +169,49 @@ public partial class MainWindow : Window
     {
         if (updatingControls || !IsLoaded) return;
         ApplyPresenceSensorProtocolUi(updateDefaults: true);
-        if (currentStatus is not null && PresenceSensorCheckBox.IsChecked == true)
+        if (currentStatus is not null
+            && PresenceSensorCheckBox.IsChecked == true
+            && !string.Equals(SelectedPresenceSensorProtocol(), "smartthings", StringComparison.OrdinalIgnoreCase))
         {
             await SavePresenceSensorAsync();
         }
     }
 
+    private async void SmartThingsQuickConnect_Click(object sender, RoutedEventArgs e)
+    {
+        await LoadSmartThingsSensorsAsync(autoSaveWhenSingle: true);
+    }
+
+    private async void SmartThingsUseSensor_Click(object sender, RoutedEventArgs e)
+    {
+        if (SmartThingsSensorComboBox.SelectedItem is not SmartThingsSensorOption sensor)
+        {
+            SetOperation("먼저 SmartThings 센서를 선택하세요.", success: false);
+            return;
+        }
+
+        ApplySmartThingsSensor(sensor);
+        PresenceSensorCheckBox.IsChecked = true;
+        await SavePresenceSensorAsync();
+    }
+
     private async void FindSmartThingsSensors_Click(object sender, RoutedEventArgs e)
+    {
+        await LoadSmartThingsSensorsAsync(autoSaveWhenSingle: false);
+    }
+
+    private void SmartThingsSensor_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingControls || SmartThingsSensorComboBox.SelectedItem is not SmartThingsSensorOption sensor)
+        {
+            return;
+        }
+
+        ApplySmartThingsSensor(sensor);
+        SmartThingsUseSensorButton.Visibility = Visibility.Visible;
+    }
+
+    private async Task LoadSmartThingsSensorsAsync(bool autoSaveWhenSingle)
     {
         if (!string.Equals(SelectedPresenceSensorProtocol(), "smartthings", StringComparison.OrdinalIgnoreCase))
         {
@@ -183,6 +219,8 @@ public partial class MainWindow : Window
             return;
         }
 
+        ApplyPresenceSensorProtocolUi(updateDefaults: true);
+        SmartThingsQuickStatusText.Text = "SmartThings에서 센서를 찾는 중…";
         await RunOperationAsync(async () =>
         {
             var response = await client.SendAsync(
@@ -194,7 +232,17 @@ public partial class MainWindow : Window
                 TimeSpan.FromSeconds(15));
             if (!response.Success || string.IsNullOrWhiteSpace(response.Data))
             {
-                SetOperation(response.Message, success: false);
+                SmartThingsQuickStatusText.Text = response.Message;
+                if (response.Message.Contains("토큰", StringComparison.OrdinalIgnoreCase))
+                {
+                    PresenceConnectionExpander.IsExpanded = true;
+                    PresenceSensorTokenInput.Focus();
+                    SetOperation("SmartThings 토큰을 처음 한 번만 입력한 뒤 다시 누르세요.", success: false);
+                }
+                else
+                {
+                    SetOperation(response.Message, success: false);
+                }
                 return;
             }
 
@@ -208,28 +256,44 @@ public partial class MainWindow : Window
             SmartThingsSensorComboBox.Visibility = sensors.Length == 0
                 ? Visibility.Collapsed
                 : Visibility.Visible;
+            SmartThingsUseSensorButton.Visibility = sensors.Length == 0
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+            if (sensors.Length == 1)
+            {
+                SmartThingsSensorComboBox.SelectedIndex = 0;
+            }
             updatingControls = false;
-            SetOperation(response.Message, sensors.Length > 0);
+
+            if (sensors.Length == 0)
+            {
+                SmartThingsQuickStatusText.Text = "재실·동작 센서를 찾지 못했습니다.";
+                SetOperation("SmartThings에서 occupancy·presence·motion 센서를 찾지 못했습니다.", success: false);
+                return;
+            }
+
+            if (sensors.Length == 1 && autoSaveWhenSingle)
+            {
+                ApplySmartThingsSensor(sensors[0]);
+                PresenceSensorCheckBox.IsChecked = true;
+                await SavePresenceSensorAsync();
+                SmartThingsQuickStatusText.Text = $"{sensors[0].Label} 연결됨";
+                return;
+            }
+
+            SmartThingsQuickStatusText.Text = $"센서 {sensors.Length}개를 찾았습니다. 사용할 센서만 선택하세요.";
+            SetOperation(response.Message, success: true);
         });
     }
 
-    private async void SmartThingsSensor_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void ApplySmartThingsSensor(SmartThingsSensorOption sensor)
     {
-        if (updatingControls || SmartThingsSensorComboBox.SelectedItem is not SmartThingsSensorOption sensor)
-        {
-            return;
-        }
-
         updatingControls = true;
         PresenceSensorEntityInput.Text = sensor.DeviceId;
         PresenceSensorComponentInput.Text = sensor.ComponentId;
         PresenceSensorCapabilityInput.Text = sensor.CapabilityId;
         PresenceSensorAttributeInput.Text = sensor.AttributeName;
         updatingControls = false;
-        if (PresenceSensorCheckBox.IsChecked == true)
-        {
-            await SavePresenceSensorAsync();
-        }
     }
 
     private async void PresenceSensorGrace_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -646,10 +710,15 @@ public partial class MainWindow : Window
             ApplyPresenceSensorProtocolUi(updateDefaults: false);
             SmartThingsSensorComboBox.Items.Clear();
             SmartThingsSensorComboBox.Visibility = Visibility.Collapsed;
+            SmartThingsUseSensorButton.Visibility = Visibility.Collapsed;
             PresenceSensorTokenInput.Clear();
             PresenceSensorStateText.Text = currentStatus.PresenceSensorEnabled
                 ? $"{PresenceSensorProtocolLabel(currentStatus.PresenceSensorProtocol)} 센서 사용 중 · 토큰 저장됨"
                 : "사용 안 함";
+            SmartThingsQuickStatusText.Text = currentStatus.PresenceSensorEnabled
+                && string.Equals(currentStatus.PresenceSensorProtocol, "smartthings", StringComparison.OrdinalIgnoreCase)
+                ? "현재 센서가 연결되어 있습니다. 다른 센서로 바꾸려면 자동 연결을 누르세요."
+                : "센서 이름을 자동으로 불러옵니다.";
             PresenceSensorGraceComboBox.SelectedItem = PresenceSensorGraceComboBox.Items
                 .OfType<ComboBoxItem>()
                 .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), currentStatus.PresenceSensorGraceSeconds.ToString(), StringComparison.Ordinal))
@@ -719,7 +788,9 @@ public partial class MainWindow : Window
         BluetoothRssiCheckBox.IsEnabled = enabled;
         BluetoothRssiThresholdComboBox.IsEnabled = enabled;
         FindSmartThingsSensorsButton.IsEnabled = enabled;
+        SmartThingsQuickConnectButton.IsEnabled = enabled;
         SmartThingsSensorComboBox.IsEnabled = enabled;
+        SmartThingsUseSensorButton.IsEnabled = enabled;
         StartAgentButton.IsEnabled = enabled;
         if (!enabled)
         {
@@ -789,15 +860,14 @@ public partial class MainWindow : Window
     {
         var protocol = SelectedPresenceSensorProtocol();
         var smartThings = string.Equals(protocol, "smartthings", StringComparison.OrdinalIgnoreCase);
-        if (updateDefaults && smartThings)
-        {
-            PresenceConnectionExpander.IsExpanded = true;
-        }
+        SmartThingsQuickSetupPanel.Visibility = smartThings ? Visibility.Visible : Visibility.Collapsed;
         SmartThingsFieldsPanel.Visibility = smartThings ? Visibility.Visible : Visibility.Collapsed;
         FindSmartThingsSensorsButton.Visibility = smartThings ? Visibility.Visible : Visibility.Collapsed;
         if (!smartThings)
         {
             SmartThingsSensorComboBox.Visibility = Visibility.Collapsed;
+            SmartThingsUseSensorButton.Visibility = Visibility.Collapsed;
+            SmartThingsQuickStatusText.Text = "센서 이름을 자동으로 불러옵니다.";
         }
         PresenceSensorTargetHint.Text = smartThings
             ? "SmartThings device ID · capability와 attribute는 아래에 입력"

@@ -187,6 +187,10 @@ public sealed class PresenceSensorClient(
             using var response = await client.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    throw new ArgumentException("SmartThings Personal Access Token이 만료되었거나 권한이 없습니다. 토큰을 다시 입력하세요.");
+                }
                 throw new ArgumentException($"SmartThings API가 HTTP {(int)response.StatusCode}를 반환했습니다. 토큰 권한과 만료 여부를 확인하세요.");
             }
 

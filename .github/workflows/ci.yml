@@ -110,4 +110,4 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" artifacts/release/* \
             --title "Phone Unlock ${GITHUB_REF_NAME}" \
-            --notes-file docs/RELEASE_NOTES-0.4.0-beta.8.md
+            --notes-file docs/RELEASE_NOTES-0.4.0-beta.9.md
