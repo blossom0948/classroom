@@ -119,9 +119,8 @@ HRESULT PhoneUnlockProvider::GetCredentialCount(
 {
     if (count == nullptr || defaultCredential == nullptr || autoLogonWithDefault == nullptr) return E_INVALIDARG;
     *count = static_cast<DWORD>(credentials_.size());
-    const bool proximityUnlock = proximityUnlockPending_.exchange(false);
     *defaultCredential = credentials_.empty() ? CREDENTIAL_PROVIDER_NO_DEFAULT : 0;
-    *autoLogonWithDefault = proximityUnlock ? TRUE : FALSE;
+    *autoLogonWithDefault = proximityUnlockPending_->load() ? TRUE : FALSE;
     return S_OK;
 }
 
@@ -189,7 +188,7 @@ HRESULT PhoneUnlockProvider::RebuildCredentials()
             }
             else
             {
-                result = credential->Initialize(usageScenario_, sid);
+                result = credential->Initialize(usageScenario_, sid, proximityUnlockPending_);
                 if (SUCCEEDED(result))
                 {
                     try
@@ -255,7 +254,7 @@ void PhoneUnlockProvider::StopProximityWatcher()
 
 void PhoneUnlockProvider::NotifyProximityUnlock()
 {
-    proximityUnlockPending_ = true;
+    proximityUnlockPending_->store(true);
 
     ICredentialProviderEvents* events = nullptr;
     UINT_PTR adviseContext = 0;

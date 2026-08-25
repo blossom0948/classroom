@@ -261,7 +261,7 @@ public sealed class SetupPipeService(
             configuration => configuration with { ProximityUnlockEnabled = request.Enabled.Value },
             cancellationToken);
         return new SetupResponse(true, "OK", request.Enabled.Value
-            ? "휴대폰이 가까워지면 잠금화면의 Phone Unlock 인증을 자동으로 시작합니다. 보안 수준이 낮아지는 실험 기능입니다."
+            ? "휴대폰 heartbeat만 확인해 잠금화면에서 Phone Unlock을 인증 없이 자동 로그인합니다. 보안 수준이 낮아지는 실험 기능입니다."
             : "휴대폰 근접 자동 잠금 해제를 껐습니다.");
     }
 }

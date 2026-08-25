@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <credentialprovider.h>
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -44,7 +45,8 @@ private:
     ICredentialProviderUserArray* users_ = nullptr;
     std::vector<PhoneUnlockCredential*> credentials_;
     std::atomic<bool> proximityWatcherStopping_ = false;
-    std::atomic<bool> proximityUnlockPending_ = false;
+    std::shared_ptr<std::atomic<bool>> proximityUnlockPending_ =
+        std::make_shared<std::atomic<bool>>(false);
     std::thread proximityWatcher_;
     std::mutex eventsMutex_;
 };

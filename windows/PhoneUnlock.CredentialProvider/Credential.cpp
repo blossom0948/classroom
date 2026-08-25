@@ -4,6 +4,7 @@
 #include "Helpers.h"
 #include "PipeClient.h"
 #include <Shlwapi.h>
+#include <utility>
 
 void DllAddRef();
 void DllRelease();
@@ -50,7 +51,10 @@ PhoneUnlockCredential::~PhoneUnlockCredential()
     DllRelease();
 }
 
-HRESULT PhoneUnlockCredential::Initialize(CREDENTIAL_PROVIDER_USAGE_SCENARIO usageScenario, PCWSTR sid)
+HRESULT PhoneUnlockCredential::Initialize(
+    CREDENTIAL_PROVIDER_USAGE_SCENARIO usageScenario,
+    PCWSTR sid,
+    std::shared_ptr<std::atomic<bool>> proximityUnlockPending)
 {
     if (sid == nullptr || *sid == L'\0')
     {
@@ -58,6 +62,7 @@ HRESULT PhoneUnlockCredential::Initialize(CREDENTIAL_PROVIDER_USAGE_SCENARIO usa
     }
     usageScenario_ = usageScenario;
     sid_ = sid;
+    proximityUnlockPending_ = std::move(proximityUnlockPending);
     return S_OK;
 }
 
@@ -185,10 +190,14 @@ HRESULT PhoneUnlockCredential::GetSerialization(
     *optionalStatusText = nullptr;
     *optionalStatusIcon = CPSI_NONE;
 
-    SetStatus(L"휴대폰 승인 대기 중…");
+    const bool proximityOnly = proximityUnlockPending_ != nullptr
+        && proximityUnlockPending_->exchange(false);
+    SetStatus(proximityOnly ? L"휴대폰 근접 자동 해제 확인 중…" : L"휴대폰 승인 대기 중…");
     PhoneUnlockCredentialData credential;
     std::wstring error;
-    HRESULT result = RequestPhoneApproval(sid_, &credential, &error);
+    HRESULT result = proximityOnly
+        ? RequestProximityApproval(sid_, &credential, &error)
+        : RequestPhoneApproval(sid_, &credential, &error);
     if (FAILED(result))
     {
         SetStatus(error.empty() ? L"휴대폰 승인을 완료하지 못했습니다." : error.c_str());

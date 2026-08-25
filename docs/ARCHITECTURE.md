@@ -32,7 +32,7 @@ Credential Provider는 네트워크나 Android 키를 직접 다루지 않는다
 
 Windows 구성은 한 PC에 여러 휴대폰을 저장하고, `PreferredPhoneId`가 있으면 해당 휴대폰을 우선 사용한다. Android 구성은 여러 PC를 암호화된 목록으로 보관하고 선택된 PC의 WSS 연결만 유지한다. 모든 인증 결과에는 UTC 시각, 결과, 휴대폰 ID/이름, 요청 ID와 WSS 원격 IP를 남기며, 서명 불일치·등록되지 않은 연결·비정상 응답은 `Suspicious` 플래그를 기록한다.
 
-선택형 자동 잠금은 Windows 서비스의 `AgentPipeService`가 대화형 사용자 세션의 `PhoneUnlock.Agent`와 보안 Named Pipe로 연결되는 구조다. Android는 10초 간격으로 인증된 WebSocket heartbeat를 보내고, 설정한 유예 시간 동안 heartbeat가 끊기면 대화형 에이전트가 `LockWorkStation`을 호출한다. GPS나 단순 Wi-Fi 이름은 사용하지 않는다. 별도로 켠 근접 자동 잠금 해제는 서비스가 `Global\PhoneUnlock.ProximityUnlock` 이벤트를 신호하고 Credential Provider가 이를 받아 로그인 요청을 자동 시작한다.
+선택형 자동 잠금은 Windows 서비스의 `AgentPipeService`가 대화형 사용자 세션의 `PhoneUnlock.Agent`와 보안 Named Pipe로 연결되는 구조다. Android는 10초 간격으로 인증된 WebSocket heartbeat를 보내고, 설정한 유예 시간 동안 heartbeat가 끊기면 대화형 에이전트가 `LockWorkStation`을 호출한다. GPS나 단순 Wi-Fi 이름은 사용하지 않는다. 별도로 켠 근접 자동 잠금 해제는 서비스가 `Global\PhoneUnlock.ProximityUnlock` 이벤트를 신호하고 Credential Provider가 이를 받아 heartbeat를 확인한 뒤 저장 자격 증명으로 자동 로그인한다.
 
 ## 개발용 수동 경로
 

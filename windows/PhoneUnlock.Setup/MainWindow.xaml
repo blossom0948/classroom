@@ -199,7 +199,7 @@
                     <CheckBox x:Name="ProximityLockCheckBox" Margin="0,14,0,0" FontSize="15"
                               Content="휴대폰 연결이 끊기면 PC 자동 잠금" Click="ProximityLock_Click" />
                     <CheckBox x:Name="ProximityUnlockCheckBox" Margin="0,12,0,0" FontSize="15"
-                              Content="휴대폰이 가까워지면 PC 자동 잠금 해제" Click="ProximityUnlock_Click" />
+                              Content="휴대폰이 가까워지면 PC 자동 잠금 해제 (보안 낮음)" Click="ProximityUnlock_Click" />
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                         <TextBlock VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" Text="연결 끊김 대기 시간" />
                         <ComboBox x:Name="ProximityGraceComboBox" Margin="14,0,0,0" Width="120"
@@ -215,7 +215,7 @@
                     <Button x:Name="StartAgentButton" Margin="0,9,0,0" Style="{StaticResource SecondaryButton}"
                             HorizontalAlignment="Left" Click="StartAgent_Click" Content="자동잠금 감시 시작" />
                     <TextBlock Margin="0,10,0,0" Foreground="#8A5A00" TextWrapping="Wrap"
-                               Text="자동 잠금은 GPS 거리가 아니라 휴대폰과 PC의 보안 연결이 끊긴 뒤 작동하며, Wi-Fi 절전·네트워크 변경 때도 작동할 수 있습니다. 자동 잠금 해제는 휴대폰 근접만으로 Windows 인증을 시작하므로 보안 수준이 낮아집니다. 집에서만 켜고, 설치 후 자동 잠금 에이전트가 연결됨으로 표시되는지 확인하세요." />
+                               Text="자동 잠금은 GPS 거리가 아니라 휴대폰과 PC의 보안 연결이 끊긴 뒤 작동하며, Wi-Fi 절전·네트워크 변경 때도 작동할 수 있습니다. 자동 잠금 해제를 켜면 휴대폰 heartbeat만으로 Windows 자격 증명을 보내 인증 없이 열기 때문에 보안 수준이 크게 낮아집니다. 집에서만 켜고, 설치 후 자동 잠금 에이전트가 연결됨으로 표시되는지 확인하세요." />
                 </StackPanel>
             </Border>
 

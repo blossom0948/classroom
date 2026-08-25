@@ -3,6 +3,8 @@
 #include <windows.h>
 #include <credentialprovider.h>
 #include <shlguid.h>
+#include <atomic>
+#include <memory>
 #include <string>
 
 enum PhoneUnlockFieldId : DWORD
@@ -24,7 +26,10 @@ class PhoneUnlockCredential final :
 {
 public:
     PhoneUnlockCredential();
-    HRESULT Initialize(CREDENTIAL_PROVIDER_USAGE_SCENARIO usageScenario, PCWSTR sid);
+    HRESULT Initialize(
+        CREDENTIAL_PROVIDER_USAGE_SCENARIO usageScenario,
+        PCWSTR sid,
+        std::shared_ptr<std::atomic<bool>> proximityUnlockPending);
 
     IFACEMETHODIMP QueryInterface(REFIID interfaceId, void** object) override;
     IFACEMETHODIMP_(ULONG) AddRef() override;
@@ -65,5 +70,6 @@ private:
     bool autoRequestPending_ = true;
     std::wstring sid_;
     std::wstring status_;
+    std::shared_ptr<std::atomic<bool>> proximityUnlockPending_;
     ICredentialProviderCredentialEvents* events_ = nullptr;
 };

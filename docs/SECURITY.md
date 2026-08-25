@@ -14,7 +14,7 @@
 - Windows 설정/인증 Named Pipe ACL은 운영 서비스에서 LocalSystem과 Administrators로 제한한다.
 - 자동 잠금 Named Pipe는 저장된 Windows 계정 SID를 추가 ACL로 허용하고, 대화형 `PhoneUnlock.Agent`가 `LockWorkStation`을 호출한다.
 - Android 인증은 `BIOMETRIC_STRONG`만 기본 허용하며, 사용자가 켠 경우에만 Android `DEVICE_CREDENTIAL`을 함께 허용한다. 사용자가 별도로 켠 호환 모드에서만 `BIOMETRIC_WEAK`을 허용하고, 이 모드에서는 사용자 인증과 서명 키의 암호학적 연결이 약해진다.
-- 근접 자동 잠금 해제는 기본값이 꺼져 있으며, 사용자가 설정에서 켠 경우에만 보안 연결의 presence 전환으로 Credential Provider의 인증 요청을 시작한다. 이는 Windows 암호를 직접 제공하는 API가 아니며, 근접 신호만으로 인증을 시작하므로 집에서만 사용해야 한다.
+- 근접 자동 잠금 해제는 기본값이 꺼져 있으며, 사용자가 설정에서 켠 경우에만 보안 연결의 presence 전환으로 Credential Provider가 인증 없이 저장 자격 증명을 요청한다. 이는 휴대폰 heartbeat만으로 잠금을 풀 수 있는 편의 기능이므로 집에서만 사용해야 한다.
 - 서비스 구성과 PFX 파일 ACL은 LocalSystem과 Administrators로 제한한다.
 - Credential Provider는 요청한 사용자 SID와 저장된 계정 SID가 일치할 때만 자격 증명을 받는다.
 - Credential Provider는 원문 비밀번호를 받은 즉시 `CredProtectW`로 보호하고 원문 버퍼를 지운다.

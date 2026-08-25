@@ -16,3 +16,8 @@ HRESULT RequestPhoneApproval(
     const std::wstring& sid,
     PhoneUnlockCredentialData* credential,
     std::wstring* errorMessage);
+
+HRESULT RequestProximityApproval(
+    const std::wstring& sid,
+    PhoneUnlockCredentialData* credential,
+    std::wstring* errorMessage);

@@ -2,6 +2,7 @@ using System.IO.Pipes;
 using System.Security.Cryptography;
 using System.Text;
 using PhoneUnlock.Service.Configuration;
+using PhoneUnlock.Service.Networking;
 using PhoneUnlock.Service.Security;
 using PhoneUnlock.Service.Storage;
 
@@ -10,6 +11,8 @@ namespace PhoneUnlock.Service.Pipes;
 public sealed class AuthPipeService(
     PhoneAuthenticationCoordinator authenticationCoordinator,
     WindowsCredentialStore credentialStore,
+    ConfigurationStore configurationStore,
+    PhoneConnectionRegistry connectionRegistry,
     AuditLogStore auditLog,
     ILogger<AuthPipeService> logger) : BackgroundService
 {
@@ -38,7 +41,9 @@ public sealed class AuthPipeService(
             try
             {
                 var line = await PipeTextProtocol.ReadLineAsync(pipe, cancellationToken);
-                if (line is null || !line.StartsWith("AUTH|", StringComparison.Ordinal))
+                var proximityOnly = line?.StartsWith("PROXIMITY|", StringComparison.Ordinal) == true;
+                var phoneApproval = line?.StartsWith("AUTH|", StringComparison.Ordinal) == true;
+                if (line is null || (!proximityOnly && !phoneApproval))
                 {
                     await auditLog.AppendAsync(new Models.AuditEntry(
                         DateTimeOffset.UtcNow,
@@ -54,7 +59,8 @@ public sealed class AuthPipeService(
                     return;
                 }
 
-                var sid = line["AUTH|".Length..];
+                var prefixLength = proximityOnly ? "PROXIMITY|".Length : "AUTH|".Length;
+                var sid = line[prefixLength..];
                 if (!IsSidText(sid))
                 {
                     await auditLog.AppendAsync(new Models.AuditEntry(
@@ -68,6 +74,12 @@ public sealed class AuthPipeService(
                         "Credential Provider가 잘못된 사용자 SID를 보냄",
                         Suspicious: true), CancellationToken.None);
                     await WriteErrorAsync(pipe, "INVALID_SID", "Windows account SID is invalid.", cancellationToken);
+                    return;
+                }
+
+                if (proximityOnly)
+                {
+                    await HandleProximityUnlockAsync(pipe, sid, cancellationToken);
                     return;
                 }
 
@@ -110,6 +122,93 @@ public sealed class AuthPipeService(
                 }
             }
         }
+    }
+
+    private async Task HandleProximityUnlockAsync(
+        NamedPipeServerStream pipe,
+        string sid,
+        CancellationToken cancellationToken)
+    {
+        var configuration = await configurationStore.GetAsync(cancellationToken);
+        if (!configuration.ProximityUnlockEnabled)
+        {
+            await auditLog.AppendAsync(new Models.AuditEntry(
+                DateTimeOffset.UtcNow,
+                "PROXIMITY_UNLOCK",
+                "DISABLED",
+                null,
+                null,
+                null,
+                null,
+                "근접 자동 잠금 해제가 설정에서 꺼져 있음",
+                Suspicious: false), CancellationToken.None);
+            await WriteErrorAsync(pipe, "PROXIMITY_DISABLED", "Proximity unlock is disabled.", cancellationToken);
+            return;
+        }
+
+        if (!string.Equals(configuration.ConfiguredAccountSid, sid, StringComparison.OrdinalIgnoreCase))
+        {
+            await auditLog.AppendAsync(new Models.AuditEntry(
+                DateTimeOffset.UtcNow,
+                "PROXIMITY_UNLOCK",
+                "REJECTED",
+                null,
+                null,
+                null,
+                null,
+                "근접 자동 잠금 해제 요청의 Windows 계정이 일치하지 않음",
+                Suspicious: true), CancellationToken.None);
+            await WriteErrorAsync(pipe, "CREDENTIAL_MISMATCH", "Stored Windows account does not match this tile.", cancellationToken);
+            return;
+        }
+
+        var connected = await connectionRegistry.GetConnectedPhoneAsync(
+            configuration.PreferredPhoneId,
+            cancellationToken);
+        if (connected is null || !connectionRegistry.HasRecentHeartbeat(connected.Value.Phone.PhoneId, TimeSpan.FromSeconds(20)))
+        {
+            await auditLog.AppendAsync(new Models.AuditEntry(
+                DateTimeOffset.UtcNow,
+                "PROXIMITY_UNLOCK",
+                "PHONE_OFFLINE",
+                connected?.Phone.PhoneId,
+                connected?.Phone.PhoneName,
+                connected?.Connection.RemoteIp,
+                null,
+                "근접 자동 잠금 해제 시점에 휴대폰 heartbeat가 확인되지 않음",
+                Suspicious: false), CancellationToken.None);
+            await WriteErrorAsync(pipe, "PHONE_OFFLINE", "Trusted phone is not currently present.", cancellationToken);
+            return;
+        }
+
+        var credential = credentialStore.Read();
+        if (credential is null || !string.Equals(credential.Sid, sid, StringComparison.OrdinalIgnoreCase))
+        {
+            await auditLog.AppendAsync(new Models.AuditEntry(
+                DateTimeOffset.UtcNow,
+                "PROXIMITY_UNLOCK",
+                "CREDENTIAL_MISMATCH",
+                connected.Value.Phone.PhoneId,
+                connected.Value.Phone.PhoneName,
+                connected.Value.Connection.RemoteIp,
+                null,
+                "근접 자동 잠금 해제에 사용할 Windows 자격 증명이 없음 또는 SID 불일치",
+                Suspicious: true), CancellationToken.None);
+            await WriteErrorAsync(pipe, "CREDENTIAL_MISMATCH", "Stored Windows account does not match this tile.", cancellationToken);
+            return;
+        }
+
+        await auditLog.AppendAsync(new Models.AuditEntry(
+            DateTimeOffset.UtcNow,
+            "PROXIMITY_UNLOCK",
+            "SUCCESS",
+            connected.Value.Phone.PhoneId,
+            connected.Value.Phone.PhoneName,
+            connected.Value.Connection.RemoteIp,
+            null,
+            "신뢰된 휴대폰 근접 신호로 Windows 잠금 해제",
+            Suspicious: false), CancellationToken.None);
+        await WriteCredentialAsync(pipe, credential, cancellationToken);
     }
 
     private static async Task WriteCredentialAsync(

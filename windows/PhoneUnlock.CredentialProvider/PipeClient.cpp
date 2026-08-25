@@ -152,10 +152,11 @@ void PhoneUnlockCredentialData::SecureClear() noexcept
     Wipe(&password);
 }
 
-HRESULT RequestPhoneApproval(
+HRESULT RequestApproval(
     const std::wstring& sid,
     PhoneUnlockCredentialData* credential,
-    std::wstring* errorMessage)
+    std::wstring* errorMessage,
+    bool proximityOnly)
 {
     if (credential == nullptr || errorMessage == nullptr || sid.empty())
     {
@@ -177,7 +178,7 @@ HRESULT RequestPhoneApproval(
         return HRESULT_FROM_WIN32(GetLastError());
     }
 
-    std::string request = "AUTH|";
+    std::string request = proximityOnly ? "PROXIMITY|" : "AUTH|";
     request.reserve(request.size() + sid.size() + 1);
     for (const wchar_t character : sid)
     {
@@ -259,4 +260,20 @@ HRESULT RequestPhoneApproval(
 
     *errorMessage = L"알 수 없는 Phone Unlock 서비스 응답입니다.";
     return E_FAIL;
+}
+
+HRESULT RequestPhoneApproval(
+    const std::wstring& sid,
+    PhoneUnlockCredentialData* credential,
+    std::wstring* errorMessage)
+{
+    return RequestApproval(sid, credential, errorMessage, false);
+}
+
+HRESULT RequestProximityApproval(
+    const std::wstring& sid,
+    PhoneUnlockCredentialData* credential,
+    std::wstring* errorMessage)
+{
+    return RequestApproval(sid, credential, errorMessage, true);
 }
