@@ -13,7 +13,8 @@ public sealed class PhoneConnection(
     string? remoteIp,
     ILogger<PhoneConnection> logger,
     Action<string> remoteUnlockHandler,
-    Action<string> remoteLockHandler) : IAsyncDisposable
+    Action<string> remoteLockHandler,
+    Action<string> remotePowerHandler) : IAsyncDisposable
 {
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<string>> pending = new();
     private readonly SemaphoreSlim sendGate = new(1, 1);
@@ -67,6 +68,19 @@ public sealed class PhoneConnection(
             messageId = Guid.NewGuid(),
             timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             payload = new { message }
+        };
+        return SendTextAsync(ProtocolJson.SerializeCompact(envelope), cancellationToken);
+    }
+
+    public Task SendSmartArrivalAsync(Guid computerId, string computerName, CancellationToken cancellationToken)
+    {
+        var envelope = new
+        {
+            version = ProtocolConstants.Version,
+            type = "SMART_ARRIVAL",
+            messageId = Guid.NewGuid(),
+            timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            payload = new { computerId, computerName }
         };
         return SendTextAsync(ProtocolJson.SerializeCompact(envelope), cancellationToken);
     }
@@ -162,6 +176,12 @@ public sealed class PhoneConnection(
                 return;
             }
 
+            if (type == ProtocolConstants.RemotePowerRequest)
+            {
+                remotePowerHandler(json);
+                return;
+            }
+
             if (type is not (ProtocolConstants.AuthApproved or ProtocolConstants.AuthDenied or ProtocolConstants.AuthExpired))
             {
                 return;
@@ -173,7 +193,7 @@ public sealed class PhoneConnection(
                 completion.TrySetResult(json);
             }
         }
-        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or FormatException)
+        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or FormatException or InvalidOperationException)
         {
             logger.LogWarning(exception, "Rejected malformed message from phone {PhoneId}", PhoneId);
         }

@@ -15,6 +15,11 @@ public sealed class SignatureVerifier
         return Verify(CanonicalPayload.GetBytes(request), request.Signature, publicKeyBase64);
     }
 
+    public bool Verify(RemotePowerRequestPayload request, string publicKeyBase64)
+    {
+        return Verify(CanonicalPayload.GetBytes(request), request.Signature, publicKeyBase64);
+    }
+
     private static bool Verify(byte[] data, string signatureBase64, string publicKeyBase64)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(publicKeyBase64);

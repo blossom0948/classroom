@@ -40,7 +40,7 @@ public sealed class RemoteLockService(
             }
 
             var envelope = ProtocolJson.Deserialize<ProtocolEnvelope<RemoteLockRequestPayload>>(request.Json);
-            var payload = envelope.Payload;
+            var payload = envelope.Payload ?? throw new JsonException("원격 잠금 payload가 없습니다.");
             var now = DateTimeOffset.UtcNow;
             if (envelope.Version != ProtocolConstants.Version
                 || envelope.Type != ProtocolConstants.RemoteLockRequest

@@ -1,3 +1,4 @@
+using System.Net.WebSockets;
 using PhoneUnlock.Service.Interop;
 using PhoneUnlock.Service.Models;
 using PhoneUnlock.Service.Networking;
@@ -18,7 +19,8 @@ public sealed class ProximityPresenceService(
         while (!stoppingToken.IsCancellationRequested)
         {
             var configuration = await configurationStore.GetAsync(stoppingToken);
-            if (!configuration.ProximityUnlockEnabled)
+            if ((!configuration.ProximityUnlockEnabled && !configuration.SmartArrivalEnabled)
+                || configuration.IsPaused())
             {
                 wasPresent = false;
                 proximityUnlockSignal.Reset();
@@ -26,16 +28,38 @@ public sealed class ProximityPresenceService(
                 continue;
             }
 
-            var phonePresent = IsSelectedPhonePresent(configuration);
+            var selectedConnection = await GetSelectedPhoneAsync(configuration, stoppingToken);
+            var phonePresent = selectedConnection is not null;
             var sensorPresent = configuration.PresenceSensorEnabled
                 ? await presenceSensorClient.ReadPresenceAsync(configuration, stoppingToken)
                 : null;
             var present = phonePresent || sensorPresent == true;
             if (present && !wasPresent)
             {
-                proximityUnlockSignal.Signal();
-                logger.LogInformation("Signaled automatic unlock after {Source} presence was detected.",
-                    phonePresent ? "trusted phone" : "room sensor");
+                if (configuration.SmartArrivalEnabled && configuration.RemoteUnlockEnabled && phonePresent)
+                {
+                    if (selectedConnection is not null)
+                    {
+                        try
+                        {
+                            await selectedConnection.SendSmartArrivalAsync(
+                                configuration.ComputerId,
+                                configuration.ComputerName,
+                                stoppingToken);
+                            logger.LogInformation("Sent Smart Arrival biometric prompt after trusted phone presence was detected.");
+                        }
+                        catch (Exception exception) when (exception is IOException or WebSocketException)
+                        {
+                            logger.LogInformation("Could not send Smart Arrival prompt: {Message}", exception.Message);
+                        }
+                    }
+                }
+                if (configuration.ProximityUnlockEnabled)
+                {
+                    proximityUnlockSignal.Signal();
+                    logger.LogInformation("Signaled experimental automatic unlock after {Source} presence was detected.",
+                        phonePresent ? "trusted phone" : "room sensor");
+                }
             }
 
             // Do not treat a temporary API outage as an absence transition. A
@@ -52,15 +76,19 @@ public sealed class ProximityPresenceService(
         }
     }
 
-    private bool IsSelectedPhonePresent(ServiceConfiguration configuration)
+    private async Task<PhoneConnection?> GetSelectedPhoneAsync(
+        ServiceConfiguration configuration,
+        CancellationToken cancellationToken)
     {
-        var statuses = connectionRegistry.GetStatuses(configuration.Phones);
-        var selected = configuration.PreferredPhoneId is null
-            ? statuses.FirstOrDefault(phone => phone.Enabled)
-            : statuses.FirstOrDefault(phone => phone.PhoneId == configuration.PreferredPhoneId);
-        return selected?.Enabled == true
-            && selected.Connected
-            && selected.LastHeartbeat is { } heartbeat
-            && DateTimeOffset.UtcNow - heartbeat <= TimeSpan.FromSeconds(20);
+        var connected = await connectionRegistry.GetConnectedPhoneAsync(
+            configuration.PreferredPhoneId,
+            cancellationToken);
+        if (connected is null
+            || !connectionRegistry.HasRecentHeartbeat(connected.Value.Phone.PhoneId, TimeSpan.FromSeconds(20)))
+        {
+            return null;
+        }
+
+        return connected.Value.Connection;
     }
 }

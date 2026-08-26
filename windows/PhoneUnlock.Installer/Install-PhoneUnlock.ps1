@@ -76,6 +76,7 @@ else {
 }
 
 Get-NetFirewallRule -DisplayName $script:PhoneUnlockFirewallName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+Get-NetFirewallRule -DisplayName $script:PhoneUnlockVpnFirewallName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 New-NetFirewallRule `
     -DisplayName $script:PhoneUnlockFirewallName `
     -Direction Inbound `
@@ -83,6 +84,15 @@ New-NetFirewallRule `
     -Protocol TCP `
     -LocalPort 48231 `
     -RemoteAddress LocalSubnet `
+    -Program $serviceExe `
+    -Profile Any | Out-Null
+New-NetFirewallRule `
+    -DisplayName $script:PhoneUnlockVpnFirewallName `
+    -Direction Inbound `
+    -Action Allow `
+    -Protocol TCP `
+    -LocalPort 48231 `
+    -RemoteAddress @('100.64.0.0/10', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16') `
     -Program $serviceExe `
     -Profile Any | Out-Null
 

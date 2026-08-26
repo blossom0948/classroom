@@ -3,6 +3,7 @@ using System.Net.NetworkInformation;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using PhoneUnlock.Service.Configuration;
+using PhoneUnlock.Service.Models;
 
 namespace PhoneUnlock.Service.Security;
 
@@ -77,10 +78,46 @@ public sealed class CertificateManager(ServicePaths paths)
     public static string GetSha256Fingerprint(X509Certificate2 certificate) =>
         Convert.ToHexString(SHA256.HashData(certificate.RawData));
 
+    public static IReadOnlyList<WakeOnLanTarget> GetWakeOnLanTargets() => NetworkInterface
+        .GetAllNetworkInterfaces()
+        .Where(adapter => adapter.OperationalStatus == OperationalStatus.Up)
+        .Where(adapter => adapter.NetworkInterfaceType is NetworkInterfaceType.Ethernet or NetworkInterfaceType.Wireless80211)
+        .SelectMany(adapter =>
+        {
+            var mac = Convert.ToHexString(adapter.GetPhysicalAddress().GetAddressBytes());
+            if (mac.Length != 12)
+            {
+                return [];
+            }
+
+            return adapter.GetIPProperties().UnicastAddresses
+                .Where(address => address.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                .Where(address => address.IPv4Mask is not null)
+                .Select(address => new WakeOnLanTarget(mac, GetBroadcastAddress(address.Address, address.IPv4Mask!)));
+        })
+        .DistinctBy(target => $"{target.MacAddress}|{target.BroadcastAddress}")
+        .ToArray();
+
+    private static string GetBroadcastAddress(IPAddress address, IPAddress mask)
+    {
+        var ip = address.GetAddressBytes();
+        var subnet = mask.GetAddressBytes();
+        var broadcast = new byte[4];
+        for (var index = 0; index < broadcast.Length; index++)
+        {
+            broadcast[index] = (byte)(ip[index] | ~subnet[index]);
+        }
+
+        return new IPAddress(broadcast).ToString();
+    }
+
     public static IReadOnlyList<IPAddress> GetLocalAddresses() => NetworkInterface
         .GetAllNetworkInterfaces()
         .Where(adapter => adapter.OperationalStatus == OperationalStatus.Up)
-        .Where(adapter => adapter.NetworkInterfaceType is not NetworkInterfaceType.Loopback and not NetworkInterfaceType.Tunnel)
+        // Include VPN/tunnel adapters. Tailscale and WireGuard are the supported
+        // distance-independent transport; the Android side pins this certificate
+        // before using any advertised address.
+        .Where(adapter => adapter.NetworkInterfaceType is not NetworkInterfaceType.Loopback)
         .SelectMany(adapter =>
         {
             var properties = adapter.GetIPProperties();
@@ -110,6 +147,7 @@ public sealed class CertificateManager(ServicePaths paths)
         var bytes = address.GetAddressBytes();
         return bytes[0] == 10
             || bytes[0] == 172 && bytes[1] is >= 16 and <= 31
-            || bytes[0] == 192 && bytes[1] == 168;
+            || bytes[0] == 192 && bytes[1] == 168
+            || bytes[0] == 100 && bytes[1] is >= 64 and <= 127;
     }
 }

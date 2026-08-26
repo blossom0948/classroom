@@ -13,9 +13,15 @@ public static class SetupCommands
     public const string Diagnostics = "DIAGNOSTICS";
     public const string SetProximityLock = "SET_PROXIMITY_LOCK";
     public const string SetProximityUnlock = "SET_PROXIMITY_UNLOCK";
+    public const string SetSmartArrival = "SET_SMART_ARRIVAL";
     public const string SetAutoLockProfile = "SET_AUTO_LOCK_PROFILE";
     public const string SetBluetoothRssi = "SET_BLUETOOTH_RSSI";
     public const string SetRemoteUnlock = "SET_REMOTE_UNLOCK";
+    public const string SetRemotePower = "SET_REMOTE_POWER";
+    public const string RevokePhone = "REVOKE_PHONE";
+    public const string RevokeAllPhones = "REVOKE_ALL_PHONES";
+    public const string SecurityCheckup = "SECURITY_CHECKUP";
+    public const string SetPause = "SET_PAUSE";
     public const string SetPresenceSensor = "SET_PRESENCE_SENSOR";
     public const string ListSmartThingsSensors = "LIST_SMARTTHINGS_SENSORS";
 }
@@ -36,7 +42,8 @@ public sealed record SetupRequest(
     string? SensorProtocol = null,
     string? ComponentId = null,
     string? CapabilityId = null,
-    string? AttributeName = null);
+    string? AttributeName = null,
+    int? PauseMinutes = null);
 
 public sealed record SetupResponse(
     bool Success,
@@ -54,11 +61,15 @@ public sealed record SetupStatus(
     string? PreferredPhoneId,
     bool ProximityLockEnabled,
     bool ProximityUnlockEnabled,
+    bool SmartArrivalEnabled,
     int ProximityGraceSeconds,
     string AutoLockProfile,
     bool BluetoothRssiEnabled,
     int BluetoothRssiThreshold,
     bool RemoteUnlockEnabled,
+    bool RemotePowerEnabled,
+    DateTimeOffset? PauseUntil,
+    bool PauseIndefinitely,
     bool PresenceSensorEnabled,
     string PresenceSensorProtocol,
     string? PresenceSensorBaseUrl,
@@ -70,6 +81,8 @@ public sealed record SetupStatus(
     DateTimeOffset? LastSuccessfulPhoneAuth,
     bool ReadyToEnableCredentialProvider,
     bool InteractiveAgentConnected);
+
+public sealed record SecurityCheckItem(string Code, bool Passed, string Title, string Detail, bool CanFix = false);
 
 public sealed record PhoneStatus(
     string PhoneId,
@@ -111,4 +124,5 @@ public sealed record SetupDiagnostics(
     string PresenceSensorCapabilityId,
     string PresenceSensorAttributeName,
     int PresenceSensorGraceSeconds,
-    bool InteractiveAgentConnected);
+    bool InteractiveAgentConnected,
+    IReadOnlyList<WakeOnLanTarget> WakeOnLanTargets);

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Security.Principal;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -106,14 +107,82 @@ public partial class MainWindow : Window
 
             var diagnostics = ProtocolJson.Deserialize<SetupDiagnostics>(response.Data);
             var connected = diagnostics.Phones.Count(phone => phone.Connected);
+            var vpnAddresses = diagnostics.LocalAddresses
+                .Where(address => address.StartsWith("100.", StringComparison.Ordinal))
+                .ToArray();
+            var route = vpnAddresses.Length > 0
+                ? $"VPN 주소 준비 {vpnAddresses.Length}개"
+                : "LAN 주소 준비됨 · VPN 주소 없음";
+            var wake = diagnostics.WakeOnLanTargets.Count > 0
+                ? $"WOL {diagnostics.WakeOnLanTargets.Count}개"
+                : "WOL 대상 없음";
             DiagnosticsSummaryText.Text = connected == 0
-                ? $"PC 주소 {string.Join(", ", diagnostics.LocalAddresses)} · 연결된 휴대폰 없음 · 자동잠금 에이전트 {(diagnostics.InteractiveAgentConnected ? "연결됨" : "없음")}"
-                : $"PC 주소 {string.Join(", ", diagnostics.LocalAddresses)} · 휴대폰 {connected}대 연결됨 · 포트 {diagnostics.ListeningPort} · 자동잠금 에이전트 {(diagnostics.InteractiveAgentConnected ? "연결됨" : "없음")}";
+                ? $"PC 주소 {string.Join(", ", diagnostics.LocalAddresses)} · 연결된 휴대폰 없음 · {route} · {wake} · 자동잠금 에이전트 {(diagnostics.InteractiveAgentConnected ? "연결됨" : "없음")}"
+                : $"PC 주소 {string.Join(", ", diagnostics.LocalAddresses)} · 휴대폰 {connected}대 연결됨 · 포트 {diagnostics.ListeningPort} · {route} · {wake} · 자동잠금 에이전트 {(diagnostics.InteractiveAgentConnected ? "연결됨" : "없음")}";
             SetOperation("Windows 연결 진단을 완료했습니다. 알림·배터리 상태는 휴대폰 앱 진단에서 확인하세요.", success: true);
         });
     }
 
     private async void AuditRefresh_Click(object sender, RoutedEventArgs e) => await RefreshAuditAsync(silent: false);
+
+    private async void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Phone Unlock 진단 저장",
+            Filter = "JSON 파일|*.json|모든 파일|*.*",
+            FileName = $"PhoneUnlock-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.json",
+            AddExtension = true,
+            DefaultExt = ".json",
+            OverwritePrompt = true
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.Diagnostics),
+                TimeSpan.FromSeconds(10));
+            if (!response.Success || string.IsNullOrWhiteSpace(response.Data))
+            {
+                SetOperation(response.Message, success: false);
+                return;
+            }
+
+            var diagnostics = ProtocolJson.Deserialize<SetupDiagnostics>(response.Data);
+            var safeExport = new
+            {
+                exportedAt = DateTimeOffset.UtcNow,
+                diagnostics.ServiceVersion,
+                diagnostics.ListeningPort,
+                diagnostics.LocalAddresses,
+                diagnostics.CertificateFingerprint,
+                diagnostics.Phones,
+                diagnostics.RecentAudit,
+                diagnostics.ProximityLockEnabled,
+                diagnostics.ProximityUnlockEnabled,
+                diagnostics.ProximityGraceSeconds,
+                diagnostics.AutoLockProfile,
+                diagnostics.BluetoothRssiEnabled,
+                diagnostics.BluetoothRssiThreshold,
+                diagnostics.RemoteUnlockEnabled,
+                diagnostics.PresenceSensorEnabled,
+                diagnostics.PresenceSensorProtocol,
+                diagnostics.PresenceSensorBaseUrl,
+                diagnostics.PresenceSensorEntityId,
+                diagnostics.InteractiveAgentConnected,
+                diagnostics.WakeOnLanTargets
+            };
+            await File.WriteAllTextAsync(
+                dialog.FileName,
+                ProtocolJson.Serialize(safeExport),
+                Encoding.UTF8);
+            SetOperation($"민감한 토큰·비밀번호를 제외한 진단 정보를 저장했습니다: {dialog.FileName}", success: true);
+        });
+    }
 
     private async void ProximityLock_Click(object sender, RoutedEventArgs e)
     {
@@ -125,6 +194,20 @@ public partial class MainWindow : Window
     {
         if (updatingControls) return;
         await SaveProximityUnlockAsync();
+    }
+
+    private async void SmartArrival_Click(object sender, RoutedEventArgs e)
+    {
+        if (updatingControls) return;
+        var enabled = SmartArrivalCheckBox.IsChecked == true;
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.SetSmartArrival, Enabled: enabled),
+                TimeSpan.FromSeconds(10));
+            SetOperation(response.Message, response.Success);
+            if (response.Success) await RefreshStatusAsync();
+        });
     }
 
     private async void RemoteUnlock_Click(object sender, RoutedEventArgs e)
@@ -139,6 +222,121 @@ public partial class MainWindow : Window
             SetOperation(response.Message, response.Success);
             if (response.Success) await RefreshStatusAsync();
         });
+    }
+
+    private async void RemotePower_Click(object sender, RoutedEventArgs e)
+    {
+        if (updatingControls) return;
+        var enabled = RemotePowerCheckBox.IsChecked == true;
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.SetRemotePower, Enabled: enabled),
+                TimeSpan.FromSeconds(10));
+            SetOperation(response.Message, response.Success);
+            if (response.Success) await RefreshStatusAsync();
+        });
+    }
+
+    private async void PauseHour_Click(object sender, RoutedEventArgs e) => await SetPauseAsync(60);
+
+    private async void PauseToday_Click(object sender, RoutedEventArgs e) => await SetPauseAsync(1_440);
+
+    private async void ResumeAutomation_Click(object sender, RoutedEventArgs e) => await SetPauseAsync(0);
+
+    private async Task SetPauseAsync(int minutes)
+    {
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.SetPause, Enabled: minutes > 0, PauseMinutes: minutes > 0 ? minutes : null),
+                TimeSpan.FromSeconds(10));
+            SetOperation(response.Message, response.Success);
+            if (response.Success) await RefreshStatusAsync();
+        });
+    }
+
+    private async void RevokePhone_Click(object sender, RoutedEventArgs e)
+    {
+        if (PhoneSelectorComboBox.SelectedItem is not PhoneSelectionItem phone)
+        {
+            SetOperation("차단할 휴대폰을 먼저 선택하세요.", success: false);
+            return;
+        }
+
+        if (MessageBox.Show(
+                $"{phone.DisplayName}을(를) 즉시 차단할까요? 다시 사용하려면 새로 페어링해야 합니다.",
+                "휴대폰 차단",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.RevokePhone, PhoneId: phone.PhoneId),
+                TimeSpan.FromSeconds(10));
+            SetOperation(response.Message, response.Success);
+            if (response.Success) await RefreshStatusAsync();
+        });
+    }
+
+    private async void RevokeAllPhones_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(
+                "등록된 모든 휴대폰의 로그인을 즉시 차단할까요? Windows 기본 로그인은 유지됩니다.",
+                "모든 휴대폰 차단",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        await RunOperationAsync(async () =>
+        {
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.RevokeAllPhones),
+                TimeSpan.FromSeconds(10));
+            SetOperation(response.Message, response.Success);
+            if (response.Success) await RefreshStatusAsync();
+        });
+    }
+
+    private async void SecurityCheckup_Click(object sender, RoutedEventArgs e)
+    {
+        await RunOperationAsync(async () =>
+        {
+            SecurityCheckupButton.IsEnabled = false;
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.SecurityCheckup),
+                TimeSpan.FromSeconds(10));
+            if (!response.Success || string.IsNullOrWhiteSpace(response.Data))
+            {
+                SetOperation(response.Message, success: false);
+                return;
+            }
+
+            var checks = ProtocolJson.Deserialize<SecurityCheckItem[]>(response.Data);
+            SecurityCheckupList.Items.Clear();
+            foreach (var check in checks)
+            {
+                SecurityCheckupList.Items.Add(new ListBoxItem
+                {
+                    Content = $"{(check.Passed ? "✓" : "!")} {check.Title} · {check.Detail}",
+                    Foreground = BrushFrom(check.Passed ? "#217346" : "#A15C00"),
+                    Padding = new Thickness(8, 4, 8, 4)
+                });
+            }
+
+            var warnings = checks.Count(check => !check.Passed);
+            SecurityCheckupSummaryText.Text = warnings == 0
+                ? "✓ 보안 상태가 정상입니다."
+                : $"! 주의할 항목 {warnings}개가 있습니다.";
+            SetOperation(response.Message, warnings == 0);
+        });
+        SecurityCheckupButton.IsEnabled = currentStatus is not null;
     }
 
     private async void AutoLockProfile_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -670,18 +868,26 @@ public partial class MainWindow : Window
                     phone.PhoneId,
                     $"{phone.PhoneName} · {(phone.Connected ? "연결됨" : "오프라인")}"));
             }
+            RevokePhoneButton.IsEnabled = PhoneSelectorComboBox.Items.Count > 0;
             PhoneSelectorComboBox.SelectedItem = currentStatus.PreferredPhoneId is null
                 ? null
                 : PhoneSelectorComboBox.Items.OfType<PhoneSelectionItem>()
                     .FirstOrDefault(item => item.PhoneId == currentStatus.PreferredPhoneId);
             UseSelectedPhoneButton.IsEnabled = PhoneSelectorComboBox.Items.Count > 0;
             RemoteUnlockCheckBox.IsChecked = currentStatus.RemoteUnlockEnabled;
+            RemotePowerCheckBox.IsChecked = currentStatus.RemotePowerEnabled;
+            PauseStateText.Text = currentStatus.PauseIndefinitely
+                ? "자동 기능 일시 중지 중 · 다시 켜기를 누르세요."
+                : currentStatus.PauseUntil is { } pauseUntil && pauseUntil > DateTimeOffset.UtcNow
+                    ? $"자동 기능 일시 중지 중 · {pauseUntil.ToLocalTime():MM-dd HH:mm}까지"
+                    : "자동 기능 일시 중지 안 함";
             AutoLockProfileComboBox.SelectedItem = AutoLockProfileComboBox.Items
                 .OfType<ComboBoxItem>()
                 .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), currentStatus.AutoLockProfile, StringComparison.OrdinalIgnoreCase))
                 ?? AutoLockProfileComboBox.Items.OfType<ComboBoxItem>().FirstOrDefault(item => item.Tag?.ToString() == "standard");
             ProximityLockCheckBox.IsChecked = currentStatus.ProximityLockEnabled;
             ProximityUnlockCheckBox.IsChecked = currentStatus.ProximityUnlockEnabled;
+            SmartArrivalCheckBox.IsChecked = currentStatus.SmartArrivalEnabled;
             BluetoothRssiCheckBox.IsChecked = currentStatus.BluetoothRssiEnabled;
             BluetoothRssiThresholdComboBox.SelectedItem = BluetoothRssiThresholdComboBox.Items
                 .OfType<ComboBoxItem>()
@@ -770,11 +976,14 @@ public partial class MainWindow : Window
         PhoneSelectorComboBox.IsEnabled = enabled;
         UseSelectedPhoneButton.IsEnabled = enabled && PhoneSelectorComboBox.Items.Count > 0;
         DiagnosticsButton.IsEnabled = enabled;
+        ExportDiagnosticsButton.IsEnabled = enabled;
         AuditList.IsEnabled = enabled;
         ProximityLockCheckBox.IsEnabled = enabled;
         ProximityUnlockCheckBox.IsEnabled = enabled;
+        SmartArrivalCheckBox.IsEnabled = enabled;
         ProximityGraceComboBox.IsEnabled = enabled;
         RemoteUnlockCheckBox.IsEnabled = enabled;
+        RemotePowerCheckBox.IsEnabled = enabled;
         AutoLockProfileComboBox.IsEnabled = enabled;
         PresenceSensorCheckBox.IsEnabled = enabled;
         PresenceSensorProtocolComboBox.IsEnabled = enabled;
@@ -791,6 +1000,12 @@ public partial class MainWindow : Window
         SmartThingsQuickConnectButton.IsEnabled = enabled;
         SmartThingsSensorComboBox.IsEnabled = enabled;
         SmartThingsUseSensorButton.IsEnabled = enabled;
+        SecurityCheckupButton.IsEnabled = enabled;
+        RevokePhoneButton.IsEnabled = enabled && PhoneSelectorComboBox.Items.Count > 0;
+        RevokeAllPhonesButton.IsEnabled = enabled;
+        PauseHourButton.IsEnabled = enabled;
+        PauseTodayButton.IsEnabled = enabled;
+        ResumeAutomationButton.IsEnabled = enabled;
         StartAgentButton.IsEnabled = enabled;
         if (!enabled)
         {

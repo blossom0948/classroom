@@ -26,7 +26,7 @@ class PairingClient {
             }
         }
         throw IOException(
-            "PC에 연결할 수 없습니다. PC는 이더넷이어도 됩니다. 휴대폰 Wi-Fi가 PC와 같은 공유기/LAN인지, 게스트 Wi-Fi가 아닌지 확인하세요. 시도한 PC 주소: ${payload.hosts.joinToString()}",
+            "PC에 연결할 수 없습니다. PC는 이더넷이어도 됩니다. 같은 LAN이 아니면 양쪽에 Tailscale/WireGuard VPN을 연결하세요. 게스트 Wi-Fi가 아닌지도 확인하세요. 시도한 PC 주소: ${payload.hosts.joinToString()}",
             lastNetworkError,
         )
     }
@@ -65,6 +65,8 @@ class PairingClient {
                 phoneId = value.getString("phoneId"),
                 deviceToken = value.getString("deviceToken"),
                 publicKey = publicKey,
+                hosts = payload.hosts,
+                wakeOnLanTargets = payload.wakeOnLanTargets,
             )
             require(paired.version == 1) { "지원하지 않는 PC 프로토콜 버전입니다." }
             require(paired.computerId == payload.computerId) { "PC 식별자가 페어링 정보와 다릅니다." }
@@ -76,10 +78,17 @@ class PairingClient {
 
     suspend fun checkHealth(computer: PairedComputer): Boolean = withContext(Dispatchers.IO) {
         val client = PinnedHttpClient.create(computer.certificateFingerprint)
-        val request = Request.Builder()
-            .url("https://${computer.host}:${computer.port}/health")
-            .get()
-            .build()
-        client.newCall(request).execute().use { response -> response.isSuccessful }
+        val hosts = (listOf(computer.host) + computer.hosts)
+            .filter { it.isNotBlank() }
+            .distinct()
+        hosts.any { host ->
+            runCatching {
+                val request = Request.Builder()
+                    .url("https://$host:${computer.port}/health")
+                    .get()
+                    .build()
+                client.newCall(request).execute().use { response -> response.isSuccessful }
+            }.getOrDefault(false)
+        }
     }
 }

@@ -22,6 +22,7 @@ if ($null -ne $service) {
     & sc.exe delete $script:PhoneUnlockServiceName | Out-Null
 }
 Get-NetFirewallRule -DisplayName $script:PhoneUnlockFirewallName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+Get-NetFirewallRule -DisplayName $script:PhoneUnlockVpnFirewallName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 
 $installRoot = Get-PhoneUnlockInstallRoot
 $expectedRoot = [IO.Path]::GetFullPath((Join-Path $env:ProgramFiles 'PhoneUnlock'))

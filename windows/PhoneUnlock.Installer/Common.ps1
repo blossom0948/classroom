@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 $script:PhoneUnlockProviderGuid = '{8C12D44B-04D3-41D4-980B-80DF3D8DD324}'
 $script:PhoneUnlockServiceName = 'PhoneUnlockService'
 $script:PhoneUnlockFirewallName = 'Phone Unlock Local Pairing'
+$script:PhoneUnlockVpnFirewallName = 'Phone Unlock Private VPN'
 $script:PhoneUnlockLogonPolicyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'
 $script:PhoneUnlockDefaultProviderValue = 'DefaultCredentialProvider'
 

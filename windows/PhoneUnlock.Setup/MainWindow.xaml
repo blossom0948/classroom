@@ -147,6 +147,8 @@
                         <TextBlock FontSize="17" FontWeight="SemiBold" Text="자동 잠금" />
                         <CheckBox x:Name="RemoteUnlockCheckBox" Margin="0,12,0,0" FontSize="14"
                                   Content="휴대폰에서 원격 잠금 해제 허용" Click="RemoteUnlock_Click" />
+                        <CheckBox x:Name="RemotePowerCheckBox" Margin="0,10,0,0" FontSize="14"
+                                  Content="원격 전원 제어 허용" Click="RemotePower_Click" />
                         <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -178,6 +180,8 @@
                         </Grid>
                         <CheckBox x:Name="ProximityUnlockCheckBox" Margin="0,12,0,0" FontSize="14"
                                   Content="휴대폰 또는 재실 센서가 감지되면 자동 로그인" Click="ProximityUnlock_Click" />
+                        <CheckBox x:Name="SmartArrivalCheckBox" Margin="0,10,0,0" FontSize="14"
+                                  Content="돌아오면 휴대폰 생체인증 요청" Click="SmartArrival_Click" />
                         <CheckBox x:Name="BluetoothRssiCheckBox" Margin="0,10,0,0" FontSize="14"
                                   Content="Bluetooth 거리 기준 사용" Click="BluetoothRssi_Click" />
                         <Grid Margin="0,8,0,0">
@@ -197,6 +201,13 @@
                         <TextBlock x:Name="ProximityAgentStatusText" Margin="0,10,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
                         <Button x:Name="StartAgentButton" Margin="0,8,0,0" Style="{StaticResource SecondaryButton}"
                                 HorizontalAlignment="Left" Click="StartAgent_Click" Content="자동잠금 감시 시작" />
+                        <TextBlock x:Name="PauseStateText" Margin="0,12,0,0" Foreground="{StaticResource MutedBrush}"
+                                   Text="자동 기능 일시 중지 안 함" />
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button x:Name="PauseHourButton" Style="{StaticResource SecondaryButton}" Click="PauseHour_Click" Content="1시간 중지" />
+                            <Button x:Name="PauseTodayButton" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" Click="PauseToday_Click" Content="오늘까지 중지" />
+                            <Button x:Name="ResumeAutomationButton" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" Click="ResumeAutomation_Click" Content="다시 켜기" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -289,6 +300,30 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <TextBlock FontSize="17" FontWeight="SemiBold" Text="보안 점검" />
+                            <Button x:Name="SecurityCheckupButton" Grid.Column="1" Style="{StaticResource SecondaryButton}"
+                                    Click="SecurityCheckup_Click" Content="검사 실행" />
+                        </Grid>
+                        <TextBlock x:Name="SecurityCheckupSummaryText" Margin="0,8,0,0" Foreground="{StaticResource MutedBrush}"
+                                   TextWrapping="Wrap" Text="아직 보안 점검을 실행하지 않았습니다." />
+                        <ListBox x:Name="SecurityCheckupList" Margin="0,8,0,0" Height="150" BorderThickness="0" Background="#F8F9FB" FontSize="12" />
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button x:Name="RevokePhoneButton" Style="{StaticResource SecondaryButton}" Click="RevokePhone_Click"
+                                    Content="선택한 휴대폰 즉시 차단" />
+                            <Button x:Name="RevokeAllPhonesButton" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}"
+                                    Click="RevokeAllPhones_Click" Content="모든 휴대폰 차단" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Margin="0,12,0,0" Padding="18" Background="White" BorderBrush="{StaticResource StrokeBrush}"
+                        BorderThickness="1" CornerRadius="14">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
                             <TextBlock FontSize="17" FontWeight="SemiBold" Text="보안 기록" />
                             <Button Grid.Column="1" Style="{StaticResource SecondaryButton}" Click="AuditRefresh_Click" Content="새로 고침" />
                         </Grid>
@@ -299,7 +334,11 @@
                 <Border Margin="0,12,0,0" Padding="18" Background="White" BorderBrush="{StaticResource StrokeBrush}"
                         BorderThickness="1" CornerRadius="14">
                     <StackPanel>
-                        <Button x:Name="DiagnosticsButton" Click="Diagnostics_Click" Content="이 PC 연결 진단" HorizontalAlignment="Left" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="DiagnosticsButton" Click="Diagnostics_Click" Content="이 PC 연결 진단" HorizontalAlignment="Left" />
+                            <Button x:Name="ExportDiagnosticsButton" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}"
+                                    Click="ExportDiagnostics_Click" Content="진단 저장" HorizontalAlignment="Left" />
+                        </StackPanel>
                         <TextBlock x:Name="DiagnosticsSummaryText" Margin="0,8,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>

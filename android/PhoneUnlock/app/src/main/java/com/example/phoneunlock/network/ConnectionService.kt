@@ -32,6 +32,7 @@ class ConnectionService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var webSocket: WebSocket? = null
     private var reconnectAttempt = 0
+    private var hostIndex = 0
     private var stopping = false
     private var pendingMessage: String? = null
     private var beaconAdvertiser: BleBeaconAdvertiser? = null
@@ -72,6 +73,12 @@ class ConnectionService : Service() {
                     sendOrQueue(request)
                 }
             }
+            ACTION_SEND_REMOTE_POWER -> {
+                val request = intent?.getStringExtra(EXTRA_REMOTE_POWER)
+                if (!request.isNullOrBlank()) {
+                    sendOrQueue(request)
+                }
+            }
             ACTION_DISCONNECT -> {
                 stopping = true
                 handler.removeCallbacksAndMessages(null)
@@ -97,18 +104,26 @@ class ConnectionService : Service() {
         }
 
         stopping = false
+        val hosts = connectionHosts(computer)
+        if (hosts.isEmpty()) {
+            updateConnectionNotification("${computer.computerName}에 연결할 주소가 없습니다")
+            stopSelf()
+            return
+        }
+        val host = hosts[hostIndex % hosts.size]
         updateConnectionNotification("${computer.computerName}에 연결 중…")
         val client = PinnedHttpClient.create(computer.certificateFingerprint)
         val request = Request.Builder()
-            .url("wss://${computer.host}:${computer.port}/ws?phoneId=${computer.phoneId}")
+            .url("wss://$host:${computer.port}/ws?phoneId=${computer.phoneId}")
             .header("Authorization", "Bearer ${computer.deviceToken}")
             .build()
-        webSocket = client.newWebSocket(request, listener(computer))
+        webSocket = client.newWebSocket(request, listener(computer, host))
     }
 
-    private fun listener(computer: PairedComputer) = object : WebSocketListener() {
+    private fun listener(computer: PairedComputer, host: String) = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             reconnectAttempt = 0
+            hostIndex = connectionHosts(computer).indexOf(host).coerceAtLeast(0)
             updateConnectionNotification("${computer.computerName} · 연결됨")
             val hello = JSONObject()
                 .put("version", 1)
@@ -139,6 +154,12 @@ class ConnectionService : Service() {
                     showSecurityAlertNotification(root.optJSONObject("payload")?.optString("message").orEmpty())
                     return
                 }
+                if (root.getString("type") == "SMART_ARRIVAL") {
+                    showSmartArrivalNotification(
+                        root.optJSONObject("payload")?.optString("computerName").orEmpty(),
+                    )
+                    return
+                }
                 if (root.getString("type") != "AUTH_REQUEST") return
                 val request = PhoneUnlockProtocol.parseAuthRequest(text)
                 showAuthenticationNotification(
@@ -162,6 +183,7 @@ class ConnectionService : Service() {
             if (activeComputerId == computer.computerId) {
                 activeConnection = false
             }
+            advanceHost(computer)
             scheduleReconnect(computer)
         }
 
@@ -171,8 +193,22 @@ class ConnectionService : Service() {
             if (activeComputerId == computer.computerId) {
                 activeConnection = false
             }
-            updateConnectionNotification("${computer.computerName} · 오프라인, 재연결 대기")
+            advanceHost(computer)
+            updateConnectionNotification("${computer.computerName} · 오프라인, 다른 연결 경로 재시도")
             scheduleReconnect(computer)
+        }
+    }
+
+    private fun connectionHosts(computer: PairedComputer): List<String> =
+        (listOf(computer.host) + computer.hosts)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+
+    private fun advanceHost(computer: PairedComputer) {
+        val count = connectionHosts(computer).size
+        if (count > 0) {
+            hostIndex = (hostIndex + 1) % count
         }
     }
 
@@ -242,6 +278,43 @@ class ConnectionService : Service() {
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .build()
         getSystemService(NotificationManager::class.java).notify(SECURITY_NOTIFICATION_ID, notification)
+    }
+
+    private fun showSmartArrivalNotification(computerName: String) {
+        val intent = Intent(this, com.example.phoneunlock.MainActivity::class.java)
+            .setAction(com.example.phoneunlock.MainActivity.ACTION_SMART_ARRIVAL)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            SMART_ARRIVAL_NOTIFICATION_ID,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        if (AuthPromptSettings.isAutoOpenEnabled(this)
+            && AuthPromptSettings.canUseFullScreenIntent(this)) {
+            try {
+                startActivity(intent)
+                return
+            } catch (_: SecurityException) {
+                // Fall back to an actionable notification when Android blocks the background launch.
+            } catch (_: ActivityNotFoundException) {
+                // Fall back to the notification below.
+            }
+        }
+
+        val notification = Notification.Builder(this, AUTH_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_phone_unlock)
+            .setContentTitle("${computerName}에 돌아왔습니다")
+            .setContentText("생체인증으로 PC 잠금을 해제할 수 있습니다")
+            .setCategory(Notification.CATEGORY_REMINDER)
+            .setPriority(Notification.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .addAction(R.drawable.ic_phone_unlock, "생체인식으로 해제", pendingIntent)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .build()
+        getSystemService(NotificationManager::class.java)
+            .notify(SMART_ARRIVAL_NOTIFICATION_ID, notification)
     }
 
     private fun authIntent(requestJson: String, requestCode: Int): Intent = Intent(this, AuthApprovalActivity::class.java)
@@ -329,15 +402,18 @@ class ConnectionService : Service() {
         private const val EXTRA_RESPONSE = "auth_response"
         private const val EXTRA_REMOTE_UNLOCK = "remote_unlock_request"
         private const val EXTRA_REMOTE_LOCK = "remote_lock_request"
+        private const val EXTRA_REMOTE_POWER = "remote_power_request"
         private const val ACTION_CONNECT = "com.example.phoneunlock.CONNECT"
         private const val ACTION_SEND_RESPONSE = "com.example.phoneunlock.SEND_RESPONSE"
         private const val ACTION_SEND_REMOTE_UNLOCK = "com.example.phoneunlock.SEND_REMOTE_UNLOCK"
         private const val ACTION_SEND_REMOTE_LOCK = "com.example.phoneunlock.SEND_REMOTE_LOCK"
+        private const val ACTION_SEND_REMOTE_POWER = "com.example.phoneunlock.SEND_REMOTE_POWER"
         private const val ACTION_DISCONNECT = "com.example.phoneunlock.DISCONNECT"
         private const val CONNECTION_CHANNEL_ID = "phone_unlock_connection"
         private const val AUTH_CHANNEL_ID = "phone_unlock_auth"
         private const val CONNECTION_NOTIFICATION_ID = 48231
         private const val SECURITY_NOTIFICATION_ID = 48232
+        private const val SMART_ARRIVAL_NOTIFICATION_ID = 48233
         private const val HEARTBEAT_INTERVAL_MS = 10_000L
         @Volatile private var activeComputerId: UUID? = null
         @Volatile private var activeConnection: Boolean = false
@@ -374,6 +450,15 @@ class ConnectionService : Service() {
                 Intent(context, ConnectionService::class.java)
                     .setAction(ACTION_SEND_REMOTE_LOCK)
                     .putExtra(EXTRA_REMOTE_LOCK, request),
+            )
+        }
+
+        fun sendRemotePowerRequest(context: Context, request: String) {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, ConnectionService::class.java)
+                    .setAction(ACTION_SEND_REMOTE_POWER)
+                    .putExtra(EXTRA_REMOTE_POWER, request),
             )
         }
 

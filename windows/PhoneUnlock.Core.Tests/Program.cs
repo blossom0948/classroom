@@ -12,7 +12,8 @@ var tests = new (string Name, Action Run)[]
     ("invalid signature does not consume request", InvalidSignatureDoesNotConsume),
     ("expired request is rejected", ExpiredRequestIsRejected),
     ("successful response cannot be replayed", ReplayIsRejected),
-    ("pairing token validates value and expiry", PairingTokenValidationWorks)
+    ("pairing token validates value and expiry", PairingTokenValidationWorks),
+    ("remote power canonical payload is constrained", RemotePowerPayloadIsConstrained)
 };
 
 var failures = 0;
@@ -130,6 +131,38 @@ static void PairingTokenValidationWorks()
     Assert(PairingTokenService.Validate(token, token.Value, now.AddSeconds(119)), "Valid pairing token failed.");
     Assert(!PairingTokenService.Validate(token, token.Value + "x", now), "Wrong pairing token succeeded.");
     Assert(!PairingTokenService.Validate(token, token.Value, now.AddSeconds(121)), "Expired pairing token succeeded.");
+}
+
+static void RemotePowerPayloadIsConstrained()
+{
+    var request = new RemotePowerRequestPayload(
+        Guid.Parse("c6a60298-33c4-49dc-b1ed-b1a046fa7347"),
+        Guid.Parse("e66aa175-932a-4986-8b7d-1156640470a1"),
+        "sleep",
+        Convert.ToBase64String(Enumerable.Repeat((byte)0x42, 32).ToArray()),
+        1787490030,
+        "phone-installation-uuid",
+        "signature");
+
+    const string expected = "PHONE-UNLOCK-V1-POWER\n"
+        + "requestId=c6a60298-33c4-49dc-b1ed-b1a046fa7347\n"
+        + "computerId=e66aa175-932a-4986-8b7d-1156640470a1\n"
+        + "command=SLEEP\n"
+        + "challenge=QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=\n"
+        + "expiresAt=1787490030\n"
+        + "phoneId=phone-installation-uuid";
+
+    Assert(CanonicalPayload.Create(request) == expected, "Remote power canonical payload changed.");
+    try
+    {
+        CanonicalPayload.ValidateCommand("powershell");
+    }
+    catch (ArgumentException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException("Unsupported remote power command was accepted.");
 }
 
 static SignedFixture CreateSignedFixture(ECDsa key)

@@ -36,6 +36,10 @@ object PinnedHttpClient {
         context.init(null, arrayOf<TrustManager>(trustManager), SecureRandom())
         return OkHttpClient.Builder()
             .sslSocketFactory(context.socketFactory, trustManager)
+            // The exact self-signed leaf certificate is pinned above. Hostname validation
+            // would reject a private VPN address that was not present when the PC certificate
+            // was first created; the pinned fingerprint remains the trust boundary.
+            .hostnameVerifier { _, _ -> true }
             .pingInterval(java.time.Duration.ofSeconds(15))
             .retryOnConnectionFailure(true)
             .build()

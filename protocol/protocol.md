@@ -37,7 +37,10 @@ AUTH_EXPIRED
 PING
 PONG
 REMOTE_LOCK_REQUEST
+REMOTE_POWER_REQUEST
 ```
+
+`hosts`에는 PC가 현재 사용할 수 있는 LAN·VPN IPv4 후보가 들어간다. Android는 후보를 순서대로 시도하며, 연결 성공 후에도 heartbeat를 유지한다. VPN을 사용하면 PC와 휴대폰이 서로 다른 장소에 있어도 같은 사설 네트워크의 주소로 통신할 수 있다.
 
 ## REMOTE_LOCK_REQUEST
 
@@ -57,6 +60,30 @@ REMOTE_LOCK_REQUEST
   }
 }
 ```
+
+## REMOTE_POWER_REQUEST
+
+휴대폰의 PC 설정에서 절전·최대 절전·재시작·종료를 요청할 때 사용한다. PC는 `command`를 네 가지 값으로만 허용하고, 휴대폰 생체인증 뒤 생성된 P-256 서명, PC ID, 휴대폰 ID, 만료시간, timestamp와 replay를 확인한다. 클립보드·파일 전송이나 임의 명령 실행은 지원하지 않는다.
+
+```json
+{
+  "version": 1,
+  "type": "REMOTE_POWER_REQUEST",
+  "messageId": "94145d99-e1f4-403a-8675-83caac130dce",
+  "timestamp": 1787490004,
+  "payload": {
+    "requestId": "c6a60298-33c4-49dc-b1ed-b1a046fa7347",
+    "computerId": "e66aa175-932a-4986-8b7d-1156640470a1",
+    "command": "SLEEP",
+    "challenge": "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=",
+    "expiresAt": 1787490030,
+    "phoneId": "phone-installation-uuid",
+    "signature": "MEUCIQ..."
+  }
+}
+```
+
+전원 명령의 canonical prefix는 `PHONE-UNLOCK-V1-POWER`이며 `requestId`, `computerId`, 대문자 `command`, `challenge`, `expiresAt`, `phoneId`를 고정 순서로 LF 연결한다.
 
 ## AUTH_REQUEST
 

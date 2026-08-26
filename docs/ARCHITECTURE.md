@@ -24,7 +24,7 @@ Credential Provider는 네트워크나 Android 키를 직접 다루지 않는다
 ## 설정·페어링 경로
 
 1. 관리자 설정 앱이 보안 Named Pipe로 Windows 계정을 `LogonUserW` 검증 후 서비스에 저장한다.
-2. 서비스가 현재 LAN 주소, 인증서 fingerprint, 2분·1회용 token을 포함한 JSON을 만든다.
+2. 서비스가 현재 LAN·VPN 주소 후보, 인증서 fingerprint, 2분·1회용 token을 포함한 JSON을 만든다.
 3. Android가 고정된 인증서로 `/pair`에 공개키와 phone ID를 등록한다.
 4. 서비스는 원문 장치 토큰 대신 SHA-256 hash만 구성 파일에 저장한다.
 5. Android는 장치 토큰을 Android Keystore AES-GCM 키로 암호화해 저장한다.
@@ -32,7 +32,9 @@ Credential Provider는 네트워크나 Android 키를 직접 다루지 않는다
 
 Windows 구성은 한 PC에 여러 휴대폰을 저장하고, `PreferredPhoneId`가 있으면 해당 휴대폰을 우선 사용한다. Android 구성은 여러 PC를 암호화된 목록으로 보관하고 선택된 PC의 WSS 연결만 유지한다. 모든 인증 결과에는 UTC 시각, 결과, 휴대폰 ID/이름, 요청 ID와 WSS 원격 IP를 남기며, 서명 불일치·등록되지 않은 연결·비정상 응답은 `Suspicious` 플래그를 기록한다.
 
-선택형 자동 잠금은 Windows 서비스의 `AgentPipeService`가 대화형 사용자 세션의 `PhoneUnlock.Agent`와 보안 Named Pipe로 연결되는 구조다. Android는 10초 간격으로 인증된 WebSocket heartbeat를 보내고, 설정한 유예 시간 동안 heartbeat가 끊기면 대화형 에이전트가 `LockWorkStation`을 호출한다. GPS나 단순 Wi-Fi 이름은 사용하지 않는다. 별도로 켠 근접 자동 잠금 해제는 서비스가 `Global\PhoneUnlock.ProximityUnlock` 이벤트를 신호하고 Credential Provider가 이를 받아 heartbeat를 확인한 뒤 저장 자격 증명으로 자동 로그인한다.
+선택형 자동 잠금은 Windows 서비스의 `AgentPipeService`가 대화형 사용자 세션의 `PhoneUnlock.Agent`와 보안 Named Pipe로 연결되는 구조다. Android는 10초 간격으로 인증된 WebSocket heartbeat를 보내고, 설정한 유예 시간 동안 heartbeat가 끊기면 대화형 에이전트가 `LockWorkStation`을 호출한다. GPS나 단순 Wi-Fi 이름은 사용하지 않는다. 별도로 켠 근접 자동 잠금 해제는 서비스가 `Global\PhoneUnlock.ProximityUnlock` 이벤트를 신호하고 Credential Provider가 이를 받아 heartbeat를 확인한 뒤 저장 자격 증명으로 자동 로그인한다. PC Agent는 로그인 후 Windows 트레이에 상주하며 설정 앱과 PC 잠금 메뉴를 제공한다.
+
+장소가 다른 원격 연결은 Tailscale/WireGuard처럼 기기 사이에 암호화된 사설 라우팅이 있는 경우를 지원한다. 서비스는 `ListenAnyIP`로 VPN 어댑터에도 바인딩하고, 방화벽은 사설 VPN 주소 대역만 허용한다. 공용 포트 포워딩이나 클라우드 relay는 기본 경로가 아니다.
 
 ## 개발용 수동 경로
 

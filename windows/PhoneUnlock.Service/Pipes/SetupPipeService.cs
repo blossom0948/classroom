@@ -84,9 +84,15 @@ public sealed class SetupPipeService(
             SetupCommands.Diagnostics => await GetDiagnosticsAsync(cancellationToken),
             SetupCommands.SetProximityLock => await SetProximityLockAsync(request, cancellationToken),
             SetupCommands.SetProximityUnlock => await SetProximityUnlockAsync(request, cancellationToken),
+            SetupCommands.SetSmartArrival => await SetSmartArrivalAsync(request, cancellationToken),
             SetupCommands.SetAutoLockProfile => await SetAutoLockProfileAsync(request, cancellationToken),
             SetupCommands.SetBluetoothRssi => await SetBluetoothRssiAsync(request, cancellationToken),
             SetupCommands.SetRemoteUnlock => await SetRemoteUnlockAsync(request, cancellationToken),
+            SetupCommands.SetRemotePower => await SetRemotePowerAsync(request, cancellationToken),
+            SetupCommands.RevokePhone => await RevokePhoneAsync(request, cancellationToken),
+            SetupCommands.RevokeAllPhones => await RevokeAllPhonesAsync(cancellationToken),
+            SetupCommands.SecurityCheckup => await SecurityCheckupAsync(cancellationToken),
+            SetupCommands.SetPause => await SetPauseAsync(request, cancellationToken),
             SetupCommands.SetPresenceSensor => await SetPresenceSensorAsync(request, cancellationToken),
             SetupCommands.ListSmartThingsSensors => await ListSmartThingsSensorsAsync(request, cancellationToken),
             _ => new SetupResponse(false, "UNKNOWN_COMMAND", "Unknown setup command.")
@@ -111,11 +117,15 @@ public sealed class SetupPipeService(
             configuration.PreferredPhoneId,
             configuration.ProximityLockEnabled,
             configuration.ProximityUnlockEnabled,
+            configuration.SmartArrivalEnabled,
             configuration.ProximityGraceSeconds,
             configuration.AutoLockProfile,
             configuration.BluetoothRssiEnabled,
             configuration.BluetoothRssiThreshold,
             configuration.RemoteUnlockEnabled,
+            configuration.RemotePowerEnabled,
+            configuration.PauseUntil,
+            configuration.PauseIndefinitely,
             configuration.PresenceSensorEnabled,
             configuration.PresenceSensorProtocol,
             configuration.PresenceSensorBaseUrl,
@@ -178,6 +188,7 @@ public sealed class SetupPipeService(
                 : configuration.PreferredPhoneId,
             LastSuccessfulPhoneAuth = null
         }, cancellationToken);
+        await connectionRegistry.DisconnectAsync(phoneId);
         await auditLog.AppendAsync(new AuditEntry(
             DateTimeOffset.UtcNow,
             "PHONE",
@@ -189,6 +200,66 @@ public sealed class SetupPipeService(
             "등록된 휴대폰 삭제",
             Suspicious: false), cancellationToken);
         return new SetupResponse(true, "OK", "Phone was removed.");
+    }
+
+    private async Task<SetupResponse> RevokePhoneAsync(SetupRequest request, CancellationToken cancellationToken)
+    {
+        var phoneId = request.PhoneId ?? throw new ArgumentException("phoneId가 필요합니다.");
+        var configuration = await configurationStore.UpdateAsync(current => current with
+        {
+            Phones = current.Phones.Select(phone =>
+                string.Equals(phone.PhoneId, phoneId, StringComparison.Ordinal)
+                    ? phone with { Enabled = false }
+                    : phone).ToList(),
+            PreferredPhoneId = string.Equals(current.PreferredPhoneId, phoneId, StringComparison.Ordinal)
+                ? null
+                : current.PreferredPhoneId,
+            LastSuccessfulPhoneAuth = null
+        }, cancellationToken);
+        if (!configuration.Phones.Any(phone => string.Equals(phone.PhoneId, phoneId, StringComparison.Ordinal)))
+        {
+            return new SetupResponse(false, "PHONE_NOT_FOUND", "차단할 휴대폰을 찾지 못했습니다.");
+        }
+
+        await connectionRegistry.DisconnectAsync(phoneId);
+        var phone = configuration.Phones.First(candidate => candidate.PhoneId == phoneId);
+        await auditLog.AppendAsync(new AuditEntry(
+            DateTimeOffset.UtcNow,
+            "PHONE",
+            "REVOKED",
+            phone.PhoneId,
+            phone.PhoneName,
+            null,
+            null,
+            "휴대폰 토큰·공개키를 즉시 차단하고 연결을 종료함",
+            Suspicious: false), cancellationToken);
+        return new SetupResponse(true, "OK", $"{phone.PhoneName}을(를) 차단했습니다. 다시 사용하려면 새로 페어링하세요.");
+    }
+
+    private async Task<SetupResponse> RevokeAllPhonesAsync(CancellationToken cancellationToken)
+    {
+        var configuration = await configurationStore.UpdateAsync(current => current with
+        {
+            Phones = current.Phones.Select(phone => phone with { Enabled = false }).ToList(),
+            PreferredPhoneId = null,
+            LastSuccessfulPhoneAuth = null
+        }, cancellationToken);
+        foreach (var phone in configuration.Phones)
+        {
+            await connectionRegistry.DisconnectAsync(phone.PhoneId);
+        }
+
+        await auditLog.AppendAsync(new AuditEntry(
+            DateTimeOffset.UtcNow,
+            "PHONE",
+            "ALL_REVOKED",
+            null,
+            null,
+            null,
+            null,
+            "모든 등록 휴대폰의 토큰·공개키를 차단함",
+            Suspicious: false), cancellationToken);
+        return new SetupResponse(true, "OK", "모든 휴대폰 연결을 차단했습니다. Windows 기본 로그인은 유지됩니다.");
     }
 
     private async Task<SetupResponse> TestAuthenticationAsync(CancellationToken cancellationToken)
@@ -250,7 +321,8 @@ public sealed class SetupPipeService(
             configuration.PresenceSensorCapabilityId,
             configuration.PresenceSensorAttributeName,
             configuration.PresenceSensorGraceSeconds,
-            agentConnectionState.IsConnected);
+            agentConnectionState.IsConnected,
+            CertificateManager.GetWakeOnLanTargets());
         return new SetupResponse(true, "OK", "진단 정보를 불러왔습니다.", ProtocolJson.Serialize(diagnostics));
     }
 
@@ -294,6 +366,23 @@ public sealed class SetupPipeService(
         return new SetupResponse(true, "OK", request.Enabled.Value
             ? "휴대폰 heartbeat만 확인해 잠금화면에서 Phone Unlock을 인증 없이 자동 로그인합니다. 보안 수준이 낮아지는 실험 기능입니다."
             : "휴대폰 근접 자동 잠금 해제를 껐습니다.");
+    }
+
+    private async Task<SetupResponse> SetSmartArrivalAsync(
+        SetupRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Enabled is null)
+        {
+            throw new ArgumentException("enabled 값이 필요합니다.");
+        }
+
+        await configurationStore.UpdateAsync(
+            configuration => configuration with { SmartArrivalEnabled = request.Enabled.Value },
+            cancellationToken);
+        return new SetupResponse(true, "OK", request.Enabled.Value
+            ? "휴대폰이 돌아오면 생체인증 요청을 표시합니다. 인증 전에는 PC가 열리지 않습니다."
+            : "Smart Arrival을 껐습니다.");
     }
 
     private async Task<SetupResponse> SetAutoLockProfileAsync(
@@ -368,6 +457,119 @@ public sealed class SetupPipeService(
         return new SetupResponse(true, "OK", request.Enabled.Value
             ? "휴대폰 앱의 원격 잠금 해제를 허용했습니다."
             : "휴대폰 원격 잠금 해제를 껐습니다.");
+    }
+
+    private async Task<SetupResponse> SetRemotePowerAsync(
+        SetupRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Enabled is null)
+        {
+            throw new ArgumentException("enabled 값이 필요합니다.");
+        }
+
+        await configurationStore.UpdateAsync(
+            configuration => configuration with { RemotePowerEnabled = request.Enabled.Value },
+            cancellationToken);
+        return new SetupResponse(true, "OK", request.Enabled.Value
+            ? "원격 절전·재시작·종료를 허용했습니다. 모든 명령은 휴대폰 생체인증과 서명 검증이 필요합니다."
+            : "원격 전원 제어를 껐습니다.");
+    }
+
+    private async Task<SetupResponse> SetPauseAsync(
+        SetupRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Enabled != true)
+        {
+            await configurationStore.UpdateAsync(configuration => configuration with
+            {
+                PauseUntil = null,
+                PauseIndefinitely = false
+            }, cancellationToken);
+            return new SetupResponse(true, "OK", "Phone Unlock 자동 기능을 다시 켰습니다.");
+        }
+
+        var minutes = request.PauseMinutes ?? 60;
+        if (minutes is not (-1 or 60 or 1_440))
+        {
+            throw new ArgumentException("일시 중지는 1시간, 오늘까지, 다시 켤 때까지 중 하나여야 합니다.");
+        }
+
+        await configurationStore.UpdateAsync(configuration => configuration with
+        {
+            PauseUntil = minutes == -1 ? null : DateTimeOffset.UtcNow.AddMinutes(minutes),
+            PauseIndefinitely = minutes == -1
+        }, cancellationToken);
+        return new SetupResponse(true, "OK", minutes switch
+        {
+            60 => "Phone Unlock 자동 기능을 1시간 일시 중지했습니다.",
+            1_440 => "Phone Unlock 자동 기능을 오늘까지 일시 중지했습니다.",
+            _ => "Phone Unlock 자동 기능을 다시 켤 때까지 일시 중지했습니다."
+        });
+    }
+
+    private async Task<SetupResponse> SecurityCheckupAsync(CancellationToken cancellationToken)
+    {
+        var configuration = await configurationStore.GetAsync(cancellationToken);
+        var certificateReady = true;
+        try
+        {
+            certificateManager.LoadOrCreate();
+        }
+        catch
+        {
+            certificateReady = false;
+        }
+
+        var enabledPhones = configuration.Phones.Where(phone => phone.Enabled).ToArray();
+        var checks = new[]
+        {
+            new SecurityCheckItem(
+                "CREDENTIAL",
+                credentialStore.Exists() && !string.IsNullOrWhiteSpace(configuration.ConfiguredAccountSid),
+                "Windows 로그인 자격 증명",
+                credentialStore.Exists() ? "저장된 자격 증명을 확인했습니다." : "현재 Windows 암호 확인이 필요합니다."),
+            new SecurityCheckItem(
+                "PHONE",
+                enabledPhones.Length > 0,
+                "등록된 휴대폰",
+                enabledPhones.Length > 0 ? $"사용 가능한 휴대폰 {enabledPhones.Length}대" : "사용 가능한 휴대폰이 없습니다."),
+            new SecurityCheckItem(
+                "KEY",
+                enabledPhones.All(phone => !string.IsNullOrWhiteSpace(phone.PublicKey)),
+                "휴대폰 공개키",
+                enabledPhones.All(phone => !string.IsNullOrWhiteSpace(phone.PublicKey)) ? "등록된 공개키가 정상입니다." : "공개키가 없는 등록 장치가 있습니다."),
+            new SecurityCheckItem(
+                "CERTIFICATE",
+                certificateReady,
+                "암호화 인증서",
+                certificateReady ? "PC 인증서가 준비되어 있습니다." : "PC 인증서를 읽거나 만들 수 없습니다."),
+            new SecurityCheckItem(
+                "NETWORK",
+                CertificateManager.GetLocalAddresses().Count > 0,
+                "연결 경로",
+                CertificateManager.GetLocalAddresses().Count > 0 ? "LAN·VPN 사설 주소를 사용할 수 있습니다." : "사용 가능한 사설 네트워크 주소가 없습니다."),
+            new SecurityCheckItem(
+                "AGENT",
+                !configuration.ProximityLockEnabled || agentConnectionState.IsConnected,
+                "자동 잠금 에이전트",
+                !configuration.ProximityLockEnabled || agentConnectionState.IsConnected ? "자동 잠금 감시 준비됨" : "자동 잠금 에이전트가 연결되지 않았습니다."),
+            new SecurityCheckItem(
+                "EXPERIMENTAL_UNLOCK",
+                !configuration.ProximityUnlockEnabled,
+                "실험적 자동 잠금 해제",
+                configuration.ProximityUnlockEnabled ? "근접만으로 자동 로그인하는 실험 기능이 켜져 있습니다." : "꺼져 있음 · 휴대폰 생체인증을 권장합니다."),
+            new SecurityCheckItem(
+                "REMOTE_POWER",
+                !configuration.RemotePowerEnabled,
+                "원격 전원 제어",
+                configuration.RemotePowerEnabled ? "고위험 원격 전원 제어가 켜져 있습니다." : "꺼져 있음 · 필요할 때만 켜세요.")
+        };
+        var warningCount = checks.Count(check => !check.Passed);
+        return new SetupResponse(true, warningCount == 0 ? "OK" : "CHECK_REQUIRED",
+            warningCount == 0 ? "보안 검사 결과 문제가 없습니다." : $"보안 검사에서 주의할 항목 {warningCount}개를 찾았습니다.",
+            ProtocolJson.Serialize(checks));
     }
 
     private async Task<SetupResponse> SetPresenceSensorAsync(

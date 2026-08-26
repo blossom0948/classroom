@@ -1,9 +1,10 @@
 #define MyAppName "Phone Unlock"
-#define MyAppVersion "0.4.0-beta.10"
+#define MyAppVersion "0.4.0-beta.11"
 #define MyAppPublisher "blossom0948"
 #define MyAppURL "https://github.com/blossom0948/windowslogin"
 #define MyServiceName "PhoneUnlockService"
 #define MyFirewallName "Phone Unlock Local Pairing"
+#define MyVpnFirewallName "Phone Unlock Private VPN"
 
 [Setup]
 AppId={{755E2A38-C0C8-4696-8337-92B97FDB1D13}
@@ -57,7 +58,7 @@ Name: "{userstartup}\Phone Unlock 자동 잠금"; Filename: "{app}\agent\PhoneUn
 
 [Tasks]
 Name: "desktopicon"; Description: "바탕 화면에 Phone Unlock 설정 바로가기 만들기"; GroupDescription: "추가 바로가기:"
-Name: "agentstartup"; Description: "로그인할 때 휴대폰 거리 이탈 보호 감시 시작"; GroupDescription: "추가 보호 기능:"
+Name: "agentstartup"; Description: "로그인할 때 자동 잠금 감시와 Phone Unlock 트레이 시작"; GroupDescription: "추가 보호 기능:"
 
 [Run]
 Filename: "{app}\setup\PhoneUnlock.Setup.exe"; Description: "Phone Unlock 설정 열기"; WorkingDir: "{app}\setup"; Flags: postinstall nowait skipifsilent
@@ -67,6 +68,7 @@ Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile
 Filename: "{sys}\net.exe"; Parameters: "stop {#MyServiceName} /y"; Flags: runhidden waituntilterminated; RunOnceId: "StopService"
 Filename: "{sys}\sc.exe"; Parameters: "delete {#MyServiceName}"; Flags: runhidden waituntilterminated; RunOnceId: "DeleteService"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""{#MyFirewallName}"""; Flags: runhidden waituntilterminated; RunOnceId: "DeleteFirewall"
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""{#MyVpnFirewallName}"""; Flags: runhidden waituntilterminated; RunOnceId: "DeleteVpnFirewall"
 
 [Code]
 function RunCommand(const FileName, Parameters, Description: String; AllowedSecondCode: Integer): Integer;
@@ -124,8 +126,14 @@ begin
     'advfirewall firewall delete rule name="{#MyFirewallName}"',
     '기존 방화벽 규칙 정리', 1);
   RunCommand(ExpandConstant('{sys}\netsh.exe'),
+    'advfirewall firewall delete rule name="{#MyVpnFirewallName}"',
+    '기존 VPN 방화벽 규칙 정리', 1);
+  RunCommand(ExpandConstant('{sys}\netsh.exe'),
     'advfirewall firewall add rule name="{#MyFirewallName}" dir=in action=allow protocol=TCP localport=48231 remoteip=LocalSubnet profile=any program="' + ServiceExe + '"',
     '로컬 네트워크 방화벽 설정', -1);
+  RunCommand(ExpandConstant('{sys}\netsh.exe'),
+    'advfirewall firewall add rule name="{#MyVpnFirewallName}" dir=in action=allow protocol=TCP localport=48231 remoteip=100.64.0.0/10,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 profile=any program="' + ServiceExe + '"',
+    '사설 VPN 방화벽 설정', -1);
   RunCommand(ExpandConstant('{sys}\net.exe'), 'start {#MyServiceName}',
     'Phone Unlock 서비스 시작', 2);
 end;

@@ -16,5 +16,6 @@ public static class ProtocolConstants
     public const string DeviceHeartbeat = "DEVICE_HEARTBEAT";
     public const string RemoteUnlockRequest = "REMOTE_UNLOCK_REQUEST";
     public const string RemoteLockRequest = "REMOTE_LOCK_REQUEST";
+    public const string RemotePowerRequest = "REMOTE_POWER_REQUEST";
     public const string SecurityAlert = "SECURITY_ALERT";
 }

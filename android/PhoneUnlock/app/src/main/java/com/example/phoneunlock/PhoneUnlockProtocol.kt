@@ -29,6 +29,15 @@ data class RemoteLockRequest(
     val phoneId: String,
 )
 
+data class RemotePowerRequest(
+    val requestId: UUID,
+    val computerId: UUID,
+    val command: String,
+    val challenge: String,
+    val expiresAt: Long,
+    val phoneId: String,
+)
+
 object PhoneUnlockProtocol {
     const val VERSION = 1
     const val MAX_AUTH_LIFETIME_SECONDS = 30L
@@ -134,6 +143,34 @@ object PhoneUnlockProtocol {
             .put("expiresAt", request.expiresAt)
             .put("phoneId", request.phoneId)
         return envelope("REMOTE_LOCK_REQUEST", payload).toString(2)
+    }
+
+    fun canonicalRemotePowerPayload(request: RemotePowerRequest): ByteArray {
+        validateChallenge(request.challenge)
+        require(request.command.uppercase() in setOf("SLEEP", "HIBERNATE", "RESTART", "SHUTDOWN")) {
+            "허용되지 않은 원격 전원 명령입니다."
+        }
+        return listOf(
+            "PHONE-UNLOCK-V1-POWER",
+            "requestId=${request.requestId.toString().lowercase()}",
+            "computerId=${request.computerId.toString().lowercase()}",
+            "command=${request.command.uppercase()}",
+            "challenge=${request.challenge}",
+            "expiresAt=${request.expiresAt}",
+            "phoneId=${request.phoneId}",
+        ).joinToString("\n").toByteArray(Charsets.UTF_8)
+    }
+
+    fun remotePowerResponse(request: RemotePowerRequest, signature: ByteArray): String {
+        val payload = JSONObject()
+            .put("requestId", request.requestId.toString().lowercase())
+            .put("computerId", request.computerId.toString().lowercase())
+            .put("command", request.command.uppercase())
+            .put("challenge", request.challenge)
+            .put("expiresAt", request.expiresAt)
+            .put("phoneId", request.phoneId)
+            .put("signature", Base64.encodeToString(signature, Base64.NO_WRAP))
+        return envelope("REMOTE_POWER_REQUEST", payload).toString(2)
     }
 
     private fun envelope(type: String, payload: JSONObject): JSONObject = JSONObject()

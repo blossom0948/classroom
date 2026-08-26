@@ -1,8 +1,14 @@
 package com.example.phoneunlock.storage
 
+import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
 import java.util.UUID
+
+data class WakeOnLanTarget(
+    val macAddress: String,
+    val broadcastAddress: String,
+)
 
 data class PairingPayload(
     val version: Int,
@@ -14,6 +20,7 @@ data class PairingPayload(
     val port: Int,
     val expiresAt: Long,
     val certificateFingerprint: String,
+    val wakeOnLanTargets: List<WakeOnLanTarget> = emptyList(),
 ) {
     companion object {
         fun parse(json: String): PairingPayload {
@@ -37,6 +44,18 @@ data class PairingPayload(
                 port = value.getInt("port"),
                 expiresAt = value.getLong("expiresAt"),
                 certificateFingerprint = normalizeFingerprint(value.getString("certificateFingerprint")),
+                wakeOnLanTargets = buildList {
+                    value.optJSONArray("wakeOnLanTargets")?.let { targets ->
+                        for (index in 0 until targets.length()) {
+                            val target = targets.optJSONObject(index) ?: continue
+                            val mac = target.optString("macAddress").trim()
+                            val broadcast = target.optString("broadcastAddress").trim()
+                            if (mac.isNotEmpty() && broadcast.isNotEmpty()) {
+                                add(WakeOnLanTarget(mac, broadcast))
+                            }
+                        }
+                    }
+                }.distinctBy { "${it.macAddress}|${it.broadcastAddress}" },
             )
             require(payload.version == 1) { "지원하지 않는 페어링 버전입니다." }
             require(payload.computerName.isNotEmpty()) { "PC 이름이 비어 있습니다." }
@@ -66,6 +85,8 @@ data class PairedComputer(
     val deviceToken: String,
     val publicKey: String = "",
     val authMode: String = "",
+    val hosts: List<String> = emptyList(),
+    val wakeOnLanTargets: List<WakeOnLanTarget> = emptyList(),
 ) {
     fun toJson(): String = JSONObject()
         .put("version", version)
@@ -78,6 +99,14 @@ data class PairedComputer(
         .put("deviceToken", deviceToken)
         .put("publicKey", publicKey)
         .put("authMode", authMode)
+        .put("hosts", JSONArray(hosts))
+        .put("wakeOnLanTargets", JSONArray().apply {
+            wakeOnLanTargets.forEach { target ->
+                put(JSONObject()
+                    .put("macAddress", target.macAddress)
+                    .put("broadcastAddress", target.broadcastAddress))
+            }
+        })
         .toString()
 
     companion object {
@@ -94,6 +123,25 @@ data class PairedComputer(
                 deviceToken = value.getString("deviceToken"),
                 publicKey = value.optString("publicKey", ""),
                 authMode = value.optString("authMode", ""),
+                hosts = buildList {
+                    value.optJSONArray("hosts")?.let { addresses ->
+                        for (index in 0 until addresses.length()) {
+                            add(addresses.optString(index).trim())
+                        }
+                    }
+                }.filter { it.isNotEmpty() }.distinct(),
+                wakeOnLanTargets = buildList {
+                    value.optJSONArray("wakeOnLanTargets")?.let { targets ->
+                        for (index in 0 until targets.length()) {
+                            val target = targets.optJSONObject(index) ?: continue
+                            val mac = target.optString("macAddress").trim()
+                            val broadcast = target.optString("broadcastAddress").trim()
+                            if (mac.isNotEmpty() && broadcast.isNotEmpty()) {
+                                add(WakeOnLanTarget(mac, broadcast))
+                            }
+                        }
+                    }
+                }.distinctBy { "${it.macAddress}|${it.broadcastAddress}" },
             )
         }
     }

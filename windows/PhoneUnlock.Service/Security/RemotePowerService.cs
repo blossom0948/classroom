@@ -10,21 +10,19 @@ using PhoneUnlock.Service.Storage;
 
 namespace PhoneUnlock.Service.Security;
 
-public sealed class RemoteUnlockService(
+public sealed class RemotePowerService(
     PhoneConnectionRegistry connectionRegistry,
     ConfigurationStore configurationStore,
-    WindowsCredentialStore credentialStore,
-    RemoteUnlockGrantStore grantStore,
-    ProximityUnlockSignal proximityUnlockSignal,
+    RemotePowerController powerController,
     AuditLogStore auditLog,
-    ILogger<RemoteUnlockService> logger) : BackgroundService
+    ILogger<RemotePowerService> logger) : BackgroundService
 {
     private readonly SignatureVerifier signatureVerifier = new();
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> seenRequests = new();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await foreach (var request in connectionRegistry.RemoteUnlockRequests.ReadAllAsync(stoppingToken))
+        await foreach (var request in connectionRegistry.RemotePowerRequests.ReadAllAsync(stoppingToken))
         {
             await HandleAsync(request, stoppingToken);
         }
@@ -33,6 +31,7 @@ public sealed class RemoteUnlockService(
     private async Task HandleAsync(RemoteUnlockRequest request, CancellationToken cancellationToken)
     {
         PairedPhoneRecord? phone = null;
+        var command = "POWER";
         try
         {
             var configuration = await configurationStore.GetAsync(cancellationToken);
@@ -40,74 +39,75 @@ public sealed class RemoteUnlockService(
                 candidate.Enabled && string.Equals(candidate.PhoneId, request.PhoneId, StringComparison.Ordinal));
             if (phone is null)
             {
-                await RecordAsync(request, null, "REJECTED", "등록되지 않은 휴대폰의 원격 잠금 해제 요청", suspicious: true, cancellationToken);
+                await RecordAsync(request, null, command, "REJECTED", "등록되지 않은 휴대폰의 원격 전원 요청", true, cancellationToken);
                 return;
             }
 
-            if (!configuration.RemoteUnlockEnabled)
-            {
-                await RecordAsync(request, phone, "DISABLED", "원격 잠금 해제가 설정에서 꺼져 있음", suspicious: false, cancellationToken);
-                return;
-            }
-
-            if (!credentialStore.Exists() || string.IsNullOrWhiteSpace(configuration.ConfiguredAccountSid))
-            {
-                await RecordAsync(request, phone, "NOT_CONFIGURED", "Windows 계정 자격 증명이 설정되지 않음", suspicious: false, cancellationToken);
-                return;
-            }
-
-            var envelope = ProtocolJson.Deserialize<ProtocolEnvelope<RemoteUnlockRequestPayload>>(request.Json);
-            var payload = envelope.Payload ?? throw new JsonException("원격 잠금 해제 payload가 없습니다.");
+            var envelope = ProtocolJson.Deserialize<ProtocolEnvelope<RemotePowerRequestPayload>>(request.Json);
+            var payload = envelope.Payload ?? throw new JsonException("원격 전원 payload가 없습니다.");
+            command = payload.Command?.Trim().ToUpperInvariant() ?? "POWER";
             var now = DateTimeOffset.UtcNow;
+            if (!configuration.RemotePowerEnabled)
+            {
+                await RecordAsync(request, phone, command, "DISABLED", "원격 전원 제어가 설정에서 꺼져 있음", false, cancellationToken);
+                return;
+            }
+
+            CanonicalPayload.ValidateCommand(command);
             if (envelope.Version != ProtocolConstants.Version
-                || envelope.Type != ProtocolConstants.RemoteUnlockRequest
+                || envelope.Type != ProtocolConstants.RemotePowerRequest
                 || payload.PhoneId != request.PhoneId
                 || payload.ComputerId != configuration.ComputerId
                 || payload.ExpiresAt < now.ToUnixTimeSeconds()
                 || payload.ExpiresAt > now.AddSeconds(45).ToUnixTimeSeconds()
                 || Math.Abs(envelope.Timestamp - now.ToUnixTimeSeconds()) > 60)
             {
-                await RecordAsync(request, phone, "REJECTED", "원격 잠금 해제 요청의 시간·PC·재사용 검증 실패", suspicious: true, cancellationToken);
+                await RecordAsync(request, phone, command, "REJECTED", "원격 전원 요청의 서명·시간·PC·재사용 검증 실패", true, cancellationToken);
                 return;
             }
 
             if (!signatureVerifier.Verify(payload, phone.PublicKey))
             {
-                await RecordAsync(request, phone, "REJECTED", "원격 잠금 해제 서명이 일치하지 않음", suspicious: true, cancellationToken);
+                await RecordAsync(request, phone, command, "REJECTED", "원격 전원 서명이 일치하지 않음", true, cancellationToken);
                 return;
             }
 
             if (!seenRequests.TryAdd(payload.RequestId, now.AddMinutes(2)))
             {
-                await RecordAsync(request, phone, "REJECTED", "원격 잠금 해제 요청이 이미 사용됨", suspicious: true, cancellationToken);
+                await RecordAsync(request, phone, command, "REJECTED", "원격 전원 요청이 이미 사용됨", true, cancellationToken);
                 return;
             }
 
-            grantStore.Grant(phone.PhoneId, configuration.ConfiguredAccountSid, now.AddSeconds(30));
-            proximityUnlockSignal.Signal();
-            await RecordAsync(request, phone, "SUCCESS", "휴대폰 생체인증으로 1회성 원격 잠금 해제 승인", suspicious: false, cancellationToken);
+            if (!powerController.TryExecute(command, out var error))
+            {
+                await RecordAsync(request, phone, command, "FAILED", $"원격 {command} 실행 실패: {error}", true, cancellationToken);
+                return;
+            }
+
+            await RecordAsync(request, phone, command, "SUCCESS", $"휴대폰 생체인증으로 원격 {command} 실행", false, cancellationToken);
             CleanupSeenRequests(now);
-            logger.LogInformation("REMOTE_UNLOCK_SUCCESS phone={PhoneId} request={RequestId}", phone.PhoneId, payload.RequestId);
+            logger.LogInformation("REMOTE_POWER_SUCCESS phone={PhoneId} command={Command}", phone.PhoneId, command);
         }
         catch (JsonException exception)
         {
-            await RecordAsync(request, phone, "REJECTED", $"원격 잠금 해제 JSON이 올바르지 않음: {exception.Message}", suspicious: true, cancellationToken);
+            await RecordAsync(request, phone, command, "REJECTED", $"원격 전원 JSON이 올바르지 않음: {exception.Message}", true, cancellationToken);
         }
         catch (Exception exception) when (exception is FormatException or ArgumentException or InvalidOperationException)
         {
-            await RecordAsync(request, phone, "REJECTED", $"원격 잠금 해제 요청을 처리하지 못함: {exception.Message}", suspicious: true, cancellationToken);
+            await RecordAsync(request, phone, command, "REJECTED", $"원격 전원 요청을 처리하지 못함: {exception.Message}", true, cancellationToken);
         }
     }
 
     private Task RecordAsync(
         RemoteUnlockRequest request,
         PairedPhoneRecord? phone,
+        string command,
         string outcome,
         string message,
         bool suspicious,
         CancellationToken cancellationToken) => auditLog.AppendAsync(new AuditEntry(
         DateTimeOffset.UtcNow,
-        "REMOTE_UNLOCK",
+        $"REMOTE_{command}",
         outcome,
         phone?.PhoneId ?? request.PhoneId,
         phone?.PhoneName,

@@ -17,9 +17,12 @@ public sealed class PhoneConnectionRegistry(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
     private readonly Channel<RemoteUnlockRequest> remoteLockRequests = Channel.CreateUnbounded<RemoteUnlockRequest>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+    private readonly Channel<RemoteUnlockRequest> remotePowerRequests = Channel.CreateUnbounded<RemoteUnlockRequest>(
+        new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
     public ChannelReader<RemoteUnlockRequest> RemoteUnlockRequests => remoteUnlockRequests.Reader;
     public ChannelReader<RemoteUnlockRequest> RemoteLockRequests => remoteLockRequests.Reader;
+    public ChannelReader<RemoteUnlockRequest> RemotePowerRequests => remotePowerRequests.Reader;
 
     public async Task<PairedPhoneRecord?> AuthenticateDeviceAsync(
         string? phoneId,
@@ -69,7 +72,8 @@ public sealed class PhoneConnectionRegistry(
             remoteIp,
             loggerFactory.CreateLogger<PhoneConnection>(),
             json => remoteUnlockRequests.Writer.TryWrite(new RemoteUnlockRequest(phone.PhoneId, remoteIp, json)),
-            json => remoteLockRequests.Writer.TryWrite(new RemoteUnlockRequest(phone.PhoneId, remoteIp, json)));
+            json => remoteLockRequests.Writer.TryWrite(new RemoteUnlockRequest(phone.PhoneId, remoteIp, json)),
+            json => remotePowerRequests.Writer.TryWrite(new RemoteUnlockRequest(phone.PhoneId, remoteIp, json)));
         if (connections.TryGetValue(phone.PhoneId, out var previous))
         {
             await previous.DisposeAsync();
@@ -110,6 +114,14 @@ public sealed class PhoneConnectionRegistry(
 
     public bool IsConnected(string phoneId) =>
         connections.TryGetValue(phoneId, out var connection) && connection.IsOpen;
+
+    public async Task DisconnectAsync(string phoneId)
+    {
+        if (connections.TryRemove(phoneId, out var connection))
+        {
+            await connection.DisposeAsync();
+        }
+    }
 
     public IReadOnlyList<PhoneConnectionStatus> GetStatuses(IReadOnlyList<PairedPhoneRecord> phones) =>
         phones.Select(phone =>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="open_phone_unlock"
+        android:enabled="true"
+        android:icon="@drawable/ic_phone_unlock"
+        android:shortcutShortLabel="@string/shortcut_open_short"
+        android:shortcutLongLabel="@string/shortcut_open_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.example.phoneunlock"
+            android:targetClass="com.example.phoneunlock.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="pc_unlock"
+        android:enabled="true"
+        android:icon="@drawable/ic_phone_unlock"
+        android:shortcutShortLabel="@string/shortcut_unlock_short"
+        android:shortcutLongLabel="@string/shortcut_unlock_long">
+        <intent
+            android:action="com.example.phoneunlock.WIDGET_UNLOCK"
+            android:targetPackage="com.example.phoneunlock"
+            android:targetClass="com.example.phoneunlock.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="pc_lock"
+        android:enabled="true"
+        android:icon="@drawable/ic_phone_unlock"
+        android:shortcutShortLabel="@string/shortcut_lock_short"
+        android:shortcutLongLabel="@string/shortcut_lock_long">
+        <intent
+            android:action="com.example.phoneunlock.WIDGET_LOCK"
+            android:targetPackage="com.example.phoneunlock"
+            android:targetClass="com.example.phoneunlock.widget.WidgetActionReceiver" />
+    </shortcut>
+</shortcuts>

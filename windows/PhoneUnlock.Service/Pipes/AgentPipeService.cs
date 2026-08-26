@@ -114,6 +114,13 @@ public sealed class AgentPipeService(
         while (!cancellationToken.IsCancellationRequested)
         {
             var configuration = await configurationStore.GetAsync(cancellationToken);
+            if (configuration.IsPaused())
+            {
+                phoneArmed = false;
+                sensorArmed = false;
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                continue;
+            }
             if (!configuration.ProximityLockEnabled
                 && !configuration.BluetoothRssiEnabled
                 && !configuration.PresenceSensorEnabled)

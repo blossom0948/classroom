@@ -9,7 +9,10 @@ public sealed record PairingPayload(
     IReadOnlyList<string> Hosts,
     int Port,
     long ExpiresAt,
-    string CertificateFingerprint);
+    string CertificateFingerprint,
+    IReadOnlyList<WakeOnLanTarget> WakeOnLanTargets);
+
+public sealed record WakeOnLanTarget(string MacAddress, string BroadcastAddress);
 
 public sealed record PairRequest(
     string PhoneId,

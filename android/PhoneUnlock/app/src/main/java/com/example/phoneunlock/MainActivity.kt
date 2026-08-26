@@ -2,6 +2,7 @@ package com.example.phoneunlock
 
 import android.Manifest
 import android.app.NotificationManager
+import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
 import android.content.Intent
@@ -25,6 +26,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.phoneunlock.network.ConnectionService
 import com.example.phoneunlock.network.PairingClient
+import com.example.phoneunlock.network.WakeOnLanSender
 import com.example.phoneunlock.storage.PairedComputer
 import com.example.phoneunlock.storage.PairingPayload
 import com.example.phoneunlock.storage.SecurePairingStore
@@ -36,6 +38,8 @@ import com.google.android.material.textfield.TextInputEditText
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONException
 import java.security.SecureRandom
 import java.security.Signature
@@ -69,6 +73,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var diagnosticsText: TextView
     private lateinit var remoteUnlockButton: MaterialButton
     private lateinit var remoteLockButton: MaterialButton
+    private lateinit var sleepButton: MaterialButton
+    private lateinit var hibernateButton: MaterialButton
+    private lateinit var restartButton: MaterialButton
+    private lateinit var shutdownButton: MaterialButton
+    private lateinit var wakeButton: MaterialButton
     private lateinit var keystoreSigner: KeystoreSigner
     private lateinit var pairingStore: SecurePairingStore
     private val pairingClient = PairingClient()
@@ -129,6 +138,11 @@ class MainActivity : AppCompatActivity() {
         diagnosticsText = findViewById(R.id.diagnosticsText)
         remoteUnlockButton = findViewById(R.id.remoteUnlockButton)
         remoteLockButton = findViewById(R.id.remoteLockButton)
+        sleepButton = findViewById(R.id.sleepButton)
+        hibernateButton = findViewById(R.id.hibernateButton)
+        restartButton = findViewById(R.id.restartButton)
+        shutdownButton = findViewById(R.id.shutdownButton)
+        wakeButton = findViewById(R.id.wakeButton)
         keystoreSigner = KeystoreSigner(this)
         pairingStore = SecurePairingStore(this)
         phoneId = loadOrCreatePhoneId()
@@ -140,6 +154,11 @@ class MainActivity : AppCompatActivity() {
         settingsBackButton.setOnClickListener { showHome() }
         remoteUnlockButton.setOnClickListener { requestRemoteUnlock() }
         remoteLockButton.setOnClickListener { requestRemoteLock() }
+        sleepButton.setOnClickListener { requestRemotePower("SLEEP") }
+        hibernateButton.setOnClickListener { requestRemotePower("HIBERNATE") }
+        restartButton.setOnClickListener { requestRemotePower("RESTART") }
+        shutdownButton.setOnClickListener { requestRemotePower("SHUTDOWN") }
+        wakeButton.setOnClickListener { wakeComputer() }
         updateButton.setOnClickListener { handleUpdateClick() }
         autoPromptSwitch.isChecked = AuthPromptSettings.isAutoOpenEnabled(this)
         autoPromptSwitch.setOnCheckedChangeListener { _, enabled ->
@@ -194,7 +213,15 @@ class MainActivity : AppCompatActivity() {
         } ?: displayNoPairedComputer()
 
         checkForUpdate(silent = true)
-        if (savedInstanceState == null && intent?.action == ACTION_WIDGET_UNLOCK) {
+        if (savedInstanceState == null && intent?.action in setOf(ACTION_WIDGET_UNLOCK, ACTION_SMART_ARRIVAL)) {
+            window.decorView.post { requestRemoteUnlock() }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent?.action in setOf(ACTION_WIDGET_UNLOCK, ACTION_SMART_ARRIVAL)) {
             window.decorView.post { requestRemoteUnlock() }
         }
     }
@@ -485,9 +512,9 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     val reachable = runCatching { pairingClient.checkHealth(computer) }.getOrDefault(false)
                     lines += if (reachable) {
-                        "✓ PC 연결: ${computer.computerName} 응답 확인"
+                        "✓ PC 연결: ${computer.computerName} 응답 확인 · 주소 후보 ${connectionHosts(computer).size}개"
                     } else {
-                        "✕ PC 연결: 응답 없음 · PC 서비스/방화벽/LAN을 확인하세요"
+                        "✕ PC 연결: 응답 없음 · 서비스/방화벽/LAN 또는 VPN을 확인하세요"
                     }
                 }
 
@@ -675,6 +702,176 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun requestRemotePower(command: String) {
+        val computer = pairingStore.load()
+        if (computer == null) {
+            showResult("먼저 PC를 연결하세요", success = false)
+            return
+        }
+
+        val title = when (command) {
+            "SLEEP" -> "PC를 절전 모드로 전환할까요?"
+            "HIBERNATE" -> "PC를 최대 절전 모드로 전환할까요?"
+            "RESTART" -> "PC를 재시작할까요?"
+            else -> "PC를 종료할까요?"
+        }
+        val message = if (command == "RESTART" || command == "SHUTDOWN") {
+            "저장하지 않은 작업이 사라질 수 있습니다. 휴대폰 생체인증 후 명령을 보냅니다."
+        } else {
+            "휴대폰 생체인증 후 ${computer.computerName}에 명령을 보냅니다."
+        }
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setNegativeButton("취소", null)
+            .setPositiveButton(if (command == "SHUTDOWN") "종료" else "계속") { _, _ ->
+                authenticateAndSendRemotePower(computer, command)
+            }
+            .show()
+    }
+
+    private fun wakeComputer() {
+        val computer = pairingStore.load()
+        if (computer == null) {
+            showResult("먼저 PC를 연결하세요", success = false)
+            return
+        }
+        if (computer.wakeOnLanTargets.isEmpty()) {
+            showResult("이 PC의 Wake-on-LAN 정보가 없습니다. PC에서 새 연결 QR을 만든 뒤 다시 연결하세요.", success = false)
+            return
+        }
+
+        wakeButton.isEnabled = false
+        lifecycleScope.launch {
+            try {
+                val sent = withContext(Dispatchers.IO) {
+                    WakeOnLanSender.send(computer.wakeOnLanTargets)
+                }
+                showResult(
+                    if (sent > 0) "PC 켜기 신호를 보냈습니다. BIOS·네트워크 카드 설정에 따라 켜지는 데 시간이 걸릴 수 있습니다."
+                    else "Wake-on-LAN 신호를 보낼 수 없습니다.",
+                    success = sent > 0,
+                )
+            } catch (exception: Exception) {
+                showResult(exception.message ?: "Wake-on-LAN 신호를 보내지 못했습니다.", success = false)
+            } finally {
+                wakeButton.isEnabled = true
+            }
+        }
+    }
+
+    private fun authenticateAndSendRemotePower(computer: PairedComputer, command: String) {
+        val authStatus = BiometricManager.from(this).canAuthenticate(allowedAuthenticators())
+        if (authStatus != BiometricManager.BIOMETRIC_SUCCESS) {
+            showResult("휴대폰 생체인식을 설정하세요", success = false)
+            return
+        }
+
+        val request = RemotePowerRequest(
+            requestId = UUID.randomUUID(),
+            computerId = computer.computerId,
+            command = command,
+            challenge = Base64.encodeToString(ByteArray(32).also { SecureRandom().nextBytes(it) }, Base64.NO_WRAP),
+            expiresAt = Instant.now().epochSecond + 30,
+            phoneId = computer.phoneId,
+        )
+        val weakFaceCompatibility = AuthPromptSettings.isWeakFaceEnabled(this)
+        val allowDeviceCredential = AuthPromptSettings.isDeviceCredentialEnabled(this)
+        val material = try {
+            if (weakFaceCompatibility) {
+                keystoreSigner.getOrCreateCompatibility(computer.computerId)
+            } else {
+                keystoreSigner.getOrCreate(computer.computerId, allowDeviceCredential)
+            }
+        } catch (exception: Exception) {
+            showResult(exception.message ?: "보안 키를 준비하지 못했습니다", success = false)
+            return
+        }
+        if (computer.publicKey.isNotBlank() && computer.publicKey != material.publicKeyBase64) {
+            showResult("인증 방식이 바뀌었습니다. 이 PC를 다시 연결하세요", success = false)
+            return
+        }
+
+        val signature = if (weakFaceCompatibility) {
+            null
+        } else {
+            try {
+                keystoreSigner.createSignature(material.privateKey)
+            } catch (_: KeyPermanentlyInvalidatedException) {
+                keystoreSigner.delete(computer.computerId)
+                showResult("생체정보 변경으로 키가 무효화되었습니다. PC와 다시 연결하세요", success = false)
+                return
+            }
+        }
+
+        setPowerButtonsEnabled(false)
+        val prompt = BiometricPrompt(
+            this,
+            ContextCompat.getMainExecutor(this),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    val authorized = if (weakFaceCompatibility) {
+                        runCatching { keystoreSigner.createSignature(material.privateKey) }.getOrNull()
+                    } else {
+                        result.cryptoObject?.signature
+                    }
+                    if (authorized == null) {
+                        setPowerButtonsEnabled(true)
+                        showResult("인증 서명을 만들지 못했습니다", success = false)
+                        return
+                    }
+                    try {
+                        authorized.update(PhoneUnlockProtocol.canonicalRemotePowerPayload(request))
+                        ConnectionService.sendRemotePowerRequest(
+                            this@MainActivity,
+                            PhoneUnlockProtocol.remotePowerResponse(request, authorized.sign()),
+                        )
+                        showResult("PC에 ${commandLabel(command)} 명령을 요청했습니다", success = true)
+                    } catch (exception: Exception) {
+                        showResult(exception.message ?: "원격 전원 요청을 보내지 못했습니다", success = false)
+                    } finally {
+                        setPowerButtonsEnabled(true)
+                    }
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    setPowerButtonsEnabled(true)
+                    showResult(errString.toString(), success = false)
+                }
+
+                override fun onAuthenticationFailed() {
+                    showResult("생체인식에 실패했습니다. 다시 시도하세요", success = false)
+                }
+            },
+        )
+        val promptBuilder = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("${computer.computerName} ${commandLabel(command)}")
+            .setSubtitle("휴대폰에서 인증하면 PC에 명령을 보냅니다")
+            .setAllowedAuthenticators(allowedAuthenticators())
+        if (!allowDeviceCredential) {
+            promptBuilder.setNegativeButtonText(getString(R.string.biometric_cancel))
+        }
+        if (weakFaceCompatibility) {
+            prompt.authenticate(promptBuilder.build())
+        } else {
+            prompt.authenticate(promptBuilder.build(), BiometricPrompt.CryptoObject(signature!!))
+        }
+    }
+
+    private fun setPowerButtonsEnabled(enabled: Boolean) {
+        sleepButton.isEnabled = enabled
+        hibernateButton.isEnabled = enabled
+        restartButton.isEnabled = enabled
+        shutdownButton.isEnabled = enabled
+    }
+
+    private fun commandLabel(command: String): String = when (command) {
+        "SLEEP" -> "절전"
+        "HIBERNATE" -> "최대 절전"
+        "RESTART" -> "재시작"
+        else -> "종료"
+    }
+
     private fun allowedAuthenticators(): Int =
         (if (AuthPromptSettings.isWeakFaceEnabled(this)) {
             BiometricManager.Authenticators.BIOMETRIC_WEAK
@@ -718,10 +915,17 @@ class MainActivity : AppCompatActivity() {
         return created
     }
 
+    private fun connectionHosts(computer: PairedComputer): List<String> =
+        (listOf(computer.host) + computer.hosts)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+
     private val Int.dp: Int
         get() = (this * resources.displayMetrics.density).toInt()
 
     companion object {
         const val ACTION_WIDGET_UNLOCK = "com.example.phoneunlock.WIDGET_UNLOCK"
+        const val ACTION_SMART_ARRIVAL = "com.example.phoneunlock.SMART_ARRIVAL"
     }
 }

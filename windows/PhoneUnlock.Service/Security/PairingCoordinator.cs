@@ -29,6 +29,7 @@ public sealed class PairingCoordinator(
             throw new InvalidOperationException("휴대폰과 연결할 로컬 네트워크 주소를 찾지 못했습니다. Wi-Fi 또는 이더넷 연결을 확인하세요.");
         }
         var certificate = certificateManager.LoadOrCreate();
+        var wakeOnLanTargets = CertificateManager.GetWakeOnLanTargets();
         return new PairingPayload(
             1,
             configuration.ComputerId,
@@ -38,7 +39,8 @@ public sealed class PairingCoordinator(
             hosts,
             ServiceConstants.Port,
             expiresAt.ToUnixTimeSeconds(),
-            CertificateManager.GetSha256Fingerprint(certificate));
+            CertificateManager.GetSha256Fingerprint(certificate),
+            wakeOnLanTargets);
     }
 
     public async Task<PairResponse?> PairAsync(
