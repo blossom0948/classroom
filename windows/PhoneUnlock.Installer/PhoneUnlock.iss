@@ -1,5 +1,5 @@
 #define MyAppName "Phone Unlock"
-#define MyAppVersion "0.4.0-beta.14"
+#define MyAppVersion "0.4.0-beta.15"
 #define MyAppPublisher "blossom0948"
 #define MyAppURL "https://github.com/blossom0948/windowslogin"
 #define MyServiceName "PhoneUnlockService"
