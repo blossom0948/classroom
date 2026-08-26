@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <style name="Widget.PhoneUnlock.BottomNavigation.ActiveIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">@color/brand_nav_active</item>
+        <item name="android:width">76dp</item>
+        <item name="android:height">48dp</item>
+        <item name="marginHorizontal">4dp</item>
+    </style>
+
     <style name="Theme.PhoneUnlock" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/brand_primary</item>
         <item name="colorOnPrimary">@color/brand_on_primary</item>
