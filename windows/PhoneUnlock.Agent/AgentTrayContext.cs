@@ -8,11 +8,13 @@ internal sealed class AgentTrayContext : ApplicationContext
 {
     private readonly NotifyIcon notifyIcon;
     private readonly CancellationTokenSource stopSource = new();
+    private readonly SynchronizationContext uiContext;
 
     public CancellationToken StoppingToken => stopSource.Token;
 
     public AgentTrayContext()
     {
+        uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         var menu = new ContextMenuStrip();
         menu.Items.Add(new ToolStripLabel("Phone Unlock · 자동 잠금 감시"));
         menu.Items.Add(new ToolStripSeparator());
@@ -85,9 +87,22 @@ internal sealed class AgentTrayContext : ApplicationContext
 
     public void ShowNotice(string title, string message)
     {
-        notifyIcon.BalloonTipTitle = title;
-        notifyIcon.BalloonTipText = message;
-        notifyIcon.ShowBalloonTip(4_000);
+        if (stopSource.IsCancellationRequested)
+        {
+            return;
+        }
+
+        uiContext.Post(_ =>
+        {
+            if (stopSource.IsCancellationRequested)
+            {
+                return;
+            }
+
+            notifyIcon.BalloonTipTitle = title;
+            notifyIcon.BalloonTipText = message;
+            notifyIcon.ShowBalloonTip(4_000);
+        }, null);
     }
 
     private static class NativeMethods

@@ -15,7 +15,7 @@ if (!ownsInstance)
 }
 
 using var tray = new AgentTrayContext();
-var agentTask = RunAgentAsync(tray.StoppingToken);
+var agentTask = RunAgentAsync(tray, tray.StoppingToken);
 Application.Run(tray);
 try
 {
@@ -25,7 +25,7 @@ catch (OperationCanceledException) when (tray.StoppingToken.IsCancellationReques
 {
 }
 
-static async Task RunAgentAsync(CancellationToken stoppingToken)
+static async Task RunAgentAsync(AgentTrayContext tray, CancellationToken stoppingToken)
 {
     while (!stoppingToken.IsCancellationRequested)
     {
