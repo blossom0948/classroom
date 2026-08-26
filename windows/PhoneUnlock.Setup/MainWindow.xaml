@@ -4,10 +4,11 @@
         Title="Phone Unlock 설정"
         Width="820" Height="820" MinWidth="700" MinHeight="640"
         WindowStartupLocation="CenterScreen"
-        Background="#F7F8FC"
+        Background="{StaticResource WindowBrush}"
         FontFamily="Segoe UI Variable Text"
         Foreground="{StaticResource TextBrush}"
-        Loaded="Window_Loaded">
+        Loaded="Window_Loaded"
+        PreviewKeyDown="Window_PreviewKeyDown">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="30">
             <Grid>
@@ -25,20 +26,20 @@
                 </StackPanel>
             </Grid>
 
-            <Border x:Name="InstallRequiredCard" Margin="0,18,0,0" Padding="16" Background="#FFF0F0"
-                    BorderBrush="#E7A5A1" BorderThickness="1" CornerRadius="12" Visibility="Collapsed">
+            <Border x:Name="InstallRequiredCard" Margin="0,18,0,0" Padding="16" Background="#3A2528"
+                    BorderBrush="#754448" BorderThickness="1" CornerRadius="12" Visibility="Collapsed">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Foreground="#8A2424" FontWeight="SemiBold" VerticalAlignment="Center"
+                    <TextBlock Foreground="{StaticResource ErrorBrush}" FontWeight="SemiBold" VerticalAlignment="Center"
                                Text="서비스 설치 필요" />
                     <Button x:Name="InstallButton" Grid.Column="1" Click="Install_Click" Content="설치" />
                 </Grid>
             </Border>
 
-            <Border Margin="0,16,0,0" Padding="16" Background="White" BorderBrush="{StaticResource StrokeBrush}"
+            <Border Margin="0,16,0,0" Padding="16" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource StrokeBrush}"
                     BorderThickness="1" CornerRadius="14">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -49,7 +50,7 @@
                         <TextBlock x:Name="ServiceStatusText" FontSize="16" FontWeight="SemiBold" Text="확인 중…" />
                         <TextBlock x:Name="ComputerText" Margin="0,4,0,0" Foreground="{StaticResource MutedBrush}" />
                     </StackPanel>
-                    <Border Grid.Column="1" x:Name="ReadyBadge" Padding="12,7" CornerRadius="16" Background="#ECEEF2">
+                    <Border Grid.Column="1" x:Name="ReadyBadge" Padding="12,7" CornerRadius="16" Background="{StaticResource CardAltBrush}">
                         <TextBlock x:Name="ReadyBadgeText" FontSize="12" FontWeight="SemiBold" Text="설정 필요" />
                     </Border>
                 </Grid>
@@ -58,7 +59,7 @@
             <StackPanel x:Name="HomePanel">
                 <TextBlock Margin="0,24,0,0" FontSize="20" FontWeight="SemiBold" Text="연결된 휴대폰" />
                 <ListBox x:Name="HomePhoneList" Margin="0,12,0,0" Height="150" BorderThickness="1"
-                         BorderBrush="{StaticResource StrokeBrush}" Background="White"
+                         BorderBrush="{StaticResource StrokeBrush}" Background="{StaticResource CardBrush}"
                          SelectionChanged="HomePhoneList_SelectionChanged" />
                 <TextBlock x:Name="PhoneStateText" Margin="0,8,0,0" Foreground="{StaticResource MutedBrush}"
                            TextWrapping="Wrap" Text="등록된 휴대폰이 없습니다." />
@@ -72,12 +73,12 @@
                         <ColumnDefinition Width="18" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Border Padding="8" Background="White" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="12">
+                    <Border Padding="8" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="12">
                         <Image x:Name="PairingQrImage" Width="202" Height="202" Stretch="Uniform" />
                     </Border>
                     <StackPanel Grid.Column="2" VerticalAlignment="Center">
                         <TextBlock FontSize="16" FontWeight="SemiBold" Text="휴대폰 카메라로 스캔" />
-                        <TextBlock x:Name="PairingExpiryText" Margin="0,8,0,0" Foreground="#A15C00" FontWeight="SemiBold" />
+                        <TextBlock x:Name="PairingExpiryText" Margin="0,8,0,0" Foreground="{StaticResource ErrorBrush}" FontWeight="SemiBold" />
                         <Button Margin="0,12,0,0" Style="{StaticResource SecondaryButton}" Click="CopyPairing_Click"
                                 Content="코드 복사" HorizontalAlignment="Left" />
                         <Expander Margin="0,8,0,0" Header="연결 코드 보기">
@@ -100,7 +101,7 @@
                                FontSize="20" FontWeight="SemiBold" Text="PC 설정" />
                 </Grid>
 
-                <Border Margin="0,12,0,0" Padding="18" Background="White" BorderBrush="{StaticResource StrokeBrush}"
+                <Border Margin="0,12,0,0" Padding="18" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource StrokeBrush}"
                         BorderThickness="1" CornerRadius="14">
                     <StackPanel>
                         <TextBlock FontSize="17" FontWeight="SemiBold" Text="Windows 로그인" />
@@ -141,7 +142,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Margin="0,12,0,0" Padding="18" Background="White" BorderBrush="{StaticResource StrokeBrush}"
+                <Border Margin="0,12,0,0" Padding="18" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource StrokeBrush}"
                         BorderThickness="1" CornerRadius="14">
                     <StackPanel>
                         <TextBlock FontSize="17" FontWeight="SemiBold" Text="자동 잠금" />
@@ -211,7 +212,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Margin="0,12,0,0" Padding="18" Background="White" BorderBrush="{StaticResource StrokeBrush}"
+                <Border Margin="0,12,0,0" Padding="18" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource StrokeBrush}"
                         BorderThickness="1" CornerRadius="14">
                     <StackPanel>
                         <Grid>
@@ -224,6 +225,8 @@
                                       Content="사람이 없으면 잠금" Click="PresenceSensor_Click" />
                         </Grid>
                         <TextBlock x:Name="PresenceSensorStateText" Margin="0,7,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                        <Button x:Name="TestPresenceSensorButton" Margin="0,10,0,0" Style="{StaticResource SecondaryButton}"
+                                HorizontalAlignment="Left" Click="TestPresenceSensor_Click" Content="현재 상태 테스트" />
                         <ComboBox x:Name="PresenceSensorProtocolComboBox" Margin="0,10,0,0"
                                   SelectionChanged="PresenceSensorProtocol_SelectionChanged">
                             <ComboBoxItem Content="Zigbee · Home Assistant" Tag="zigbee" />
@@ -292,7 +295,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Margin="0,12,0,0" Padding="18" Background="White" BorderBrush="{StaticResource StrokeBrush}"
+                <Border Margin="0,12,0,0" Padding="18" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource StrokeBrush}"
                         BorderThickness="1" CornerRadius="14">
                     <StackPanel>
                         <Grid>
@@ -306,7 +309,7 @@
                         </Grid>
                         <TextBlock x:Name="SecurityCheckupSummaryText" Margin="0,8,0,0" Foreground="{StaticResource MutedBrush}"
                                    TextWrapping="Wrap" Text="아직 보안 점검을 실행하지 않았습니다." />
-                        <ListBox x:Name="SecurityCheckupList" Margin="0,8,0,0" Height="150" BorderThickness="0" Background="#F8F9FB" FontSize="12" />
+                        <ListBox x:Name="SecurityCheckupList" Margin="0,8,0,0" Height="150" BorderThickness="0" Background="{StaticResource CardAltBrush}" FontSize="12" />
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                             <Button x:Name="RevokePhoneButton" Style="{StaticResource SecondaryButton}" Click="RevokePhone_Click"
                                     Content="선택한 휴대폰 즉시 차단" />
@@ -316,7 +319,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Margin="0,12,0,0" Padding="18" Background="White" BorderBrush="{StaticResource StrokeBrush}"
+                <Border Margin="0,12,0,0" Padding="18" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource StrokeBrush}"
                         BorderThickness="1" CornerRadius="14">
                     <StackPanel>
                         <Grid>
@@ -327,11 +330,11 @@
                             <TextBlock FontSize="17" FontWeight="SemiBold" Text="보안 기록" />
                             <Button Grid.Column="1" Style="{StaticResource SecondaryButton}" Click="AuditRefresh_Click" Content="새로 고침" />
                         </Grid>
-                        <ListBox x:Name="AuditList" Margin="0,10,0,0" Height="180" BorderThickness="0" Background="#F8F9FB" FontSize="12" />
+                        <ListBox x:Name="AuditList" Margin="0,10,0,0" Height="180" BorderThickness="0" Background="{StaticResource CardAltBrush}" FontSize="12" />
                     </StackPanel>
                 </Border>
 
-                <Border Margin="0,12,0,0" Padding="18" Background="White" BorderBrush="{StaticResource StrokeBrush}"
+                <Border Margin="0,12,0,0" Padding="18" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource StrokeBrush}"
                         BorderThickness="1" CornerRadius="14">
                     <StackPanel>
                         <StackPanel Orientation="Horizontal">

@@ -3,10 +3,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-        <SolidColorBrush x:Key="AccentBrush" Color="#2155D9" />
-        <SolidColorBrush x:Key="TextBrush" Color="#18191B" />
-        <SolidColorBrush x:Key="MutedBrush" Color="#646871" />
-        <SolidColorBrush x:Key="StrokeBrush" Color="#E3E5EA" />
+        <SolidColorBrush x:Key="WindowBrush" Color="#08090B" />
+        <SolidColorBrush x:Key="CardBrush" Color="#191A1E" />
+        <SolidColorBrush x:Key="CardAltBrush" Color="#242427" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#345DD7" />
+        <SolidColorBrush x:Key="TextBrush" Color="#F6F6F8" />
+        <SolidColorBrush x:Key="MutedBrush" Color="#9999A2" />
+        <SolidColorBrush x:Key="StrokeBrush" Color="#303035" />
+        <SolidColorBrush x:Key="SuccessBrush" Color="#8FE0B0" />
+        <SolidColorBrush x:Key="ErrorBrush" Color="#FFB4AB" />
         <Style TargetType="Button">
             <Setter Property="FontFamily" Value="Segoe UI Variable Text" />
             <Setter Property="FontSize" Value="14" />
@@ -30,22 +35,64 @@
             </Setter>
         </Style>
         <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="Background" Value="{StaticResource CardAltBrush}" />
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-            <Setter Property="BorderBrush" Value="#C9CED8" />
+            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}" />
             <Setter Property="BorderThickness" Value="1" />
         </Style>
         <Style TargetType="TextBox">
             <Setter Property="Padding" Value="11" />
+            <Setter Property="Background" Value="{StaticResource CardAltBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="CaretBrush" Value="{StaticResource TextBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="FontSize" Value="13" />
         </Style>
         <Style TargetType="PasswordBox">
             <Setter Property="Padding" Value="11" />
+            <Setter Property="Background" Value="{StaticResource CardAltBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="CaretBrush" Value="{StaticResource TextBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}" />
+        </Style>
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Padding" Value="10,8" />
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="Foreground" Value="White" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="{StaticResource CardAltBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}" />
+        </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="{StaticResource CardAltBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="Foreground" Value="White" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        </Style>
+        <Style TargetType="Expander">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
         </Style>
     </Application.Resources>
 </Application>

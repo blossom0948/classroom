@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand_primary">#2155D9</color>
+    <color name="brand_primary">#345DD7</color>
     <color name="brand_on_primary">#FFFFFF</color>
-    <color name="brand_surface">#F7F8FC</color>
-    <color name="brand_on_surface">#18191B</color>
-    <color name="brand_muted">#5F6368</color>
+    <color name="brand_surface">#050506</color>
+    <color name="brand_nav">#171719</color>
+    <color name="brand_card">#1B1B1E</color>
+    <color name="brand_card_alt">#242427</color>
+    <color name="brand_stroke">#303035</color>
+    <color name="brand_on_surface">#F6F6F8</color>
+    <color name="brand_muted">#9999A2</color>
+    <color name="brand_success">#8FE0B0</color>
+    <color name="brand_error">#FFB4AB</color>
 </resources>

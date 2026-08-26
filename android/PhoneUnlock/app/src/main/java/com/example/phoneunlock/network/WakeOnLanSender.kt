@@ -11,22 +11,28 @@ object WakeOnLanSender {
         val packets = targets.flatMap { target ->
             val mac = parseMac(target.macAddress) ?: return@flatMap emptyList()
             val magic = ByteArray(6) { 0xFF.toByte() } + ByteArray(16 * 6) { index -> mac[index % 6] }
-            listOf(
-                DatagramPacket(
-                    magic,
-                    magic.size,
-                    InetAddress.getByName(target.broadcastAddress),
-                    9,
-                ),
-            )
+            val addresses = listOf(target.broadcastAddress, "255.255.255.255")
+                .distinct()
+                .mapNotNull { address -> runCatching { InetAddress.getByName(address) }.getOrNull() }
+            addresses.flatMap { address ->
+                listOf(7, 9).map { port ->
+                    DatagramPacket(magic, magic.size, address, port)
+                }
+            }
         }
         if (packets.isEmpty()) return 0
 
         DatagramSocket().use { socket ->
             socket.broadcast = true
-            packets.forEach(socket::send)
+            // Some NICs or routers drop the first broadcast after a phone wakes
+            // its Wi-Fi radio. A few short repeats make the action reliable
+            // without turning it into a long-running background operation.
+            repeat(3) { attempt ->
+                packets.forEach(socket::send)
+                if (attempt < 2) Thread.sleep(80)
+            }
         }
-        return packets.size
+        return packets.size * 3
     }
 
     private fun parseMac(value: String): ByteArray? {

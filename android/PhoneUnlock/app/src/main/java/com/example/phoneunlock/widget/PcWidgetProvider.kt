@@ -11,6 +11,7 @@ import com.example.phoneunlock.MainActivity
 import com.example.phoneunlock.PhoneUnlockProtocol
 import com.example.phoneunlock.R
 import com.example.phoneunlock.network.ConnectionService
+import com.example.phoneunlock.storage.ActivityLogStore
 import com.example.phoneunlock.storage.SecurePairingStore
 import java.util.UUID
 
@@ -94,6 +95,7 @@ class WidgetActionReceiver : android.content.BroadcastReceiver() {
             context,
             PhoneUnlockProtocol.remoteLockResponse(request),
         )
+        ActivityLogStore(context).append("PC 잠금", computer.computerName)
         PcWidgetProvider.refresh(context)
     }
 

@@ -8,6 +8,8 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -18,6 +20,7 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricManager
@@ -27,12 +30,14 @@ import androidx.lifecycle.lifecycleScope
 import com.example.phoneunlock.network.ConnectionService
 import com.example.phoneunlock.network.PairingClient
 import com.example.phoneunlock.network.WakeOnLanSender
+import com.example.phoneunlock.storage.ActivityLogStore
 import com.example.phoneunlock.storage.PairedComputer
 import com.example.phoneunlock.storage.PairingPayload
 import com.example.phoneunlock.storage.SecurePairingStore
 import com.example.phoneunlock.widget.PcWidgetProvider
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.radiobutton.MaterialRadioButton
 import com.google.android.material.textfield.TextInputEditText
 import com.journeyapps.barcodescanner.ScanContract
@@ -42,13 +47,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONException
 import java.security.SecureRandom
-import java.security.Signature
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
     private lateinit var homePanel: LinearLayout
     private lateinit var settingsPanel: LinearLayout
+    private lateinit var homeControlsCard: View
+    private lateinit var historyPanel: LinearLayout
+    private lateinit var historyList: LinearLayout
+    private lateinit var historyEmptyText: TextView
+    private lateinit var bottomNavigation: BottomNavigationView
     private lateinit var settingsBackButton: MaterialButton
     private lateinit var settingsTitleText: TextView
     private lateinit var computerNameText: TextView
@@ -80,10 +92,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var wakeButton: MaterialButton
     private lateinit var keystoreSigner: KeystoreSigner
     private lateinit var pairingStore: SecurePairingStore
+    private lateinit var activityLogStore: ActivityLogStore
     private val pairingClient = PairingClient()
     private val releaseUpdateChecker = ReleaseUpdateChecker()
     private lateinit var phoneId: String
     private var availableUpdate: AndroidRelease? = null
+    private var changingTab = false
 
     private val qrScanner = registerForActivityResult(ScanContract()) { result ->
         val code = result.contents
@@ -114,6 +128,11 @@ class MainActivity : AppCompatActivity() {
 
         homePanel = findViewById(R.id.homePanel)
         settingsPanel = findViewById(R.id.settingsPanel)
+        homeControlsCard = findViewById(R.id.homeControlsCard)
+        historyPanel = findViewById(R.id.historyPanel)
+        historyList = findViewById(R.id.historyList)
+        historyEmptyText = findViewById(R.id.historyEmptyText)
+        bottomNavigation = findViewById(R.id.bottomNavigation)
         settingsBackButton = findViewById(R.id.settingsBackButton)
         settingsTitleText = findViewById(R.id.settingsTitleText)
         computerNameText = findViewById(R.id.computerNameText)
@@ -145,6 +164,7 @@ class MainActivity : AppCompatActivity() {
         wakeButton = findViewById(R.id.wakeButton)
         keystoreSigner = KeystoreSigner(this)
         pairingStore = SecurePairingStore(this)
+        activityLogStore = ActivityLogStore(this)
         phoneId = loadOrCreatePhoneId()
 
         scanQrButton.setOnClickListener { scanPairingQr() }
@@ -192,6 +212,36 @@ class MainActivity : AppCompatActivity() {
             )
         }
         diagnosticsButton.setOnClickListener { runDiagnostics() }
+        bottomNavigation.setOnItemSelectedListener { item ->
+            if (changingTab) {
+                true
+            } else {
+                when (item.itemId) {
+                    R.id.nav_pc -> {
+                        showHome()
+                        true
+                    }
+                    R.id.nav_automation -> {
+                        pairingStore.load()?.let { showSettings(it) } ?: showHome()
+                        true
+                    }
+                    R.id.nav_history -> {
+                        showHistory()
+                        true
+                    }
+                    else -> false
+                }
+            }
+        }
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                when {
+                    settingsPanel.visibility == View.VISIBLE || historyPanel.visibility == View.VISIBLE -> showHome()
+                    manualCodeGroup.visibility == View.VISIBLE -> manualCodeGroup.visibility = View.GONE
+                    else -> finish()
+                }
+            }
+        })
         fullScreenPermissionButton.setOnClickListener {
             val permissionIntent = AuthPromptSettings.permissionIntent(this)
                 ?: return@setOnClickListener
@@ -374,10 +424,11 @@ class MainActivity : AppCompatActivity() {
                     authMode = AuthPromptSettings.currentAuthMode(this@MainActivity),
                 )
                 pairingStore.save(paired, select = true)
+                activityLogStore.append("PC 연결", paired.computerName)
                 PcWidgetProvider.refresh(this@MainActivity)
                 pairingInput.text?.clear()
                 displayPairedComputer(paired)
-                showSettings(paired)
+                showHome()
                 requestNotificationPermission()
                 ConnectionService.connect(this@MainActivity)
                 showResult("연결 완료", success = true)
@@ -394,6 +445,7 @@ class MainActivity : AppCompatActivity() {
         val paired = pairingStore.load()
         if (paired == null) return
         ConnectionService.disconnect(this)
+        activityLogStore.append("PC 연결 해제", paired.computerName)
         pairingStore.remove(paired.computerId)
         keystoreSigner.delete(paired.computerId)
         PcWidgetProvider.refresh(this)
@@ -415,15 +467,17 @@ class MainActivity : AppCompatActivity() {
         settingsTitleText.text = computer.computerName
         val online = ConnectionService.isConnected(computer.computerId)
         networkStatusText.text = if (online) "● 온라인" else "○ 오프라인 · 연결 대기 중"
-        networkStatusText.setTextColor(Color.parseColor(if (online) "#217346" else "#737780"))
+        networkStatusText.setTextColor(Color.parseColor(if (online) "#8FE0B0" else "#9999A2"))
         refreshComputerChoices(computer)
+        homeControlsCard.visibility = View.VISIBLE
         pairingControls.visibility = View.VISIBLE
         disconnectButton.visibility = View.VISIBLE
     }
 
     private fun displayNoPairedComputer() {
         networkStatusText.text = "등록된 PC가 없습니다"
-        networkStatusText.setTextColor(Color.parseColor("#737780"))
+        networkStatusText.setTextColor(Color.parseColor("#9999A2"))
+        homeControlsCard.visibility = View.GONE
         pairingControls.visibility = View.VISIBLE
         computerListGroup.removeAllViews()
         manualCodeGroup.visibility = View.GONE
@@ -432,18 +486,68 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showHome() {
-        homePanel.visibility = View.VISIBLE
-        settingsPanel.visibility = View.GONE
+        showPanel(homePanel, R.id.nav_pc)
         pairingStore.load()?.let { refreshComputerChoices(it) }
     }
 
     private fun showSettings(computer: PairedComputer) {
-        homePanel.visibility = View.GONE
-        settingsPanel.visibility = View.VISIBLE
+        showPanel(settingsPanel, R.id.nav_automation)
         computerNameText.text = computer.computerName
         settingsTitleText.text = computer.computerName
         updateAutoPromptControls()
         updateAuthMethodControls()
+    }
+
+    private fun showHistory() {
+        showPanel(historyPanel, R.id.nav_history)
+        historyList.removeAllViews()
+        val events = activityLogStore.load()
+        if (events.isEmpty()) {
+            historyList.addView(historyEmptyText)
+            return
+        }
+
+        events.forEachIndexed { index, event ->
+            val row = TextView(this).apply {
+                val time = HISTORY_TIME_FORMATTER.format(event.occurredAt)
+                text = "$time\n${event.title} · ${event.detail}"
+                setTextColor(Color.parseColor("#F6F6F8"))
+                textSize = 14f
+                setPadding(0, 12.dp, 0, 12.dp)
+            }
+            historyList.addView(row)
+            if (index < events.lastIndex) {
+                val divider = View(this).apply {
+                    setBackgroundColor(Color.parseColor("#303035"))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        1.dp,
+                    )
+                }
+                historyList.addView(divider)
+            }
+        }
+    }
+
+    private fun showPanel(panel: View, tabId: Int) {
+        homePanel.visibility = if (panel === homePanel) View.VISIBLE else View.GONE
+        settingsPanel.visibility = if (panel === settingsPanel) View.VISIBLE else View.GONE
+        historyPanel.visibility = if (panel === historyPanel) View.VISIBLE else View.GONE
+        selectTab(tabId)
+        panel.alpha = 0f
+        panel.translationY = 16.dp.toFloat()
+        panel.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(180L)
+            .start()
+    }
+
+    private fun selectTab(tabId: Int) {
+        if (bottomNavigation.selectedItemId == tabId) return
+        changingTab = true
+        bottomNavigation.selectedItemId = tabId
+        changingTab = false
     }
 
     private fun refreshComputerChoices(selected: PairedComputer) {
@@ -452,7 +556,7 @@ class MainActivity : AppCompatActivity() {
             val radio = MaterialRadioButton(this).apply {
                 id = View.generateViewId()
                 val online = ConnectionService.isConnected(computer.computerId)
-                text = "${computer.computerName}\n${if (online) "온라인" else "오프라인"} · ${computer.host}"
+                text = "${computer.computerName}\n${if (online) "온라인" else "오프라인"} · LAN/VPN 주소 자동 선택"
                 textSize = 14f
                 isChecked = computer.computerId == selected.computerId
                 setPadding(0, 8.dp, 0, 8.dp)
@@ -461,7 +565,7 @@ class MainActivity : AppCompatActivity() {
                         ConnectionService.disconnect(this@MainActivity)
                         ConnectionService.connect(this@MainActivity)
                         displayPairedComputer(computer)
-                        showSettings(computer)
+                        showHome()
                         PcWidgetProvider.refresh(this@MainActivity)
                         showResult("${computer.computerName} 선택됨", success = true)
                     }
@@ -516,6 +620,22 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         "✕ PC 연결: 응답 없음 · 서비스/방화벽/LAN 또는 VPN을 확인하세요"
                     }
+                    lines += if (computer.wakeOnLanTargets.isNotEmpty()) {
+                        "✓ PC 켜기: Wake-on-LAN 정보 준비됨 · ${computer.wakeOnLanTargets.size}개 대상"
+                    } else {
+                        "△ PC 켜기: WOL 정보 없음 · PC에서 새 연결 QR을 다시 만드세요"
+                    }
+                }
+
+                val connectivity = getSystemService(ConnectivityManager::class.java)
+                val vpnActive = connectivity.activeNetwork?.let { network ->
+                    connectivity.getNetworkCapabilities(network)
+                        ?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+                } == true
+                lines += if (vpnActive) {
+                    "✓ 원격 경로: VPN 연결됨 · 저장된 LAN/VPN 주소를 자동 시도합니다"
+                } else {
+                    "△ 원격 경로: 현재 VPN 없음 · 다른 장소에서는 양쪽 기기의 VPN을 켜세요"
                 }
 
                 val notificationsEnabled = getSystemService(NotificationManager::class.java)
@@ -643,6 +763,7 @@ class MainActivity : AppCompatActivity() {
                             this@MainActivity,
                             PhoneUnlockProtocol.remoteUnlockResponse(request, authorized.sign()),
                         )
+                        activityLogStore.append("PC 잠금 해제", computer.computerName)
                         showResult("PC에 잠금 해제를 요청했습니다", success = true)
                     } catch (exception: Exception) {
                         showResult(exception.message ?: "잠금 해제 요청을 보내지 못했습니다", success = false)
@@ -694,6 +815,7 @@ class MainActivity : AppCompatActivity() {
                 this,
                 PhoneUnlockProtocol.remoteLockResponse(request),
             )
+            activityLogStore.append("PC 잠금", computer.computerName)
             showResult("PC에 잠금을 요청했습니다", success = true)
         } catch (exception: Exception) {
             showResult(exception.message ?: "잠금 요청을 보내지 못했습니다", success = false)
@@ -747,8 +869,11 @@ class MainActivity : AppCompatActivity() {
                 val sent = withContext(Dispatchers.IO) {
                     WakeOnLanSender.send(computer.wakeOnLanTargets)
                 }
+                if (sent > 0) {
+                    activityLogStore.append("PC 켜기 신호", computer.computerName)
+                }
                 showResult(
-                    if (sent > 0) "PC 켜기 신호를 보냈습니다. BIOS·네트워크 카드 설정에 따라 켜지는 데 시간이 걸릴 수 있습니다."
+                    if (sent > 0) "PC 켜기 신호를 보냈습니다. WOL 설정이 켜져 있어야 합니다."
                     else "Wake-on-LAN 신호를 보낼 수 없습니다.",
                     success = sent > 0,
                 )
@@ -826,6 +951,7 @@ class MainActivity : AppCompatActivity() {
                             this@MainActivity,
                             PhoneUnlockProtocol.remotePowerResponse(request, authorized.sign()),
                         )
+                        activityLogStore.append("${commandLabel(command)} 요청", computer.computerName)
                         showResult("PC에 ${commandLabel(command)} 명령을 요청했습니다", success = true)
                     } catch (exception: Exception) {
                         showResult(exception.message ?: "원격 전원 요청을 보내지 못했습니다", success = false)
@@ -894,12 +1020,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun showResult(message: String, success: Boolean) {
         resultText.text = message
-        resultText.setTextColor(Color.parseColor(if (success) "#24503A" else "#8A2424"))
-        resultText.setBackgroundColor(Color.parseColor(if (success) "#EAF7EF" else "#FFF0F0"))
+        resultText.setTextColor(Color.parseColor(if (success) "#C7F7D8" else "#FFDAD6"))
+        resultText.setBackgroundResource(
+            if (success) R.drawable.result_success_background else R.drawable.result_error_background,
+        )
         resultText.setPadding(16.dp, 14.dp, 16.dp, 14.dp)
         if (homePanel.visibility == View.VISIBLE) {
             networkStatusText.text = message
-            networkStatusText.setTextColor(Color.parseColor(if (success) "#217346" else "#A4262C"))
+            networkStatusText.setTextColor(Color.parseColor(if (success) "#8FE0B0" else "#FFB4AB"))
         }
     }
 
@@ -925,6 +1053,9 @@ class MainActivity : AppCompatActivity() {
         get() = (this * resources.displayMetrics.density).toInt()
 
     companion object {
+        private val HISTORY_TIME_FORMATTER: DateTimeFormatter =
+            DateTimeFormatter.ofPattern("MM.dd  HH:mm", Locale.KOREA)
+                .withZone(ZoneId.systemDefault())
         const val ACTION_WIDGET_UNLOCK = "com.example.phoneunlock.WIDGET_UNLOCK"
         const val ACTION_SMART_ARRIVAL = "com.example.phoneunlock.SMART_ARRIVAL"
     }

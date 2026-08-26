@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_pc"
+        android:icon="@drawable/ic_nav_pc"
+        android:title="PC" />
+    <item
+        android:id="@+id/nav_automation"
+        android:icon="@drawable/ic_nav_automation"
+        android:title="자동화" />
+    <item
+        android:id="@+id/nav_history"
+        android:icon="@drawable/ic_nav_history"
+        android:title="기록" />
+</menu>

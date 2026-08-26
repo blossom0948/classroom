@@ -23,6 +23,7 @@ public static class SetupCommands
     public const string SecurityCheckup = "SECURITY_CHECKUP";
     public const string SetPause = "SET_PAUSE";
     public const string SetPresenceSensor = "SET_PRESENCE_SENSOR";
+    public const string TestPresenceSensor = "TEST_PRESENCE_SENSOR";
     public const string ListSmartThingsSensors = "LIST_SMARTTHINGS_SENSORS";
 }
 

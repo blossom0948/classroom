@@ -6,7 +6,9 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 using PhoneUnlock.Core.Protocol;
@@ -58,20 +60,67 @@ public partial class MainWindow : Window
             .OfType<PhoneSelectionItem>()
             .FirstOrDefault(candidate => candidate.PhoneId == phone.PhoneId);
         SettingsHeaderText.Text = phone.PhoneName;
-        HomePanel.Visibility = Visibility.Collapsed;
-        SettingsPanel.Visibility = Visibility.Visible;
+        ShowSettingsPanel();
     }
 
     private void BackToHome_Click(object sender, RoutedEventArgs e)
     {
+        ShowHomePanel();
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var isBack = e.Key == Key.Escape
+            || (e.Key == Key.Left && Keyboard.Modifiers == ModifierKeys.Alt);
+        if (!isBack || SettingsPanel.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        ShowHomePanel();
+        e.Handled = true;
+    }
+
+    private void ShowHomePanel()
+    {
         SettingsPanel.Visibility = Visibility.Collapsed;
         HomePanel.Visibility = Visibility.Visible;
+        AnimatePanel(HomePanel);
         if (currentStatus is not null)
         {
             updatingControls = true;
             HomePhoneList.SelectedItem = null;
             updatingControls = false;
         }
+    }
+
+    private void ShowSettingsPanel()
+    {
+        HomePanel.Visibility = Visibility.Collapsed;
+        SettingsPanel.Visibility = Visibility.Visible;
+        AnimatePanel(SettingsPanel);
+    }
+
+    private static void AnimatePanel(UIElement panel)
+    {
+        panel.Opacity = 0;
+        panel.RenderTransform = new TranslateTransform(0, 14);
+        panel.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation
+        {
+            From = 0,
+            To = 1,
+            Duration = TimeSpan.FromMilliseconds(180),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        });
+        ((TranslateTransform)panel.RenderTransform).BeginAnimation(
+            TranslateTransform.YProperty,
+            new DoubleAnimation
+            {
+                From = 14,
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(180),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            });
     }
 
     private async void UseSelectedPhone_Click(object sender, RoutedEventArgs e)
@@ -325,7 +374,7 @@ public partial class MainWindow : Window
                 SecurityCheckupList.Items.Add(new ListBoxItem
                 {
                     Content = $"{(check.Passed ? "✓" : "!")} {check.Title} · {check.Detail}",
-                    Foreground = BrushFrom(check.Passed ? "#217346" : "#A15C00"),
+                    Foreground = BrushFrom(check.Passed ? "#8FE0B0" : "#FFD18A"),
                     Padding = new Thickness(8, 4, 8, 4)
                 });
             }
@@ -361,6 +410,21 @@ public partial class MainWindow : Window
     {
         if (updatingControls) return;
         await SavePresenceSensorAsync();
+    }
+
+    private async void TestPresenceSensor_Click(object sender, RoutedEventArgs e)
+    {
+        await RunOperationAsync(async () =>
+        {
+            TestPresenceSensorButton.IsEnabled = false;
+            var response = await client.SendAsync(
+                new SetupRequest(SetupCommands.TestPresenceSensor),
+                TimeSpan.FromSeconds(10));
+            PresenceSensorStateText.Text = response.Message;
+            PresenceSensorStateText.Foreground = BrushFrom(response.Success ? "#8FE0B0" : "#FFB4AB");
+            SetOperation(response.Message, response.Success);
+        });
+        TestPresenceSensorButton.IsEnabled = currentStatus is not null;
     }
 
     private async void PresenceSensorProtocol_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -785,7 +849,7 @@ public partial class MainWindow : Window
         }
 
         TestResultText.Text = "휴대폰에서 설정한 인증을 완료해 주세요…";
-        TestResultText.Foreground = BrushFrom("#A15C00");
+        TestResultText.Foreground = BrushFrom("#FFD18A");
         await RunOperationAsync(async () =>
         {
             var response = await client.SendAsync(
@@ -794,13 +858,13 @@ public partial class MainWindow : Window
             if (!response.Success)
             {
                 TestResultText.Text = $"휴대폰 인증 테스트 실패: {response.Message}";
-                TestResultText.Foreground = BrushFrom("#A4262C");
+                TestResultText.Foreground = BrushFrom("#FFB4AB");
                 SetOperation(response.Message, success: false);
                 return;
             }
 
             TestResultText.Text = "✓ 휴대폰 인증 확인 성공";
-            TestResultText.Foreground = BrushFrom("#217346");
+            TestResultText.Foreground = BrushFrom("#8FE0B0");
             var scriptResult = await RunNearbyScriptAsync("Enable-CredentialProvider.ps1");
             if (!scriptResult.Success)
             {
@@ -839,7 +903,7 @@ public partial class MainWindow : Window
             SetServiceControls(enabled: true);
             InstallRequiredCard.Visibility = Visibility.Collapsed;
             ServiceStatusText.Text = "● 서비스 실행 중";
-            ServiceStatusText.Foreground = BrushFrom("#217346");
+            ServiceStatusText.Foreground = BrushFrom("#8FE0B0");
             ComputerText.Text = currentStatus.ComputerName;
             CredentialStateText.Text = currentStatus.CredentialConfigured
                 ? "✓ 현재 계정 암호가 안전하게 저장되어 있습니다."
@@ -858,7 +922,7 @@ public partial class MainWindow : Window
                     Tag = phone.PhoneId,
                     Content = $"{(phone.Connected ? "●" : "○")}  {phone.PhoneName}    {(phone.Connected ? "연결됨" : "오프라인")}",
                     Padding = new Thickness(10, 8, 10, 8),
-                    Foreground = BrushFrom(phone.Connected ? "#217346" : "#555A63")
+                    Foreground = BrushFrom(phone.Connected ? "#8FE0B0" : "#9999A2")
                 });
             }
             PhoneSelectorComboBox.Items.Clear();
@@ -898,7 +962,7 @@ public partial class MainWindow : Window
                 : currentStatus.ProximityLockEnabled
                     ? "○ 자동잠금 에이전트 연결 안 됨 · 버튼을 누르거나 Windows에 다시 로그인하세요."
                     : "✓ 자동 잠금 해제 감시는 서비스에서 실행됩니다. 자동 잠금도 사용하려면 에이전트를 시작하세요.";
-            ProximityAgentStatusText.Foreground = BrushFrom(currentStatus.InteractiveAgentConnected ? "#217346" : "#A15C00");
+            ProximityAgentStatusText.Foreground = BrushFrom(currentStatus.InteractiveAgentConnected ? "#8FE0B0" : "#FFD18A");
             ProximityGraceComboBox.SelectedItem = ProximityGraceComboBox.Items
                 .OfType<ComboBoxItem>()
                 .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), currentStatus.ProximityGraceSeconds.ToString(), StringComparison.Ordinal))
@@ -943,7 +1007,7 @@ public partial class MainWindow : Window
                 && currentStatus.CredentialConfigured
                 && currentStatus.Phones.Any(phone => phone.Enabled);
             ReadyBadgeText.Text = usable ? "사용 가능" : "설정 필요";
-            ReadyBadge.Background = BrushFrom(usable ? "#EAF7EF" : "#ECEEF2");
+            ReadyBadge.Background = BrushFrom(usable ? "#293B31" : "#242427");
             await RefreshAuditAsync(silent: true);
         }
         catch (Exception exception) when (exception is IOException or TimeoutException or JsonException or InvalidOperationException)
@@ -955,13 +1019,13 @@ public partial class MainWindow : Window
             InstallRequiredCard.Visibility = Visibility.Visible;
             InstallButton.IsEnabled = true;
             ServiceStatusText.Text = "● 설치되지 않음";
-            ServiceStatusText.Foreground = BrushFrom("#A4262C");
+            ServiceStatusText.Foreground = BrushFrom("#FFB4AB");
             ComputerText.Text = "설정 앱만 실행된 상태입니다.";
             CredentialStateText.Text = "서비스 설치 후 자동으로 현재 계정을 사용합니다.";
             PhoneStateText.Text = "서비스가 없어 연결 QR을 만들 수 없습니다.";
             LoginStateText.Text = "Windows 로그인 연동이 꺼져 있습니다.";
             ReadyBadgeText.Text = "설치 필요";
-            ReadyBadge.Background = BrushFrom("#FFF0F0");
+            ReadyBadge.Background = BrushFrom("#41292A");
             SetOperation("'설치 프로그램 받기'를 누르세요. ZIP이나 PowerShell 작업 없이 복구됩니다.", success: false);
         }
     }
@@ -986,6 +1050,7 @@ public partial class MainWindow : Window
         RemotePowerCheckBox.IsEnabled = enabled;
         AutoLockProfileComboBox.IsEnabled = enabled;
         PresenceSensorCheckBox.IsEnabled = enabled;
+        TestPresenceSensorButton.IsEnabled = enabled;
         PresenceSensorProtocolComboBox.IsEnabled = enabled;
         PresenceSensorUrlInput.IsEnabled = enabled;
         PresenceSensorEntityInput.IsEnabled = enabled;
@@ -1038,7 +1103,7 @@ public partial class MainWindow : Window
                 AuditList.Items.Add(new ListBoxItem
                 {
                     Content = $"{prefix}{entry.OccurredAt.ToLocalTime():yyyy-MM-dd HH:mm:ss} · {phone} · {ip}\n{entry.Message}",
-                    Foreground = BrushFrom(entry.Suspicious ? "#A4262C" : entry.Outcome == "SUCCESS" ? "#217346" : "#555A63"),
+                    Foreground = BrushFrom(entry.Suspicious ? "#FFB4AB" : entry.Outcome == "SUCCESS" ? "#8FE0B0" : "#9999A2"),
                     Padding = new Thickness(8, 5, 8, 5)
                 });
             }
@@ -1249,7 +1314,7 @@ public partial class MainWindow : Window
     private void SetOperation(string message, bool success)
     {
         OperationStatusText.Text = message;
-        OperationStatusText.Foreground = BrushFrom(success ? "#217346" : "#A4262C");
+        OperationStatusText.Foreground = BrushFrom(success ? "#8FE0B0" : "#FFB4AB");
     }
 
     private static SolidColorBrush BrushFrom(string color) =>

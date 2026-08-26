@@ -94,6 +94,7 @@ public sealed class SetupPipeService(
             SetupCommands.SecurityCheckup => await SecurityCheckupAsync(cancellationToken),
             SetupCommands.SetPause => await SetPauseAsync(request, cancellationToken),
             SetupCommands.SetPresenceSensor => await SetPresenceSensorAsync(request, cancellationToken),
+            SetupCommands.TestPresenceSensor => await TestPresenceSensorAsync(cancellationToken),
             SetupCommands.ListSmartThingsSensors => await ListSmartThingsSensorsAsync(request, cancellationToken),
             _ => new SetupResponse(false, "UNKNOWN_COMMAND", "Unknown setup command.")
         };
@@ -657,6 +658,25 @@ public sealed class SetupPipeService(
         }, cancellationToken);
         var source = protocol == "smartthings" ? "SmartThings" : protocol == "matter" ? "Matter" : "Zigbee";
         return new SetupResponse(true, "OK", $"{source} 재실 센서 연동 완료 · 감지 해제 후 {graceSeconds}초 뒤 잠금합니다.");
+    }
+
+    private async Task<SetupResponse> TestPresenceSensorAsync(CancellationToken cancellationToken)
+    {
+        var configuration = await configurationStore.GetAsync(cancellationToken);
+        if (!configuration.PresenceSensorEnabled)
+        {
+            return new SetupResponse(false, "SENSOR_DISABLED", "먼저 재실 센서를 켜고 연결하세요.");
+        }
+
+        var state = await presenceSensorClient.ReadPresenceAsync(configuration, cancellationToken);
+        if (state is null)
+        {
+            return new SetupResponse(false, "SENSOR_UNAVAILABLE", "센서 상태를 읽지 못했습니다. 주소·토큰·허브 연결을 확인하세요.");
+        }
+
+        return new SetupResponse(true, "OK", state.Value
+            ? "현재 상태: 사람 감지 중 · 감지 중에는 자동 잠금하지 않습니다."
+            : $"현재 상태: 사람 없음 · {configuration.PresenceSensorGraceSeconds}초 후 자동 잠금 대상입니다.");
     }
 
     private async Task<SetupResponse> ListSmartThingsSensorsAsync(
