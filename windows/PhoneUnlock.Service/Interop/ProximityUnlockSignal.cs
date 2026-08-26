@@ -8,17 +8,21 @@ namespace PhoneUnlock.Service.Interop;
 public sealed class ProximityUnlockSignal : IDisposable
 {
     public const string EventName = @"Global\PhoneUnlock.ProximityUnlock";
+    public const string TrustedPhoneEventName = @"Global\PhoneUnlock.ProximityUnlock.TrustedPhone";
+    public const string RoomSensorEventName = @"Global\PhoneUnlock.ProximityUnlock.RoomSensor";
 
-    private readonly EventWaitHandle? handle = CreateHandle();
+    private readonly EventWaitHandle? handle = CreateHandle(EventName);
+    private readonly EventWaitHandle? trustedPhoneHandle = CreateHandle(TrustedPhoneEventName);
+    private readonly EventWaitHandle? roomSensorHandle = CreateHandle(RoomSensorEventName);
 
-    private static EventWaitHandle? CreateHandle()
+    private static EventWaitHandle? CreateHandle(string name)
     {
         try
         {
             return new EventWaitHandle(
                 initialState: false,
                 mode: EventResetMode.AutoReset,
-                name: EventName,
+                name: name,
                 out _);
         }
         catch (UnauthorizedAccessException)
@@ -31,10 +35,20 @@ public sealed class ProximityUnlockSignal : IDisposable
         }
     }
 
-    public void Signal()
+    public void Signal(ProximityUnlockSource source)
     {
         try
         {
+            switch (source)
+            {
+                case ProximityUnlockSource.TrustedPhone:
+                    trustedPhoneHandle?.Set();
+                    break;
+                case ProximityUnlockSource.RoomSensor:
+                    roomSensorHandle?.Set();
+                    break;
+            }
+            // Keep the original event for older credential providers during an upgrade.
             handle?.Set();
         }
         catch (ObjectDisposedException)
@@ -47,11 +61,24 @@ public sealed class ProximityUnlockSignal : IDisposable
         try
         {
             handle?.Reset();
+            trustedPhoneHandle?.Reset();
+            roomSensorHandle?.Reset();
         }
         catch (ObjectDisposedException)
         {
         }
     }
 
-    public void Dispose() => handle?.Dispose();
+    public void Dispose()
+    {
+        handle?.Dispose();
+        trustedPhoneHandle?.Dispose();
+        roomSensorHandle?.Dispose();
+    }
+}
+
+public enum ProximityUnlockSource
+{
+    TrustedPhone = 1,
+    RoomSensor = 2,
 }

@@ -29,7 +29,7 @@ public:
     HRESULT Initialize(
         CREDENTIAL_PROVIDER_USAGE_SCENARIO usageScenario,
         PCWSTR sid,
-        std::shared_ptr<std::atomic<bool>> proximityUnlockPending);
+        std::shared_ptr<std::atomic<int>> proximityUnlockPending);
 
     IFACEMETHODIMP QueryInterface(REFIID interfaceId, void** object) override;
     IFACEMETHODIMP_(ULONG) AddRef() override;
@@ -70,6 +70,7 @@ private:
     bool autoRequestPending_ = true;
     std::wstring sid_;
     std::wstring status_;
-    std::shared_ptr<std::atomic<bool>> proximityUnlockPending_;
+    std::shared_ptr<std::atomic<int>> proximityUnlockPending_;
+    int proximityUnlockSource_ = 0;
     ICredentialProviderCredentialEvents* events_ = nullptr;
 };

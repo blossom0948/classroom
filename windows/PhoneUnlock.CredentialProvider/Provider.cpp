@@ -8,6 +8,8 @@
 namespace
 {
 constexpr wchar_t ProximityUnlockEventName[] = L"Global\\PhoneUnlock.ProximityUnlock";
+constexpr wchar_t TrustedPhoneProximityUnlockEventName[] = L"Global\\PhoneUnlock.ProximityUnlock.TrustedPhone";
+constexpr wchar_t RoomSensorProximityUnlockEventName[] = L"Global\\PhoneUnlock.ProximityUnlock.RoomSensor";
 }
 
 void DllAddRef();
@@ -120,7 +122,7 @@ HRESULT PhoneUnlockProvider::GetCredentialCount(
     if (count == nullptr || defaultCredential == nullptr || autoLogonWithDefault == nullptr) return E_INVALIDARG;
     *count = static_cast<DWORD>(credentials_.size());
     *defaultCredential = credentials_.empty() ? CREDENTIAL_PROVIDER_NO_DEFAULT : 0;
-    *autoLogonWithDefault = proximityUnlockPending_->load() ? TRUE : FALSE;
+    *autoLogonWithDefault = proximityUnlockPending_->load() != 0 ? TRUE : FALSE;
     return S_OK;
 }
 
@@ -226,18 +228,52 @@ void PhoneUnlockProvider::StartProximityWatcher()
     {
         while (!proximityWatcherStopping_)
         {
-            HANDLE event = OpenEventW(SYNCHRONIZE, FALSE, ProximityUnlockEventName);
-            if (event == nullptr)
+            HANDLE trustedPhoneEvent = OpenEventW(SYNCHRONIZE, FALSE, TrustedPhoneProximityUnlockEventName);
+            HANDLE roomSensorEvent = OpenEventW(SYNCHRONIZE, FALSE, RoomSensorProximityUnlockEventName);
+            if (trustedPhoneEvent == nullptr && roomSensorEvent == nullptr)
             {
+                HANDLE legacyEvent = OpenEventW(SYNCHRONIZE, FALSE, ProximityUnlockEventName);
+                if (legacyEvent != nullptr)
+                {
+                    const DWORD legacyResult = WaitForSingleObject(legacyEvent, 1000);
+                    CloseHandle(legacyEvent);
+                    if (legacyResult == WAIT_OBJECT_0 && !proximityWatcherStopping_)
+                    {
+                        NotifyProximityUnlock(1);
+                    }
+                    continue;
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
                 continue;
             }
 
-            const DWORD result = WaitForSingleObject(event, 1000);
-            CloseHandle(event);
+            DWORD result = WAIT_TIMEOUT;
+            int source = 0;
+            if (trustedPhoneEvent != nullptr && roomSensorEvent != nullptr)
+            {
+                HANDLE events[] = { trustedPhoneEvent, roomSensorEvent };
+                result = WaitForMultipleObjects(2, events, FALSE, 1000);
+                source = result == WAIT_OBJECT_0 ? 1 : result == WAIT_OBJECT_0 + 1 ? 2 : 0;
+            }
+            else if (trustedPhoneEvent != nullptr)
+            {
+                result = WaitForSingleObject(trustedPhoneEvent, 1000);
+                source = result == WAIT_OBJECT_0 ? 1 : 0;
+            }
+            else
+            {
+                result = WaitForSingleObject(roomSensorEvent, 1000);
+                source = result == WAIT_OBJECT_0 ? 2 : 0;
+            }
+            if (trustedPhoneEvent != nullptr) CloseHandle(trustedPhoneEvent);
+            if (roomSensorEvent != nullptr) CloseHandle(roomSensorEvent);
             if (result == WAIT_OBJECT_0 && !proximityWatcherStopping_)
             {
-                NotifyProximityUnlock();
+                NotifyProximityUnlock(source);
+            }
+            else if (result == WAIT_OBJECT_0 + 1 && !proximityWatcherStopping_)
+            {
+                NotifyProximityUnlock(source);
             }
         }
     });
@@ -252,9 +288,9 @@ void PhoneUnlockProvider::StopProximityWatcher()
     }
 }
 
-void PhoneUnlockProvider::NotifyProximityUnlock()
+void PhoneUnlockProvider::NotifyProximityUnlock(int source)
 {
-    proximityUnlockPending_->store(true);
+    proximityUnlockPending_->store(source);
 
     ICredentialProviderEvents* events = nullptr;
     UINT_PTR adviseContext = 0;

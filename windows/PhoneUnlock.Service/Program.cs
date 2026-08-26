@@ -32,6 +32,7 @@ builder.Services.AddSingleton<PairingCoordinator>();
 builder.Services.AddSingleton<PhoneConnectionRegistry>();
 builder.Services.AddSingleton<PhoneAuthenticationCoordinator>();
 builder.Services.AddSingleton<ProximityUnlockSignal>();
+builder.Services.AddSingleton<ProximityUnlockResultSignal>();
 builder.Services.AddSingleton<RemoteUnlockGrantStore>();
 builder.Services.AddSingleton<RemotePowerController>();
 builder.Services.AddSingleton<WorkstationLockSignal>();

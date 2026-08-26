@@ -2,15 +2,12 @@ package com.example.phoneunlock
 
 import android.Manifest
 import android.app.NotificationManager
-import android.app.Dialog
 import android.content.BroadcastReceiver
 import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
@@ -20,8 +17,6 @@ import android.os.PowerManager
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.util.Base64
 import android.view.View
-import android.view.ViewGroup
-import android.view.Window
 import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -812,18 +807,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestRemoteUnlock() {
-        val computer = pairingStore.load()
-        if (computer == null) {
+        if (pairingStore.load() == null) {
             showResult("먼저 PC를 연결하세요", success = false)
             return
         }
-        showConfirmationDialog(
-            title = "${computer.computerName} 잠금 해제",
-            message = "PC를 잠금 해제하시겠습니까?",
-            actionText = "생체인증",
-        ) {
-            authenticateRemoteUnlock()
-        }
+        // The Android biometric prompt is the confirmation UI for unlock.
+        authenticateRemoteUnlock()
     }
 
     private fun authenticateRemoteUnlock() {
@@ -931,18 +920,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestRemoteLock() {
-        val computer = pairingStore.load()
-        if (computer == null) {
+        if (pairingStore.load() == null) {
             showResult("먼저 PC를 연결하세요", success = false)
             return
         }
-        showConfirmationDialog(
-            title = "${computer.computerName} 잠금",
-            message = "PC를 잠그시겠습니까?",
-            actionText = "잠금",
-        ) {
-            sendRemoteLock()
-        }
+        sendRemoteLock()
     }
 
     private fun sendRemoteLock() {
@@ -980,39 +962,17 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val title = when (command) {
-            "SLEEP" -> "PC를 절전 모드로 전환할까요?"
-            "HIBERNATE" -> "PC를 최대 절전 모드로 전환할까요?"
-            "RESTART" -> "PC를 재시작할까요?"
-            else -> "PC를 종료할까요?"
-        }
-        val message = if (command == "RESTART" || command == "SHUTDOWN") {
-            "저장하지 않은 작업이 사라질 수 있습니다. 휴대폰 생체인증 후 명령을 보냅니다."
-        } else {
-            "휴대폰 생체인증 후 ${computer.computerName}에 명령을 보냅니다."
-        }
-        showConfirmationDialog(
-            title = title,
-            message = message,
-            actionText = "생체인증",
-        ) {
-            authenticateAndSendRemotePower(computer, command)
-        }
+        // Power actions use the native biometric prompt directly. There is no
+        // second in-app confirmation step to dismiss first.
+        authenticateAndSendRemotePower(computer, command)
     }
 
     private fun requestWakeComputer() {
-        val computer = pairingStore.load()
-        if (computer == null) {
+        if (pairingStore.load() == null) {
             showResult("먼저 PC를 연결하세요", success = false)
             return
         }
-        showConfirmationDialog(
-            title = "${computer.computerName} 켜기",
-            message = "PC 켜기 신호를 보내시겠습니까?",
-            actionText = "켜기",
-        ) {
-            wakeComputer()
-        }
+        wakeComputer()
     }
 
     private fun wakeComputer() {
@@ -1179,43 +1139,6 @@ class MainActivity : AppCompatActivity() {
             else -> exception.message ?: "연결 중 오류가 발생했습니다."
         }
         showResult(message, success = false)
-    }
-
-    private fun showConfirmationDialog(
-        title: String,
-        message: String,
-        actionText: String,
-        onConfirm: () -> Unit,
-    ) {
-        val dialog = Dialog(this)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        val content = layoutInflater.inflate(R.layout.dialog_confirmation, null)
-        content.findViewById<TextView>(R.id.confirmationTitle).text = title
-        content.findViewById<TextView>(R.id.confirmationMessage).text = message
-        content.findViewById<MaterialButton>(R.id.confirmationActionButton).text = actionText
-        content.findViewById<MaterialButton>(R.id.confirmationCancelButton).setOnClickListener { dialog.dismiss() }
-        content.findViewById<MaterialButton>(R.id.confirmationActionButton).setOnClickListener {
-            dialog.dismiss()
-            onConfirm()
-        }
-        dialog.setContentView(content)
-        dialog.setCanceledOnTouchOutside(true)
-        dialog.setOnShowListener {
-            content.alpha = 0f
-            content.scaleX = 0.92f
-            content.scaleY = 0.92f
-            content.animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .setDuration(115L)
-                .start()
-        }
-        dialog.show()
-        dialog.window?.apply {
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
     }
 
     private fun showResult(message: String, success: Boolean) {

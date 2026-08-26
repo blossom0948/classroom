@@ -14,6 +14,10 @@ import com.example.phoneunlock.network.ConnectionService
 import com.example.phoneunlock.network.WakeOnLanSender
 import com.example.phoneunlock.storage.ActivityLogStore
 import com.example.phoneunlock.storage.SecurePairingStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 class PcWidgetProvider : AppWidgetProvider() {
@@ -120,28 +124,38 @@ class PcWidgetProvider : AppWidgetProvider() {
 
 class WidgetActionReceiver : android.content.BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        val computer = SecurePairingStore(context).load() ?: return
-        when (intent?.action) {
-            ACTION_LOCK -> {
-                val request = com.example.phoneunlock.RemoteLockRequest(
-                    requestId = UUID.randomUUID(),
-                    computerId = computer.computerId,
-                    expiresAt = java.time.Instant.now().epochSecond + 30,
-                    phoneId = computer.phoneId,
-                )
-                ConnectionService.sendRemoteLockRequest(
-                    context,
-                    PhoneUnlockProtocol.remoteLockResponse(request),
-                )
-                ActivityLogStore(context).append("PC 잠금", computer.computerName)
+        val pendingResult = goAsync()
+        val appContext = context.applicationContext
+        val action = intent?.action
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                val computer = SecurePairingStore(appContext).load() ?: return@launch
+                when (action) {
+                    ACTION_LOCK -> {
+                        val request = com.example.phoneunlock.RemoteLockRequest(
+                            requestId = UUID.randomUUID(),
+                            computerId = computer.computerId,
+                            expiresAt = java.time.Instant.now().epochSecond + 30,
+                            phoneId = computer.phoneId,
+                        )
+                        ConnectionService.sendRemoteLockRequest(
+                            appContext,
+                            PhoneUnlockProtocol.remoteLockResponse(request),
+                        )
+                        ActivityLogStore(appContext).append("PC 잠금", computer.computerName)
+                    }
+                    ACTION_WAKE -> {
+                        WakeOnLanSender.send(computer.wakeOnLanTargets)
+                        ActivityLogStore(appContext).append("PC 켜기 신호", computer.computerName)
+                    }
+                }
+            } catch (exception: Exception) {
+                ActivityLogStore(appContext).append("위젯 작업 실패", exception.message ?: "PC에 연결하지 못했습니다")
+            } finally {
+                runCatching { PcWidgetProvider.refresh(appContext) }
+                pendingResult.finish()
             }
-            ACTION_WAKE -> {
-                WakeOnLanSender.send(computer.wakeOnLanTargets)
-                ActivityLogStore(context).append("PC 켜기 신호", computer.computerName)
-            }
-            else -> return
         }
-        PcWidgetProvider.refresh(context)
     }
 
     companion object {

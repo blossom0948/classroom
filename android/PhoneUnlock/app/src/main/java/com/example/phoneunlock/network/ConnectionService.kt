@@ -171,7 +171,11 @@ class ConnectionService : Service() {
                     return
                 }
                 if (root.getString("type") == "AUTOMATION_NOTICE") {
-                    showAutomationNotification(root.optJSONObject("payload")?.optString("message").orEmpty())
+                    val payload = root.optJSONObject("payload")
+                    showAutomationNotification(
+                        payload?.optString("message").orEmpty(),
+                        payload?.optString("source").orEmpty(),
+                    )
                     return
                 }
                 if (root.getString("type") == "ACTION_RESULT") {
@@ -359,17 +363,24 @@ class ConnectionService : Service() {
             .notify(SMART_ARRIVAL_NOTIFICATION_ID, notification)
     }
 
-    private fun showAutomationNotification(message: String) {
+    private fun showAutomationNotification(message: String, source: String) {
+        val fromSensor = source == "room_sensor"
         val notification = Notification.Builder(this, AUTOMATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_phone_unlock)
-            .setContentTitle("Phone Unlock 자동화")
-            .setContentText(message.ifBlank { "인증된 휴대폰으로 자동 잠금 해제를 승인했습니다." })
+            .setContentTitle(if (fromSensor) "재실 센서로 PC 잠금 해제" else "인증된 휴대폰으로 PC 잠금 해제")
+            .setContentText(message.ifBlank {
+                if (fromSensor) "재실 센서 감지로 PC 잠금 해제가 완료되었습니다."
+                else "인증된 휴대폰 감지로 PC 잠금 해제가 완료되었습니다."
+            })
             .setCategory(Notification.CATEGORY_STATUS)
             .setPriority(Notification.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setVisibility(Notification.VISIBILITY_PRIVATE)
             .build()
-        getSystemService(NotificationManager::class.java).notify(AUTOMATION_NOTIFICATION_ID, notification)
+        getSystemService(NotificationManager::class.java).notify(
+            if (fromSensor) SENSOR_AUTOMATION_NOTIFICATION_ID else AUTOMATION_NOTIFICATION_ID,
+            notification,
+        )
     }
 
     private fun actionLabel(action: String): String = when (action.uppercase()) {
@@ -494,6 +505,7 @@ class ConnectionService : Service() {
         private const val SECURITY_NOTIFICATION_ID = 48232
         private const val AUTOMATION_NOTIFICATION_ID = 48233
         private const val SMART_ARRIVAL_NOTIFICATION_ID = 48234
+        private const val SENSOR_AUTOMATION_NOTIFICATION_ID = 48235
         private const val HEARTBEAT_INTERVAL_MS = 10_000L
         @Volatile private var activeComputerId: UUID? = null
         @Volatile private var activeConnection: Boolean = false

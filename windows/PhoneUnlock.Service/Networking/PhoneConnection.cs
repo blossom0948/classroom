@@ -102,7 +102,10 @@ public sealed class PhoneConnection(
         return SendTextAsync(ProtocolJson.SerializeCompact(envelope), cancellationToken);
     }
 
-    public Task SendAutomationNoticeAsync(string message, CancellationToken cancellationToken)
+    public Task SendAutomationNoticeAsync(
+        string message,
+        string source,
+        CancellationToken cancellationToken)
     {
         var envelope = new
         {
@@ -110,7 +113,7 @@ public sealed class PhoneConnection(
             type = ProtocolConstants.AutomationNotice,
             messageId = Guid.NewGuid(),
             timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            payload = new { message }
+            payload = new { message, source }
         };
         return SendTextAsync(ProtocolJson.SerializeCompact(envelope), cancellationToken);
     }

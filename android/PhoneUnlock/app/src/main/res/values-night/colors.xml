@@ -4,6 +4,7 @@
     <color name="brand_on_primary">#FFFFFF</color>
     <color name="brand_surface">#050506</color>
     <color name="brand_nav">#202126</color>
+    <color name="brand_nav_active">#46474F</color>
     <color name="brand_card">#1B1B1E</color>
     <color name="brand_card_alt">#242427</color>
     <color name="brand_stroke">#303035</color>

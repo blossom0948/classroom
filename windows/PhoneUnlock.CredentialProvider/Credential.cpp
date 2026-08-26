@@ -13,6 +13,23 @@ namespace
 {
 constexpr wchar_t ReadyStatus[] =
     L"휴대폰에서 생체인식으로 잠금 해제";
+constexpr wchar_t TrustedPhoneUnlockSucceededEventName[] =
+    L"Global\\PhoneUnlock.ProximityUnlockSucceeded.TrustedPhone";
+constexpr wchar_t RoomSensorUnlockSucceededEventName[] =
+    L"Global\\PhoneUnlock.ProximityUnlockSucceeded.RoomSensor";
+
+void SignalProximityUnlockSucceeded(int source)
+{
+    const wchar_t* eventName = source == 2
+        ? RoomSensorUnlockSucceededEventName
+        : TrustedPhoneUnlockSucceededEventName;
+    HANDLE event = OpenEventW(EVENT_MODIFY_STATE, FALSE, eventName);
+    if (event != nullptr)
+    {
+        SetEvent(event);
+        CloseHandle(event);
+    }
+}
 }
 
 const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR PhoneUnlockFieldDescriptors[FieldCount] =
@@ -54,7 +71,7 @@ PhoneUnlockCredential::~PhoneUnlockCredential()
 HRESULT PhoneUnlockCredential::Initialize(
     CREDENTIAL_PROVIDER_USAGE_SCENARIO usageScenario,
     PCWSTR sid,
-    std::shared_ptr<std::atomic<bool>> proximityUnlockPending)
+    std::shared_ptr<std::atomic<int>> proximityUnlockPending)
 {
     if (sid == nullptr || *sid == L'\0')
     {
@@ -190,8 +207,10 @@ HRESULT PhoneUnlockCredential::GetSerialization(
     *optionalStatusText = nullptr;
     *optionalStatusIcon = CPSI_NONE;
 
-    const bool proximityOnly = proximityUnlockPending_ != nullptr
-        && proximityUnlockPending_->exchange(false);
+    proximityUnlockSource_ = proximityUnlockPending_ != nullptr
+        ? proximityUnlockPending_->exchange(0)
+        : 0;
+    const bool proximityOnly = proximityUnlockSource_ != 0;
     SetStatus(proximityOnly ? L"휴대폰 근접 자동 해제 확인 중…" : L"휴대폰 승인 대기 중…");
     PhoneUnlockCredentialData credential;
     std::wstring error;
@@ -200,6 +219,7 @@ HRESULT PhoneUnlockCredential::GetSerialization(
         : RequestPhoneApproval(sid_, &credential, &error);
     if (FAILED(result))
     {
+        proximityUnlockSource_ = 0;
         SetStatus(error.empty() ? L"휴대폰 승인을 완료하지 못했습니다." : error.c_str());
         credential.SecureClear();
         return S_OK;
@@ -260,8 +280,14 @@ HRESULT PhoneUnlockCredential::ReportResult(
     *optionalStatusIcon = CPSI_NONE;
     if (status != 0)
     {
+        proximityUnlockSource_ = 0;
         *optionalStatusIcon = CPSI_ERROR;
         return SHStrDupW(L"Windows가 저장된 계정 자격 증명을 거부했습니다. 설정 앱에서 비밀번호를 다시 저장하세요.", optionalStatusText);
+    }
+    if (proximityUnlockSource_ != 0)
+    {
+        SignalProximityUnlockSucceeded(proximityUnlockSource_);
+        proximityUnlockSource_ = 0;
     }
     return S_OK;
 }

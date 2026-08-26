@@ -36,7 +36,7 @@ private:
     HRESULT RebuildCredentials();
     void StartProximityWatcher();
     void StopProximityWatcher();
-    void NotifyProximityUnlock();
+    void NotifyProximityUnlock(int source);
 
     volatile long referenceCount_ = 1;
     CREDENTIAL_PROVIDER_USAGE_SCENARIO usageScenario_ = CPUS_INVALID;
@@ -45,8 +45,8 @@ private:
     ICredentialProviderUserArray* users_ = nullptr;
     std::vector<PhoneUnlockCredential*> credentials_;
     std::atomic<bool> proximityWatcherStopping_ = false;
-    std::shared_ptr<std::atomic<bool>> proximityUnlockPending_ =
-        std::make_shared<std::atomic<bool>>(false);
+    std::shared_ptr<std::atomic<int>> proximityUnlockPending_ =
+        std::make_shared<std::atomic<int>>(0);
     std::thread proximityWatcher_;
     std::mutex eventsMutex_;
 };

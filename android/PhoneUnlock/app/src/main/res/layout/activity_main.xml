@@ -3,7 +3,8 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/brand_surface">
+    android:background="@color/brand_surface"
+    android:clipChildren="false">
 
     <ScrollView
         android:id="@+id/contentScroll"
@@ -655,11 +656,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|start"
-        android:layout_marginStart="20dp"
-        android:layout_marginEnd="88dp"
-        android:layout_marginBottom="18dp"
+        android:layout_marginStart="18dp"
+        android:layout_marginEnd="86dp"
+        android:layout_marginBottom="16dp"
         app:cardBackgroundColor="@color/brand_nav"
-        app:cardCornerRadius="30dp"
+        app:cardCornerRadius="34dp"
         app:cardElevation="10dp"
         app:strokeColor="@color/brand_stroke"
         app:strokeWidth="1dp">
@@ -667,9 +668,14 @@
         <com.google.android.material.bottomnavigation.BottomNavigationView
             android:id="@+id/bottomNavigation"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="68dp"
             android:background="@android:color/transparent"
+            android:clipToPadding="false"
             app:itemIconTint="@color/bottom_nav_item_colors"
+            app:itemActiveIndicatorEnabled="true"
+            app:itemActiveIndicatorColor="@color/brand_nav_active"
+            app:itemIconSize="23dp"
+            app:itemHorizontalTranslationEnabled="false"
             app:itemTextColor="@color/bottom_nav_item_colors"
             app:itemRippleColor="@android:color/transparent"
             app:labelVisibilityMode="labeled"
@@ -681,8 +687,8 @@
         android:layout_width="62dp"
         android:layout_height="62dp"
         android:layout_gravity="bottom|end"
-        android:layout_marginEnd="20dp"
-        android:layout_marginBottom="19dp"
+        android:layout_marginEnd="18dp"
+        android:layout_marginBottom="17dp"
         android:backgroundTint="@color/brand_primary"
         android:contentDescription="새 PC 연결"
         android:gravity="center"
