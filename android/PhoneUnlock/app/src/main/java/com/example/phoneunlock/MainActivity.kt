@@ -2,12 +2,15 @@ package com.example.phoneunlock
 
 import android.Manifest
 import android.app.NotificationManager
-import android.app.AlertDialog
+import android.app.Dialog
+import android.content.BroadcastReceiver
 import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
@@ -17,6 +20,8 @@ import android.os.PowerManager
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.util.Base64
 import android.view.View
+import android.view.ViewGroup
+import android.view.Window
 import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -35,7 +40,9 @@ import com.example.phoneunlock.storage.PairedComputer
 import com.example.phoneunlock.storage.PairingPayload
 import com.example.phoneunlock.storage.SecurePairingStore
 import com.example.phoneunlock.widget.PcWidgetProvider
+import com.example.phoneunlock.widget.WidgetAppearanceSettings
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.radiobutton.MaterialRadioButton
@@ -61,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var historyList: LinearLayout
     private lateinit var historyEmptyText: TextView
     private lateinit var bottomNavigation: BottomNavigationView
+    private lateinit var quickPairButton: MaterialButton
     private lateinit var settingsBackButton: MaterialButton
     private lateinit var settingsTitleText: TextView
     private lateinit var computerNameText: TextView
@@ -82,6 +90,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var weakFaceSwitch: MaterialSwitch
     private lateinit var authMethodStatusText: TextView
     private lateinit var diagnosticsButton: MaterialButton
+    private lateinit var remoteRouteButton: MaterialButton
     private lateinit var diagnosticsText: TextView
     private lateinit var remoteUnlockButton: MaterialButton
     private lateinit var remoteLockButton: MaterialButton
@@ -90,6 +99,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var restartButton: MaterialButton
     private lateinit var shutdownButton: MaterialButton
     private lateinit var wakeButton: MaterialButton
+    private lateinit var themeToggleGroup: MaterialButtonToggleGroup
+    private lateinit var widgetThemeButton: MaterialButton
+    private lateinit var widgetTransparencySwitch: MaterialSwitch
     private lateinit var keystoreSigner: KeystoreSigner
     private lateinit var pairingStore: SecurePairingStore
     private lateinit var activityLogStore: ActivityLogStore
@@ -98,6 +110,20 @@ class MainActivity : AppCompatActivity() {
     private lateinit var phoneId: String
     private var availableUpdate: AndroidRelease? = null
     private var changingTab = false
+    private var updatingAppearance = false
+    private val remoteResultReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: Intent) {
+            if (intent.action != ConnectionService.ACTION_REMOTE_ACTION_RESULT) return
+            val action = intent.getStringExtra(ConnectionService.EXTRA_ACTION).orEmpty()
+            val success = intent.getBooleanExtra(ConnectionService.EXTRA_ACTION_SUCCESS, false)
+            val message = intent.getStringExtra(ConnectionService.EXTRA_ACTION_MESSAGE).orEmpty()
+            showResult(
+                message.ifBlank { "PC ${remoteActionLabel(action)} ${if (success) "완료" else "실패"}" },
+                success,
+            )
+            PcWidgetProvider.refresh(this@MainActivity)
+        }
+    }
 
     private val qrScanner = registerForActivityResult(ScanContract()) { result ->
         val code = result.contents
@@ -123,6 +149,7 @@ class MainActivity : AppCompatActivity() {
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        AppearanceSettings.apply(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
@@ -133,6 +160,7 @@ class MainActivity : AppCompatActivity() {
         historyList = findViewById(R.id.historyList)
         historyEmptyText = findViewById(R.id.historyEmptyText)
         bottomNavigation = findViewById(R.id.bottomNavigation)
+        quickPairButton = findViewById(R.id.quickPairButton)
         settingsBackButton = findViewById(R.id.settingsBackButton)
         settingsTitleText = findViewById(R.id.settingsTitleText)
         computerNameText = findViewById(R.id.computerNameText)
@@ -154,6 +182,7 @@ class MainActivity : AppCompatActivity() {
         weakFaceSwitch = findViewById(R.id.weakFaceSwitch)
         authMethodStatusText = findViewById(R.id.authMethodStatusText)
         diagnosticsButton = findViewById(R.id.diagnosticsButton)
+        remoteRouteButton = findViewById(R.id.remoteRouteButton)
         diagnosticsText = findViewById(R.id.diagnosticsText)
         remoteUnlockButton = findViewById(R.id.remoteUnlockButton)
         remoteLockButton = findViewById(R.id.remoteLockButton)
@@ -162,12 +191,16 @@ class MainActivity : AppCompatActivity() {
         restartButton = findViewById(R.id.restartButton)
         shutdownButton = findViewById(R.id.shutdownButton)
         wakeButton = findViewById(R.id.wakeButton)
+        themeToggleGroup = findViewById(R.id.themeToggleGroup)
+        widgetThemeButton = findViewById(R.id.widgetThemeButton)
+        widgetTransparencySwitch = findViewById(R.id.widgetTransparencySwitch)
         keystoreSigner = KeystoreSigner(this)
         pairingStore = SecurePairingStore(this)
         activityLogStore = ActivityLogStore(this)
         phoneId = loadOrCreatePhoneId()
 
         scanQrButton.setOnClickListener { scanPairingQr() }
+        quickPairButton.setOnClickListener { scanPairingQr() }
         pasteCodeButton.setOnClickListener { connectFromClipboard() }
         pairButton.setOnClickListener { connectWithCode(pairingInput.text?.toString().orEmpty()) }
         disconnectButton.setOnClickListener { disconnectComputer() }
@@ -178,7 +211,7 @@ class MainActivity : AppCompatActivity() {
         hibernateButton.setOnClickListener { requestRemotePower("HIBERNATE") }
         restartButton.setOnClickListener { requestRemotePower("RESTART") }
         shutdownButton.setOnClickListener { requestRemotePower("SHUTDOWN") }
-        wakeButton.setOnClickListener { wakeComputer() }
+        wakeButton.setOnClickListener { requestWakeComputer() }
         updateButton.setOnClickListener { handleUpdateClick() }
         autoPromptSwitch.isChecked = AuthPromptSettings.isAutoOpenEnabled(this)
         autoPromptSwitch.setOnCheckedChangeListener { _, enabled ->
@@ -212,6 +245,29 @@ class MainActivity : AppCompatActivity() {
             )
         }
         diagnosticsButton.setOnClickListener { runDiagnostics() }
+        remoteRouteButton.setOnClickListener { openRemoteConnectionSetup() }
+        themeToggleGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked || updatingAppearance) return@addOnButtonCheckedListener
+            val mode = when (checkedId) {
+                R.id.themeLightButton -> AppearanceSettings.LIGHT
+                R.id.themeDarkButton -> AppearanceSettings.DARK
+                else -> AppearanceSettings.SYSTEM
+            }
+            if (AppearanceSettings.current(this) != mode) {
+                AppearanceSettings.set(this, mode)
+            }
+        }
+        widgetThemeButton.setOnClickListener {
+            WidgetAppearanceSettings.nextTheme(this)
+            updateAppearanceControls()
+            PcWidgetProvider.refresh(this)
+        }
+        widgetTransparencySwitch.setOnCheckedChangeListener { _, enabled ->
+            if (!updatingAppearance) {
+                WidgetAppearanceSettings.setTransparent(this, enabled)
+                PcWidgetProvider.refresh(this)
+            }
+        }
         bottomNavigation.setOnItemSelectedListener { item ->
             if (changingTab) {
                 true
@@ -253,6 +309,7 @@ class MainActivity : AppCompatActivity() {
         }
         updateAutoPromptControls()
         updateAuthMethodControls()
+        updateAppearanceControls()
 
         pairingStore.load()?.let {
             displayPairedComputer(it)
@@ -263,17 +320,15 @@ class MainActivity : AppCompatActivity() {
         } ?: displayNoPairedComputer()
 
         checkForUpdate(silent = true)
-        if (savedInstanceState == null && intent?.action in setOf(ACTION_WIDGET_UNLOCK, ACTION_SMART_ARRIVAL)) {
-            window.decorView.post { requestRemoteUnlock() }
+        if (savedInstanceState == null) {
+            handleLaunchAction(intent)
         }
     }
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent?.action in setOf(ACTION_WIDGET_UNLOCK, ACTION_SMART_ARRIVAL)) {
-            window.decorView.post { requestRemoteUnlock() }
-        }
+        handleLaunchAction(intent)
     }
 
     override fun onResume() {
@@ -281,8 +336,24 @@ class MainActivity : AppCompatActivity() {
         if (::autoPromptSwitch.isInitialized) {
             updateAutoPromptControls()
             pairingStore.load()?.let { refreshComputerChoices(it) }
+            pairingStore.load()?.let { ConnectionService.refreshConnectionRoute(this) }
             PcWidgetProvider.refresh(this)
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        ContextCompat.registerReceiver(
+            this,
+            remoteResultReceiver,
+            IntentFilter(ConnectionService.ACTION_REMOTE_ACTION_RESULT),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    override fun onStop() {
+        unregisterReceiver(remoteResultReceiver)
+        super.onStop()
     }
 
     private fun updateAutoPromptControls() {
@@ -309,6 +380,51 @@ class MainActivity : AppCompatActivity() {
             "지문·강한 얼굴인식"
         }
         updateAutoPromptControls()
+    }
+
+    private fun updateAppearanceControls() {
+        updatingAppearance = true
+        val checkedId = when (AppearanceSettings.current(this)) {
+            AppearanceSettings.LIGHT -> R.id.themeLightButton
+            AppearanceSettings.DARK -> R.id.themeDarkButton
+            else -> R.id.themeSystemButton
+        }
+        themeToggleGroup.check(checkedId)
+        widgetThemeButton.text = "위젯 · ${WidgetAppearanceSettings.label(this)}"
+        widgetTransparencySwitch.isChecked = WidgetAppearanceSettings.isTransparent(this)
+        updatingAppearance = false
+    }
+
+    private fun handleLaunchAction(launchIntent: Intent?) {
+        val action = launchIntent?.action ?: return
+        window.decorView.post {
+            when (action) {
+                ACTION_WIDGET_UNLOCK, ACTION_SMART_ARRIVAL -> requestRemoteUnlock()
+                ACTION_WIDGET_POWER -> launchIntent.getStringExtra(EXTRA_WIDGET_POWER_COMMAND)
+                    ?.takeIf { it in setOf("SLEEP", "HIBERNATE", "RESTART", "SHUTDOWN") }
+                    ?.let(::requestRemotePower)
+            }
+        }
+    }
+
+    private fun openRemoteConnectionSetup() {
+        if (pairingStore.load() == null) {
+            showResult("먼저 PC를 연결하세요", success = false)
+            return
+        }
+
+        val tailscaleIntent = packageManager.getLaunchIntentForPackage(TAILSCALE_PACKAGE)
+            ?: Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$TAILSCALE_PACKAGE"))
+        try {
+            startActivity(tailscaleIntent)
+            showResult(
+                "Tailscale에서 로그인과 VPN 허용을 한 번만 완료하세요. 이후 Phone Unlock이 LAN·원격 주소를 자동 갱신합니다.",
+                success = true,
+            )
+        } catch (_: ActivityNotFoundException) {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$TAILSCALE_PACKAGE")))
+            showResult("Tailscale 설치 화면을 열었습니다. 설치 후 한 번만 로그인하세요.", success = true)
+        }
     }
 
     private fun authenticationMethodsText(): String = if (AuthPromptSettings.isDeviceCredentialEnabled(this)) {
@@ -467,7 +583,10 @@ class MainActivity : AppCompatActivity() {
         settingsTitleText.text = computer.computerName
         val online = ConnectionService.isConnected(computer.computerId)
         networkStatusText.text = if (online) "● 온라인" else "○ 오프라인 · 연결 대기 중"
-        networkStatusText.setTextColor(Color.parseColor(if (online) "#8FE0B0" else "#9999A2"))
+        networkStatusText.setTextColor(ContextCompat.getColor(
+            this,
+            if (online) R.color.brand_success else R.color.brand_muted,
+        ))
         refreshComputerChoices(computer)
         homeControlsCard.visibility = View.VISIBLE
         pairingControls.visibility = View.VISIBLE
@@ -476,7 +595,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun displayNoPairedComputer() {
         networkStatusText.text = "등록된 PC가 없습니다"
-        networkStatusText.setTextColor(Color.parseColor("#9999A2"))
+        networkStatusText.setTextColor(ContextCompat.getColor(this, R.color.brand_muted))
         homeControlsCard.visibility = View.GONE
         pairingControls.visibility = View.VISIBLE
         computerListGroup.removeAllViews()
@@ -511,14 +630,14 @@ class MainActivity : AppCompatActivity() {
             val row = TextView(this).apply {
                 val time = HISTORY_TIME_FORMATTER.format(event.occurredAt)
                 text = "$time\n${event.title} · ${event.detail}"
-                setTextColor(Color.parseColor("#F6F6F8"))
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.brand_on_surface))
                 textSize = 14f
                 setPadding(0, 12.dp, 0, 12.dp)
             }
             historyList.addView(row)
             if (index < events.lastIndex) {
                 val divider = View(this).apply {
-                    setBackgroundColor(Color.parseColor("#303035"))
+                    setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.brand_stroke))
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         1.dp,
@@ -633,9 +752,9 @@ class MainActivity : AppCompatActivity() {
                         ?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
                 } == true
                 lines += if (vpnActive) {
-                    "✓ 원격 경로: VPN 연결됨 · 저장된 LAN/VPN 주소를 자동 시도합니다"
+                    "✓ 원격 경로: VPN 연결됨 · LAN/VPN 주소를 자동 갱신·재연결합니다"
                 } else {
-                    "△ 원격 경로: 현재 VPN 없음 · 다른 장소에서는 양쪽 기기의 VPN을 켜세요"
+                    "△ 원격 경로: 원격 연결 켜기에서 VPN을 한 번만 설정하면 이후 자동 재연결합니다"
                 }
 
                 val notificationsEnabled = getSystemService(NotificationManager::class.java)
@@ -693,6 +812,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestRemoteUnlock() {
+        val computer = pairingStore.load()
+        if (computer == null) {
+            showResult("먼저 PC를 연결하세요", success = false)
+            return
+        }
+        showConfirmationDialog(
+            title = "${computer.computerName} 잠금 해제",
+            message = "PC를 잠금 해제하시겠습니까?",
+            actionText = "생체인증",
+        ) {
+            authenticateRemoteUnlock()
+        }
+    }
+
+    private fun authenticateRemoteUnlock() {
         val computer = pairingStore.load()
         if (computer == null) {
             showResult("먼저 PC를 연결하세요", success = false)
@@ -802,6 +936,21 @@ class MainActivity : AppCompatActivity() {
             showResult("먼저 PC를 연결하세요", success = false)
             return
         }
+        showConfirmationDialog(
+            title = "${computer.computerName} 잠금",
+            message = "PC를 잠그시겠습니까?",
+            actionText = "잠금",
+        ) {
+            sendRemoteLock()
+        }
+    }
+
+    private fun sendRemoteLock() {
+        val computer = pairingStore.load()
+        if (computer == null) {
+            showResult("먼저 PC를 연결하세요", success = false)
+            return
+        }
 
         val request = RemoteLockRequest(
             requestId = UUID.randomUUID(),
@@ -842,14 +991,28 @@ class MainActivity : AppCompatActivity() {
         } else {
             "휴대폰 생체인증 후 ${computer.computerName}에 명령을 보냅니다."
         }
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(message)
-            .setNegativeButton("취소", null)
-            .setPositiveButton(if (command == "SHUTDOWN") "종료" else "계속") { _, _ ->
-                authenticateAndSendRemotePower(computer, command)
-            }
-            .show()
+        showConfirmationDialog(
+            title = title,
+            message = message,
+            actionText = "생체인증",
+        ) {
+            authenticateAndSendRemotePower(computer, command)
+        }
+    }
+
+    private fun requestWakeComputer() {
+        val computer = pairingStore.load()
+        if (computer == null) {
+            showResult("먼저 PC를 연결하세요", success = false)
+            return
+        }
+        showConfirmationDialog(
+            title = "${computer.computerName} 켜기",
+            message = "PC 켜기 신호를 보내시겠습니까?",
+            actionText = "켜기",
+        ) {
+            wakeComputer()
+        }
     }
 
     private fun wakeComputer() {
@@ -1018,17 +1181,70 @@ class MainActivity : AppCompatActivity() {
         showResult(message, success = false)
     }
 
+    private fun showConfirmationDialog(
+        title: String,
+        message: String,
+        actionText: String,
+        onConfirm: () -> Unit,
+    ) {
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        val content = layoutInflater.inflate(R.layout.dialog_confirmation, null)
+        content.findViewById<TextView>(R.id.confirmationTitle).text = title
+        content.findViewById<TextView>(R.id.confirmationMessage).text = message
+        content.findViewById<MaterialButton>(R.id.confirmationActionButton).text = actionText
+        content.findViewById<MaterialButton>(R.id.confirmationCancelButton).setOnClickListener { dialog.dismiss() }
+        content.findViewById<MaterialButton>(R.id.confirmationActionButton).setOnClickListener {
+            dialog.dismiss()
+            onConfirm()
+        }
+        dialog.setContentView(content)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.setOnShowListener {
+            content.alpha = 0f
+            content.scaleX = 0.92f
+            content.scaleY = 0.92f
+            content.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(115L)
+                .start()
+        }
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+    }
+
     private fun showResult(message: String, success: Boolean) {
         resultText.text = message
-        resultText.setTextColor(Color.parseColor(if (success) "#C7F7D8" else "#FFDAD6"))
+        resultText.setTextColor(ContextCompat.getColor(
+            this,
+            if (success) R.color.brand_success else R.color.brand_error,
+        ))
         resultText.setBackgroundResource(
             if (success) R.drawable.result_success_background else R.drawable.result_error_background,
         )
         resultText.setPadding(16.dp, 14.dp, 16.dp, 14.dp)
         if (homePanel.visibility == View.VISIBLE) {
             networkStatusText.text = message
-            networkStatusText.setTextColor(Color.parseColor(if (success) "#8FE0B0" else "#FFB4AB"))
+            networkStatusText.setTextColor(ContextCompat.getColor(
+                this,
+                if (success) R.color.brand_success else R.color.brand_error,
+            ))
         }
+    }
+
+    private fun remoteActionLabel(action: String): String = when (action.uppercase()) {
+        "UNLOCK" -> "잠금 해제"
+        "LOCK" -> "잠금"
+        "SLEEP" -> "절전"
+        "HIBERNATE" -> "최대 절전"
+        "RESTART" -> "재시작"
+        "SHUTDOWN" -> "종료"
+        else -> "작업"
     }
 
     private fun loadOrCreatePhoneId(): String {
@@ -1058,5 +1274,8 @@ class MainActivity : AppCompatActivity() {
                 .withZone(ZoneId.systemDefault())
         const val ACTION_WIDGET_UNLOCK = "com.example.phoneunlock.WIDGET_UNLOCK"
         const val ACTION_SMART_ARRIVAL = "com.example.phoneunlock.SMART_ARRIVAL"
+        const val ACTION_WIDGET_POWER = "com.example.phoneunlock.WIDGET_POWER"
+        const val EXTRA_WIDGET_POWER_COMMAND = "widget_power_command"
+        private const val TAILSCALE_PACKAGE = "com.tailscale.ipn"
     }
 }

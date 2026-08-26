@@ -108,6 +108,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          notes_file="docs/RELEASE_NOTES-${GITHUB_REF_NAME#v}.md"
+          test -f "$notes_file"
           gh release create "${GITHUB_REF_NAME}" artifacts/release/* \
             --title "Phone Unlock ${GITHUB_REF_NAME}" \
-            --notes-file docs/RELEASE_NOTES-0.4.0-beta.12.md
+            --notes-file "$notes_file"

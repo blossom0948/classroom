@@ -21,6 +21,13 @@
                     <TextBlock Margin="0,3,0,0" Foreground="{StaticResource MutedBrush}" Text="휴대폰으로 Windows를 잠그고 열기" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <ComboBox x:Name="ThemeModeComboBox" Style="{StaticResource ThemeButton}" Margin="0,0,8,0"
+                              SelectionChanged="ThemeMode_SelectionChanged">
+                        <ComboBoxItem Content="시스템" Tag="system" />
+                        <ComboBoxItem Content="밝게" Tag="light" />
+                        <ComboBoxItem Content="어둡게" Tag="dark" />
+                    </ComboBox>
+                    <Button x:Name="RemoteConnectionButton" Style="{StaticResource SecondaryButton}" Click="RemoteConnection_Click" Content="원격 연결" />
                     <Button x:Name="UpdateButton" Style="{StaticResource SecondaryButton}" Click="Update_Click" Content="업데이트" />
                     <Button Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" Click="Refresh_Click" Content="새로 고침" />
                 </StackPanel>
@@ -229,6 +236,7 @@
                                 HorizontalAlignment="Left" Click="TestPresenceSensor_Click" Content="현재 상태 테스트" />
                         <ComboBox x:Name="PresenceSensorProtocolComboBox" Margin="0,10,0,0"
                                   SelectionChanged="PresenceSensorProtocol_SelectionChanged">
+                            <ComboBoxItem Content="이 PC 재실 센서 · 자동" Tag="windows" />
                             <ComboBoxItem Content="Zigbee · Home Assistant" Tag="zigbee" />
                             <ComboBoxItem Content="Matter · Home Assistant" Tag="matter" />
                             <ComboBoxItem Content="SmartThings Station" Tag="smartthings" />

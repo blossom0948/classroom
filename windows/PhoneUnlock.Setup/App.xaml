@@ -27,7 +27,7 @@
                         <Border Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="7" Padding="{TemplateBinding Padding}">
+                                CornerRadius="14" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" />
                         </Border>
                     </ControlTemplate>
@@ -39,6 +39,14 @@
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}" />
             <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style x:Key="ThemeButton" TargetType="ComboBox">
+            <Setter Property="MinWidth" Value="112" />
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="Padding" Value="9,4" />
+            <Setter Property="Background" Value="{StaticResource CardAltBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}" />
         </Style>
         <Style TargetType="TextBox">
             <Setter Property="Padding" Value="11" />

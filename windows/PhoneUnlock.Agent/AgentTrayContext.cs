@@ -83,6 +83,13 @@ internal sealed class AgentTrayContext : ApplicationContext
         _ = NativeMethods.LockWorkStation();
     }
 
+    public void ShowNotice(string title, string message)
+    {
+        notifyIcon.BalloonTipTitle = title;
+        notifyIcon.BalloonTipText = message;
+        notifyIcon.ShowBalloonTip(4_000);
+    }
+
     private static class NativeMethods
     {
         [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]

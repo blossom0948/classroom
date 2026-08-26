@@ -29,7 +29,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:text="PC에서 로그인을 요청했습니다."
-        android:textColor="#555A63"
+        android:textColor="@color/brand_muted"
         android:textSize="17sp" />
 
     <TextView
@@ -38,7 +38,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="30초 안에 승인하세요"
-        android:textColor="#737780"
+        android:textColor="@color/brand_muted"
         android:textSize="14sp" />
 
     <com.google.android.material.button.MaterialButton
@@ -64,6 +64,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="20dp"
-        android:textColor="#555A63"
+        android:textColor="@color/brand_muted"
         android:textSize="14sp" />
 </LinearLayout>

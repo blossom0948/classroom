@@ -20,7 +20,7 @@ public sealed record ServiceConfiguration
     public DateTimeOffset? PauseUntil { get; init; }
     public bool PauseIndefinitely { get; init; }
     public bool PresenceSensorEnabled { get; init; }
-    public string PresenceSensorProtocol { get; init; } = "zigbee";
+    public string PresenceSensorProtocol { get; init; } = "windows";
     public string? PresenceSensorBaseUrl { get; init; }
     public string? PresenceSensorEntityId { get; init; }
     public string PresenceSensorComponentId { get; init; } = "main";

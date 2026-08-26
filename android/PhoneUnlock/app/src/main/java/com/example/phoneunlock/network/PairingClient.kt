@@ -91,4 +91,71 @@ class PairingClient {
             }.getOrDefault(false)
         }
     }
+
+    /**
+     * Refreshes the addresses advertised by a paired PC without exposing a
+     * pairing token again. This lets a PC add its VPN address while the phone
+     * is still on the home LAN, then keep working away from home.
+     */
+    suspend fun refreshConnectionInfo(computer: PairedComputer): PairedComputer = withContext(Dispatchers.IO) {
+        var lastNetworkError: IOException? = null
+        val client = PinnedHttpClient.create(computer.certificateFingerprint)
+        val candidates = (listOf(computer.host) + computer.hosts)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+        for (host in candidates) {
+            try {
+                val request = Request.Builder()
+                    .url("https://$host:${computer.port}/connection-info?phoneId=${computer.phoneId}")
+                    .header("Authorization", "Bearer ${computer.deviceToken}")
+                    .get()
+                    .build()
+                return@withContext client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw IOException("PC 연결 정보 요청이 거부되었습니다 (${response.code}).")
+                    }
+                    val value = JSONObject(response.body?.string() ?: error("PC 연결 정보가 비어 있습니다."))
+                    require(value.getInt("version") == 1) { "지원하지 않는 PC 프로토콜 버전입니다." }
+                    require(java.util.UUID.fromString(value.getString("computerId")) == computer.computerId) {
+                        "다른 PC의 연결 정보를 받았습니다."
+                    }
+                    val refreshedHosts = buildList {
+                        add(host)
+                        value.optJSONArray("hosts")?.let { hosts ->
+                            for (index in 0 until hosts.length()) {
+                                val candidate = hosts.optString(index).trim()
+                                if (candidate.isNotEmpty()) add(candidate)
+                            }
+                        }
+                    }.distinct()
+                    require(refreshedHosts.isNotEmpty() && refreshedHosts.all {
+                        it.matches(Regex("^[A-Za-z0-9.-]+$"))
+                    }) { "PC 주소가 올바르지 않습니다." }
+                    computer.copy(
+                        computerName = value.optString("computerName", computer.computerName).trim()
+                            .ifBlank { computer.computerName },
+                        host = host,
+                        port = value.optInt("port", computer.port).takeIf { it in 1..65535 } ?: computer.port,
+                        hosts = refreshedHosts,
+                        wakeOnLanTargets = value.optJSONArray("wakeOnLanTargets")?.let { targets ->
+                            buildList {
+                                for (index in 0 until targets.length()) {
+                                    val target = targets.optJSONObject(index) ?: continue
+                                    val mac = target.optString("macAddress").trim()
+                                    val broadcast = target.optString("broadcastAddress").trim()
+                                    if (mac.isNotEmpty() && broadcast.isNotEmpty()) {
+                                        add(com.example.phoneunlock.storage.WakeOnLanTarget(mac, broadcast))
+                                    }
+                                }
+                            }.distinctBy { "${it.macAddress}|${it.broadcastAddress}" }
+                        } ?: computer.wakeOnLanTargets,
+                    )
+                }
+            } catch (exception: IOException) {
+                lastNetworkError = exception
+            }
+        }
+        throw IOException("PC 연결 정보를 갱신할 수 없습니다.", lastNetworkError)
+    }
 }

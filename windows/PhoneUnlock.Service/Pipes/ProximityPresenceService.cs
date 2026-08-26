@@ -10,6 +10,8 @@ public sealed class ProximityPresenceService(
     ConfigurationStore configurationStore,
     PhoneConnectionRegistry connectionRegistry,
     PresenceSensorClient presenceSensorClient,
+    AgentConnectionState agentConnectionState,
+    AgentNotificationQueue notificationQueue,
     ProximityUnlockSignal proximityUnlockSignal,
     ILogger<ProximityPresenceService> logger) : BackgroundService
 {
@@ -30,9 +32,7 @@ public sealed class ProximityPresenceService(
 
             var selectedConnection = await GetSelectedPhoneAsync(configuration, stoppingToken);
             var phonePresent = selectedConnection is not null;
-            var sensorPresent = configuration.PresenceSensorEnabled
-                ? await presenceSensorClient.ReadPresenceAsync(configuration, stoppingToken)
-                : null;
+            var sensorPresent = await ReadSensorPresenceAsync(configuration, stoppingToken);
             var present = phonePresent || sensorPresent == true;
             if (present && !wasPresent)
             {
@@ -57,6 +57,19 @@ public sealed class ProximityPresenceService(
                 if (configuration.ProximityUnlockEnabled)
                 {
                     proximityUnlockSignal.Signal();
+                    const string message = "인증된 휴대폰 또는 재실 센서로 자동 잠금 해제를 승인했습니다.";
+                    notificationQueue.Publish("Phone Unlock", message);
+                    if (selectedConnection is not null)
+                    {
+                        try
+                        {
+                            await selectedConnection.SendAutomationNoticeAsync(message, stoppingToken);
+                        }
+                        catch (Exception exception) when (exception is IOException or WebSocketException)
+                        {
+                            logger.LogInformation("Could not send automatic-unlock notice: {Message}", exception.Message);
+                        }
+                    }
                     logger.LogInformation("Signaled experimental automatic unlock after {Source} presence was detected.",
                         phonePresent ? "trusted phone" : "room sensor");
                 }
@@ -74,6 +87,25 @@ public sealed class ProximityPresenceService(
             }
             await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
         }
+    }
+
+    private async Task<bool?> ReadSensorPresenceAsync(
+        ServiceConfiguration configuration,
+        CancellationToken cancellationToken)
+    {
+        if (!configuration.PresenceSensorEnabled)
+        {
+            return null;
+        }
+
+        if (string.Equals(configuration.PresenceSensorProtocol, "windows", StringComparison.OrdinalIgnoreCase))
+        {
+            return agentConnectionState.TryGetRecentHumanPresence(TimeSpan.FromSeconds(12), out var present)
+                ? present
+                : null;
+        }
+
+        return await presenceSensorClient.ReadPresenceAsync(configuration, cancellationToken);
     }
 
     private async Task<PhoneConnection?> GetSelectedPhoneAsync(

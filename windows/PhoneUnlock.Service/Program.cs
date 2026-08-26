@@ -1,4 +1,5 @@
 using System.Net.WebSockets;
+using PhoneUnlock.Core.Protocol;
 using PhoneUnlock.Service.Configuration;
 using PhoneUnlock.Service.Interop;
 using PhoneUnlock.Service.Models;
@@ -35,6 +36,7 @@ builder.Services.AddSingleton<RemoteUnlockGrantStore>();
 builder.Services.AddSingleton<RemotePowerController>();
 builder.Services.AddSingleton<WorkstationLockSignal>();
 builder.Services.AddSingleton<AgentConnectionState>();
+builder.Services.AddSingleton<AgentNotificationQueue>();
 builder.Services.AddHostedService<SetupPipeService>();
 builder.Services.AddHostedService<AuthPipeService>();
 builder.Services.AddHostedService<AgentPipeService>();
@@ -118,6 +120,35 @@ app.MapPost("/pair", async (
             Suspicious: true), cancellationToken);
         return Results.BadRequest(new { error = exception.Message });
     }
+});
+
+app.MapGet("/connection-info", async (
+    HttpContext context,
+    PhoneConnectionRegistry registry,
+    ConfigurationStore configurationStore,
+    CancellationToken cancellationToken) =>
+{
+    var phone = await registry.AuthenticateDeviceAsync(
+        context.Request.Query["phoneId"].ToString(),
+        context.Request.Headers.Authorization.ToString(),
+        context.Connection.RemoteIpAddress?.ToString(),
+        cancellationToken);
+    if (phone is null)
+    {
+        return Results.Unauthorized();
+    }
+
+    var configuration = await configurationStore.GetAsync(cancellationToken);
+    var hosts = CertificateManager.GetLocalAddresses().Select(address => address.ToString()).ToArray();
+    return Results.Json(new
+    {
+        version = ProtocolConstants.Version,
+        computerId = configuration.ComputerId,
+        computerName = configuration.ComputerName,
+        hosts,
+        port = ServiceConstants.Port,
+        wakeOnLanTargets = CertificateManager.GetWakeOnLanTargets()
+    });
 });
 
 app.Map("/ws", async context =>

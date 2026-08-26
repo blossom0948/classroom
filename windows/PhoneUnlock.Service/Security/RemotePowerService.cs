@@ -85,6 +85,12 @@ public sealed class RemotePowerService(
             }
 
             await RecordAsync(request, phone, command, "SUCCESS", $"휴대폰 생체인증으로 원격 {command} 실행", false, cancellationToken);
+            await connectionRegistry.TrySendActionResultAsync(
+                phone.PhoneId,
+                command,
+                success: true,
+                $"PC {command} 요청을 처리했습니다.",
+                cancellationToken);
             CleanupSeenRequests(now);
             logger.LogInformation("REMOTE_POWER_SUCCESS phone={PhoneId} command={Command}", phone.PhoneId, command);
         }

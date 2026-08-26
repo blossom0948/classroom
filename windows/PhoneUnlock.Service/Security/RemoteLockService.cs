@@ -57,6 +57,12 @@ public sealed class RemoteLockService(
 
             lockSignal.Request();
             await RecordAsync(request, phone, "SUCCESS", "휴대폰에서 원격 잠금 요청", suspicious: false, cancellationToken);
+            await connectionRegistry.TrySendActionResultAsync(
+                phone.PhoneId,
+                "LOCK",
+                success: true,
+                "PC 잠금 요청을 처리했습니다.",
+                cancellationToken);
             CleanupSeenRequests(now);
             logger.LogInformation("REMOTE_LOCK_SUCCESS phone={PhoneId} request={RequestId}", phone.PhoneId, payload.RequestId);
         }

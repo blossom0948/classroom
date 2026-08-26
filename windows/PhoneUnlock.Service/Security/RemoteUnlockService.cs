@@ -6,6 +6,7 @@ using PhoneUnlock.Core.Security;
 using PhoneUnlock.Service.Interop;
 using PhoneUnlock.Service.Models;
 using PhoneUnlock.Service.Networking;
+using PhoneUnlock.Service.Pipes;
 using PhoneUnlock.Service.Storage;
 
 namespace PhoneUnlock.Service.Security;
@@ -16,6 +17,7 @@ public sealed class RemoteUnlockService(
     WindowsCredentialStore credentialStore,
     RemoteUnlockGrantStore grantStore,
     ProximityUnlockSignal proximityUnlockSignal,
+    AgentNotificationQueue notificationQueue,
     AuditLogStore auditLog,
     ILogger<RemoteUnlockService> logger) : BackgroundService
 {
@@ -86,6 +88,13 @@ public sealed class RemoteUnlockService(
             grantStore.Grant(phone.PhoneId, configuration.ConfiguredAccountSid, now.AddSeconds(30));
             proximityUnlockSignal.Signal();
             await RecordAsync(request, phone, "SUCCESS", "휴대폰 생체인증으로 1회성 원격 잠금 해제 승인", suspicious: false, cancellationToken);
+            notificationQueue.Publish("Phone Unlock", "휴대폰에서 생체인식으로 잠금 해제");
+            await connectionRegistry.TrySendActionResultAsync(
+                phone.PhoneId,
+                "UNLOCK",
+                success: true,
+                "생체인식으로 PC 잠금 해제 승인",
+                cancellationToken);
             CleanupSeenRequests(now);
             logger.LogInformation("REMOTE_UNLOCK_SUCCESS phone={PhoneId} request={RequestId}", phone.PhoneId, payload.RequestId);
         }

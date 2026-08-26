@@ -145,6 +145,29 @@ public sealed class PhoneConnectionRegistry(
             && DateTimeOffset.UtcNow - heartbeat <= threshold;
     }
 
+    public async Task TrySendActionResultAsync(
+        string phoneId,
+        string action,
+        bool success,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        if (!connections.TryGetValue(phoneId, out var connection) || !connection.IsOpen)
+        {
+            return;
+        }
+
+        try
+        {
+            await connection.SendActionResultAsync(action, success, message, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or WebSocketException or OperationCanceledException)
+        {
+            // The operation result was already audited. A closed phone connection
+            // only means the optional in-app confirmation could not be delivered.
+        }
+    }
+
     private Task UpdateLastSeenAsync(string phoneId, CancellationToken cancellationToken) =>
         configurationStore.UpdateAsync(configuration => configuration with
         {

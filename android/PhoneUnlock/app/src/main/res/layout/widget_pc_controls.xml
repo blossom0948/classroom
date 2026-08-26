@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widgetRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_background"
+    android:background="@drawable/widget_background_dark"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="14dp">
 
     <TextView
         android:id="@+id/widgetTitle"
@@ -13,7 +14,7 @@
         android:ellipsize="end"
         android:maxLines="1"
         android:text="Phone Unlock"
-        android:textColor="#18191B"
+        android:textColor="#F7F7FA"
         android:textSize="15sp"
         android:textStyle="bold" />
 
@@ -25,41 +26,88 @@
         android:ellipsize="end"
         android:maxLines="1"
         android:text="PC 연결 필요"
-        android:textColor="#5F6368"
+        android:textColor="#C4C6CF"
         android:textSize="11sp" />
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="10dp"
-        android:layout_weight="1"
-        android:gravity="center_vertical"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/widgetWakeButton"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_marginEnd="3dp"
+            android:layout_weight="1"
+            android:background="@drawable/widget_secondary_button_dark"
+            android:minHeight="0dp"
+            android:minWidth="0dp"
+            android:text="켜기"
+            android:textAllCaps="false"
+            android:textColor="#F7F7FA"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/widgetSleepButton"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_marginHorizontal="3dp"
+            android:layout_weight="1"
+            android:background="@drawable/widget_secondary_button_dark"
+            android:minHeight="0dp"
+            android:minWidth="0dp"
+            android:text="절전"
+            android:textAllCaps="false"
+            android:textColor="#F7F7FA"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/widgetRestartButton"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_marginStart="3dp"
+            android:layout_weight="1"
+            android:background="@drawable/widget_secondary_button_dark"
+            android:minHeight="0dp"
+            android:minWidth="0dp"
+            android:text="재시작"
+            android:textAllCaps="false"
+            android:textColor="#F7F7FA"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp"
         android:orientation="horizontal">
 
         <Button
             android:id="@+id/widgetLockButton"
             android:layout_width="0dp"
             android:layout_height="42dp"
-            android:layout_marginEnd="5dp"
+            android:layout_marginEnd="4dp"
             android:layout_weight="1"
-            android:background="@drawable/widget_secondary_button"
+            android:background="@drawable/widget_secondary_button_dark"
             android:minHeight="0dp"
             android:minWidth="0dp"
-            android:text="PC 잠금"
+            android:text="잠금"
             android:textAllCaps="false"
-            android:textColor="#2155D9"
+            android:textColor="#F7F7FA"
             android:textSize="12sp" />
 
         <Button
             android:id="@+id/widgetUnlockButton"
             android:layout_width="0dp"
             android:layout_height="42dp"
-            android:layout_marginStart="5dp"
+            android:layout_marginStart="4dp"
             android:layout_weight="1"
-            android:background="@drawable/widget_primary_button"
+            android:background="@drawable/widget_primary_button_dark"
             android:minHeight="0dp"
             android:minWidth="0dp"
-            android:text="PC 잠금 해제"
+            android:text="잠금 해제"
             android:textAllCaps="false"
             android:textColor="#FFFFFF"
             android:textSize="12sp" />

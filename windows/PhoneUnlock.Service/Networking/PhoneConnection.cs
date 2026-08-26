@@ -85,6 +85,36 @@ public sealed class PhoneConnection(
         return SendTextAsync(ProtocolJson.SerializeCompact(envelope), cancellationToken);
     }
 
+    public Task SendActionResultAsync(
+        string action,
+        bool success,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        var envelope = new
+        {
+            version = ProtocolConstants.Version,
+            type = ProtocolConstants.ActionResult,
+            messageId = Guid.NewGuid(),
+            timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            payload = new { action, success, message }
+        };
+        return SendTextAsync(ProtocolJson.SerializeCompact(envelope), cancellationToken);
+    }
+
+    public Task SendAutomationNoticeAsync(string message, CancellationToken cancellationToken)
+    {
+        var envelope = new
+        {
+            version = ProtocolConstants.Version,
+            type = ProtocolConstants.AutomationNotice,
+            messageId = Guid.NewGuid(),
+            timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            payload = new { message }
+        };
+        return SendTextAsync(ProtocolJson.SerializeCompact(envelope), cancellationToken);
+    }
+
     public async Task RunReceiveLoopAsync(CancellationToken cancellationToken)
     {
         var buffer = new byte[8192];

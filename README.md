@@ -12,12 +12,12 @@ Android의 강한 생체인증과 Android Keystore의 ECDSA P-256 키로 Windows
 - 여러 PC 등록·선택, 여러 휴대폰 등록과 Windows 설정 앱의 선호 휴대폰 선택
 - Android PC 상세 화면의 원격 잠금·잠금 해제, 홈 화면 위젯과 빠른 설정 타일
 - Android 앱의 어두운 PC·자동화·기록 하단 탭과 최근 작업 기록
-- LAN 주소와 Tailscale/WireGuard VPN 주소를 QR에 함께 담고 Android가 연결 경로를 자동 재시도
+- LAN·Tailscale/WireGuard 주소를 자동 갱신하고 Android가 현재 가능한 연결 경로를 자동 재시도
 - 휴대폰이 물리적으로 가까이 있지 않아도 암호화 사설 VPN을 통한 원격 연결
 - 성공·실패·의심스러운 인증 요청의 시간·휴대폰·원격 IP 감사 기록
 - Wake-on-LAN 지정/전체 브로드캐스트 및 UDP 7·9번 포트 반복 전송
 - 연결·알림·배터리·인증 상태를 한 번에 확인하는 Windows/Android 진단 화면
-- 선택한 휴대폰 연결이 일정 시간 끊기면 Windows를 잠그는 선택형 자동 잠금과 에이전트 상태 진단
+- 선택한 휴대폰 연결이 일정 시간 끊기면 Windows를 잠그는 선택형 자동 잠금, 지원 PC의 내장 재실 센서 자동 잠금과 에이전트 상태 진단
 - 강한 지문·강한 얼굴인식 또는 휴대폰 PIN/패턴/비밀번호 인증 모드
 - 제조사가 약한 얼굴인식만 제공하는 기기를 위한 명시적 호환 모드
 - 사용자가 직접 켠 경우에만 휴대폰 heartbeat만으로 잠금화면을 여는 실험적 자동 잠금 해제
@@ -60,7 +60,7 @@ GitHub Releases에서 Windows용 `PhoneUnlock-Setup.exe`와 휴대폰용 `PhoneU
 7. 이후 PC가 잠기면 Phone Unlock이 기본으로 열리고 휴대폰에 요청이 자동 전송됩니다. 휴대폰 잠금 화면 위에 인증창이 바로 열리며 별도의 승인 버튼은 필요하지 않습니다.
 8. Windows 설정 앱의 **연결이 끊기면 자동 잠금**은 기본 꺼짐이며, 켜면 선택한 휴대폰의 안전한 LAN/VPN 연결이 설정한 유예 시간 동안 끊길 때 PC를 잠급니다.
 
-PC와 Android 앱 모두 실행 화면에서 새 버전을 확인할 수 있습니다. Android에서 이전 `debug` APK를 사용했다면 고정 서명판으로 바뀌는 이번 한 번만 기존 앱을 삭제하고 다시 설치해야 합니다. 이후 release APK는 연결 정보를 유지한 채 업데이트됩니다. beta.12에서 WOL 정보를 새로 받으려면 PC 설정 앱에서 QR을 한 번 다시 만들고 휴대폰에서 재페어링하세요.
+PC와 Android 앱 모두 실행 화면에서 새 버전을 확인할 수 있습니다. Android에서 이전 `debug` APK를 사용했다면 고정 서명판으로 바뀌는 이번 한 번만 기존 앱을 삭제하고 다시 설치해야 합니다. 이후 release APK는 연결 정보를 유지한 채 업데이트됩니다. beta.13부터는 집 네트워크에서 PC·휴대폰 모두 Tailscale에 한 번 로그인하면 Phone Unlock이 VPN 주소를 자동으로 저장·갱신하므로 QR을 다시 만들거나 재페어링할 필요가 없습니다.
 
 Windows 설정 창은 닫아도 됩니다. 로그인 요청을 처리하는 `PhoneUnlockService`가 Windows 서비스로 백그라운드에서 자동 실행됩니다. 설정을 다시 열 때는 바탕 화면의 **Phone Unlock 설정** 또는 시작 메뉴에서 `Phone Unlock 설정`을 검색합니다.
 

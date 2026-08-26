@@ -6,4 +6,7 @@
     <RootNamespace>PhoneUnlock.Agent</RootNamespace>
     <AssemblyName>PhoneUnlock.Agent</AssemblyName>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.26100.9169" />
+  </ItemGroup>
 </Project>

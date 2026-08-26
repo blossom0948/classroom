@@ -8,6 +8,12 @@ if (!OperatingSystem.IsWindows())
     return;
 }
 
+using var singleInstance = new Mutex(true, "Local\\PhoneUnlock.Agent", out var ownsInstance);
+if (!ownsInstance)
+{
+    return;
+}
+
 using var tray = new AgentTrayContext();
 var agentTask = RunAgentAsync(tray.StoppingToken);
 Application.Run(tray);
@@ -51,6 +57,23 @@ static async Task RunAgentAsync(CancellationToken stoppingToken)
                     // The service will recreate the pipe after a disconnect.
                 }
             });
+            using var humanPresenceWatcher = HumanPresenceWatcher.TryStart(present =>
+            {
+                try
+                {
+                    lock (writer)
+                    {
+                        if (pipe.IsConnected)
+                        {
+                            writer.WriteLine($"PRESENCE|{(present ? "PRESENT" : "ABSENT")}");
+                        }
+                    }
+                }
+                catch (IOException)
+                {
+                    // The service will request a fresh sample after reconnecting.
+                }
+            });
             try
             {
                 rssiWatcher.Start();
@@ -68,6 +91,10 @@ static async Task RunAgentAsync(CancellationToken stoppingToken)
                 {
                     LockWorkStation();
                 }
+                else if (command.StartsWith("NOTICE|", StringComparison.Ordinal))
+                {
+                    ShowNotice(tray, command);
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -80,6 +107,26 @@ static async Task RunAgentAsync(CancellationToken stoppingToken)
         }
 
         await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+    }
+}
+
+static void ShowNotice(AgentTrayContext tray, string command)
+{
+    var parts = command.Split('|', 3);
+    if (parts.Length != 3)
+    {
+        return;
+    }
+
+    try
+    {
+        var title = Encoding.UTF8.GetString(Convert.FromBase64String(parts[1]));
+        var message = Encoding.UTF8.GetString(Convert.FromBase64String(parts[2]));
+        tray.ShowNotice(title, message);
+    }
+    catch (FormatException)
+    {
+        // Ignore malformed service messages instead of showing arbitrary UI.
     }
 }
 

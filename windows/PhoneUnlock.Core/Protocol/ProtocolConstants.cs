@@ -18,4 +18,6 @@ public static class ProtocolConstants
     public const string RemoteLockRequest = "REMOTE_LOCK_REQUEST";
     public const string RemotePowerRequest = "REMOTE_POWER_REQUEST";
     public const string SecurityAlert = "SECURITY_ALERT";
+    public const string ActionResult = "ACTION_RESULT";
+    public const string AutomationNotice = "AUTOMATION_NOTICE";
 }

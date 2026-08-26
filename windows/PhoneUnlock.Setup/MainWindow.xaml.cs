@@ -28,10 +28,18 @@ public partial class MainWindow : Window
     private readonly string currentQualifiedUsername;
     private SetupStatus? currentStatus;
     private bool updatingControls;
+    private bool updatingAppearance;
 
     public MainWindow()
     {
         InitializeComponent();
+        var appearance = SetupAppearance.Load();
+        SetupAppearance.Apply(Application.Current, appearance);
+        updatingAppearance = true;
+        ThemeModeComboBox.SelectedItem = ThemeModeComboBox.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), appearance, StringComparison.Ordinal));
+        updatingAppearance = false;
         currentQualifiedUsername = WindowsIdentity.GetCurrent().Name
             ?? $"{Environment.UserDomainName}\\{Environment.UserName}";
         DetectedAccountText.Text = currentQualifiedUsername;
@@ -45,6 +53,61 @@ public partial class MainWindow : Window
     }
 
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshStatusAsync();
+
+    private void ThemeMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingAppearance || ThemeModeComboBox.SelectedItem is not ComboBoxItem item)
+        {
+            return;
+        }
+
+        var mode = item.Tag?.ToString() ?? SetupAppearance.System;
+        SetupAppearance.Apply(Application.Current, mode);
+        SetupAppearance.Save(mode);
+        SetOperation("화면 테마를 적용했습니다.", success: true);
+        AnimatePanel(SettingsPanel.Visibility == Visibility.Visible ? SettingsPanel : HomePanel);
+    }
+
+    private void RemoteConnection_Click(object sender, RoutedEventArgs e)
+    {
+        var executable = FindTailscaleExecutable();
+        if (executable is null)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo("https://tailscale.com/download/windows") { UseShellExecute = true });
+                SetOperation("Tailscale 설치 페이지를 열었습니다. 설치 후 이 버튼을 다시 누르면 원격 연결을 준비합니다.", success: true);
+            }
+            catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
+            {
+                SetOperation($"원격 연결 페이지를 열지 못했습니다: {exception.Message}", success: false);
+            }
+            return;
+        }
+
+        try
+        {
+            var guiPath = Path.Combine(Path.GetDirectoryName(executable)!, "tailscale-ipn.exe");
+            if (File.Exists(guiPath))
+            {
+                Process.Start(new ProcessStartInfo(guiPath) { UseShellExecute = true });
+            }
+
+            var startInfo = new ProcessStartInfo(executable)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = Path.GetDirectoryName(executable)!
+            };
+            startInfo.ArgumentList.Add("up");
+            _ = Process.Start(startInfo);
+            SetOperation("Tailscale 원격 연결을 시작했습니다. 처음 한 번만 로그인과 Windows/VPN 확인을 완료하면 이후 주소를 자동 갱신합니다.", success: true);
+        }
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            SetOperation($"Tailscale 원격 연결을 시작하지 못했습니다: {exception.Message}", success: false);
+        }
+    }
 
     private void HomePhoneList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -104,7 +167,12 @@ public partial class MainWindow : Window
     private static void AnimatePanel(UIElement panel)
     {
         panel.Opacity = 0;
-        panel.RenderTransform = new TranslateTransform(0, 14);
+        var transforms = new TransformGroup();
+        var scale = new ScaleTransform(0.985, 0.985);
+        var translate = new TranslateTransform(0, 14);
+        transforms.Children.Add(scale);
+        transforms.Children.Add(translate);
+        panel.RenderTransform = transforms;
         panel.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation
         {
             From = 0,
@@ -112,13 +180,25 @@ public partial class MainWindow : Window
             Duration = TimeSpan.FromMilliseconds(180),
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
         });
-        ((TranslateTransform)panel.RenderTransform).BeginAnimation(
+        translate.BeginAnimation(
             TranslateTransform.YProperty,
             new DoubleAnimation
             {
                 From = 14,
                 To = 0,
                 Duration = TimeSpan.FromMilliseconds(180),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            });
+        scale.BeginAnimation(
+            ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(0.985, 1, TimeSpan.FromMilliseconds(150))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            });
+        scale.BeginAnimation(
+            ScaleTransform.ScaleYProperty,
+            new DoubleAnimation(0.985, 1, TimeSpan.FromMilliseconds(150))
+            {
                 EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
             });
     }
@@ -160,8 +240,8 @@ public partial class MainWindow : Window
                 .Where(address => address.StartsWith("100.", StringComparison.Ordinal))
                 .ToArray();
             var route = vpnAddresses.Length > 0
-                ? $"VPN 주소 준비 {vpnAddresses.Length}개"
-                : "LAN 주소 준비됨 · VPN 주소 없음";
+                ? $"원격 자동 연결 준비됨 · VPN 주소 {vpnAddresses.Length}개"
+                : "LAN 주소 준비됨 · 원격 연결을 한 번 켜면 자동 갱신";
             var wake = diagnostics.WakeOnLanTargets.Count > 0
                 ? $"WOL {diagnostics.WakeOnLanTargets.Count}개"
                 : "WOL 대상 없음";
@@ -968,9 +1048,12 @@ public partial class MainWindow : Window
                 .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), currentStatus.ProximityGraceSeconds.ToString(), StringComparison.Ordinal))
                 ?? ProximityGraceComboBox.Items.OfType<ComboBoxItem>().FirstOrDefault(item => item.Tag?.ToString() == "30");
             PresenceSensorCheckBox.IsChecked = currentStatus.PresenceSensorEnabled;
+            var visiblePresenceProtocol = currentStatus.PresenceSensorEnabled
+                ? currentStatus.PresenceSensorProtocol
+                : "windows";
             PresenceSensorProtocolComboBox.SelectedItem = PresenceSensorProtocolComboBox.Items
                 .OfType<ComboBoxItem>()
-                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), currentStatus.PresenceSensorProtocol, StringComparison.OrdinalIgnoreCase))
+                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), visiblePresenceProtocol, StringComparison.OrdinalIgnoreCase))
                 ?? PresenceSensorProtocolComboBox.Items.OfType<ComboBoxItem>().FirstOrDefault();
             PresenceSensorUrlInput.Text = currentStatus.PresenceSensorBaseUrl ?? string.Empty;
             PresenceSensorEntityInput.Text = currentStatus.PresenceSensorEntityId ?? string.Empty;
@@ -983,8 +1066,10 @@ public partial class MainWindow : Window
             SmartThingsUseSensorButton.Visibility = Visibility.Collapsed;
             PresenceSensorTokenInput.Clear();
             PresenceSensorStateText.Text = currentStatus.PresenceSensorEnabled
-                ? $"{PresenceSensorProtocolLabel(currentStatus.PresenceSensorProtocol)} 센서 사용 중 · 토큰 저장됨"
-                : "사용 안 함";
+                ? string.Equals(currentStatus.PresenceSensorProtocol, "windows", StringComparison.OrdinalIgnoreCase)
+                    ? "이 PC 재실 센서 사용 중 · 추가 로그인·토큰 없음"
+                    : $"{PresenceSensorProtocolLabel(currentStatus.PresenceSensorProtocol)} 센서 사용 중 · 토큰 저장됨"
+                : "사용 안 함 · 이 PC 재실 센서는 추가 연결 없이 바로 켤 수 있습니다.";
             SmartThingsQuickStatusText.Text = currentStatus.PresenceSensorEnabled
                 && string.Equals(currentStatus.PresenceSensorProtocol, "smartthings", StringComparison.OrdinalIgnoreCase)
                 ? "현재 센서가 연결되어 있습니다. 다른 센서로 바꾸려면 자동 연결을 누르세요."
@@ -1134,22 +1219,26 @@ public partial class MainWindow : Window
             : -75;
 
     private string SelectedPresenceSensorProtocol() =>
-        (PresenceSensorProtocolComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "zigbee";
+        (PresenceSensorProtocolComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "windows";
 
     private void ApplyPresenceSensorProtocolUi(bool updateDefaults)
     {
         var protocol = SelectedPresenceSensorProtocol();
         var smartThings = string.Equals(protocol, "smartthings", StringComparison.OrdinalIgnoreCase);
+        var windowsPresence = string.Equals(protocol, "windows", StringComparison.OrdinalIgnoreCase);
         SmartThingsQuickSetupPanel.Visibility = smartThings ? Visibility.Visible : Visibility.Collapsed;
         SmartThingsFieldsPanel.Visibility = smartThings ? Visibility.Visible : Visibility.Collapsed;
         FindSmartThingsSensorsButton.Visibility = smartThings ? Visibility.Visible : Visibility.Collapsed;
+        PresenceConnectionExpander.Visibility = windowsPresence ? Visibility.Collapsed : Visibility.Visible;
         if (!smartThings)
         {
             SmartThingsSensorComboBox.Visibility = Visibility.Collapsed;
             SmartThingsUseSensorButton.Visibility = Visibility.Collapsed;
             SmartThingsQuickStatusText.Text = "센서 이름을 자동으로 불러옵니다.";
         }
-        PresenceSensorTargetHint.Text = smartThings
+        PresenceSensorTargetHint.Text = windowsPresence
+            ? "Windows 11 지원 PC의 사람 감지 센서를 자동으로 사용합니다."
+            : smartThings
             ? "SmartThings device ID · capability와 attribute는 아래에 입력"
             : "Home Assistant entity_id · Zigbee/Matter 센서는 HA에 추가되어 있어야 합니다.";
         PresenceSensorUrlInput.ToolTip = smartThings
@@ -1162,7 +1251,7 @@ public partial class MainWindow : Window
             ? "SmartThings Personal Access Token"
             : "Home Assistant 장기 액세스 토큰";
 
-        if (!updateDefaults) return;
+        if (!updateDefaults || windowsPresence) return;
         if (smartThings)
         {
             if (string.IsNullOrWhiteSpace(PresenceSensorUrlInput.Text)
@@ -1192,6 +1281,7 @@ public partial class MainWindow : Window
     private static string PresenceSensorProtocolLabel(string protocol) =>
         protocol.ToLowerInvariant() switch
         {
+            "windows" => "Windows 내장 재실",
             "smartthings" => "SmartThings Station",
             "matter" => "Matter",
             _ => "Zigbee"
@@ -1247,6 +1337,16 @@ public partial class MainWindow : Window
             }
         }
         return null;
+    }
+
+    private static string? FindTailscaleExecutable()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Tailscale", "tailscale.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Tailscale", "tailscale.exe")
+        };
+        return candidates.FirstOrDefault(File.Exists);
     }
 
     private static async Task<(bool Success, string Message)> RunNearbyScriptAsync(string fileName)

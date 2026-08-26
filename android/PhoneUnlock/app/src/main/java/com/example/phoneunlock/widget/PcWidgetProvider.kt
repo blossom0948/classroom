@@ -11,6 +11,7 @@ import com.example.phoneunlock.MainActivity
 import com.example.phoneunlock.PhoneUnlockProtocol
 import com.example.phoneunlock.R
 import com.example.phoneunlock.network.ConnectionService
+import com.example.phoneunlock.network.WakeOnLanSender
 import com.example.phoneunlock.storage.ActivityLogStore
 import com.example.phoneunlock.storage.SecurePairingStore
 import java.util.UUID
@@ -29,6 +30,9 @@ class PcWidgetProvider : AppWidgetProvider() {
     companion object {
         private const val LOCK_PENDING_INTENT_REQUEST_CODE = 41_001
         private const val UNLOCK_PENDING_INTENT_REQUEST_CODE = 41_002
+        private const val WAKE_PENDING_INTENT_REQUEST_CODE = 41_003
+        private const val SLEEP_PENDING_INTENT_REQUEST_CODE = 41_004
+        private const val RESTART_PENDING_INTENT_REQUEST_CODE = 41_005
 
         fun refresh(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
@@ -44,6 +48,16 @@ class PcWidgetProvider : AppWidgetProvider() {
         ) {
             val computer = SecurePairingStore(context).load()
             val views = RemoteViews(context.packageName, R.layout.widget_pc_controls)
+            val palette = WidgetAppearanceSettings.palette(context)
+            views.setInt(R.id.widgetRoot, "setBackgroundResource", palette.background)
+            views.setTextColor(R.id.widgetTitle, palette.titleColor)
+            views.setTextColor(R.id.widgetStatus, palette.statusColor)
+            listOf(R.id.widgetWakeButton, R.id.widgetSleepButton, R.id.widgetRestartButton, R.id.widgetLockButton).forEach {
+                views.setInt(it, "setBackgroundResource", palette.secondaryButton)
+                views.setTextColor(it, palette.secondaryTextColor)
+            }
+            views.setInt(R.id.widgetUnlockButton, "setBackgroundResource", palette.primaryButton)
+            views.setTextColor(R.id.widgetUnlockButton, palette.primaryTextColor)
             if (computer == null) {
                 views.setTextViewText(R.id.widgetTitle, "Phone Unlock")
                 views.setTextViewText(R.id.widgetStatus, "PC 연결 필요")
@@ -65,6 +79,18 @@ class PcWidgetProvider : AppWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.widgetLockButton, lockPendingIntent)
 
+            val wakeIntent = Intent(context, WidgetActionReceiver::class.java)
+                .setAction(WidgetActionReceiver.ACTION_WAKE)
+            views.setOnClickPendingIntent(
+                R.id.widgetWakeButton,
+                PendingIntent.getBroadcast(
+                    context,
+                    WAKE_PENDING_INTENT_REQUEST_CODE,
+                    wakeIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
+
             val unlockIntent = Intent(context, MainActivity::class.java)
                 .setAction(MainActivity.ACTION_WIDGET_UNLOCK)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -75,6 +101,18 @@ class PcWidgetProvider : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             views.setOnClickPendingIntent(R.id.widgetUnlockButton, unlockPendingIntent)
+
+            fun powerIntent(command: String, requestCode: Int): PendingIntent = PendingIntent.getActivity(
+                context,
+                requestCode,
+                Intent(context, MainActivity::class.java)
+                    .setAction(MainActivity.ACTION_WIDGET_POWER)
+                    .putExtra(MainActivity.EXTRA_WIDGET_POWER_COMMAND, command)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            views.setOnClickPendingIntent(R.id.widgetSleepButton, powerIntent("SLEEP", SLEEP_PENDING_INTENT_REQUEST_CODE))
+            views.setOnClickPendingIntent(R.id.widgetRestartButton, powerIntent("RESTART", RESTART_PENDING_INTENT_REQUEST_CODE))
             manager.updateAppWidget(appWidgetId, views)
         }
     }
@@ -82,24 +120,32 @@ class PcWidgetProvider : AppWidgetProvider() {
 
 class WidgetActionReceiver : android.content.BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        if (intent?.action != ACTION_LOCK) return
-
         val computer = SecurePairingStore(context).load() ?: return
-        val request = com.example.phoneunlock.RemoteLockRequest(
-            requestId = UUID.randomUUID(),
-            computerId = computer.computerId,
-            expiresAt = java.time.Instant.now().epochSecond + 30,
-            phoneId = computer.phoneId,
-        )
-        ConnectionService.sendRemoteLockRequest(
-            context,
-            PhoneUnlockProtocol.remoteLockResponse(request),
-        )
-        ActivityLogStore(context).append("PC 잠금", computer.computerName)
+        when (intent?.action) {
+            ACTION_LOCK -> {
+                val request = com.example.phoneunlock.RemoteLockRequest(
+                    requestId = UUID.randomUUID(),
+                    computerId = computer.computerId,
+                    expiresAt = java.time.Instant.now().epochSecond + 30,
+                    phoneId = computer.phoneId,
+                )
+                ConnectionService.sendRemoteLockRequest(
+                    context,
+                    PhoneUnlockProtocol.remoteLockResponse(request),
+                )
+                ActivityLogStore(context).append("PC 잠금", computer.computerName)
+            }
+            ACTION_WAKE -> {
+                WakeOnLanSender.send(computer.wakeOnLanTargets)
+                ActivityLogStore(context).append("PC 켜기 신호", computer.computerName)
+            }
+            else -> return
+        }
         PcWidgetProvider.refresh(context)
     }
 
     companion object {
         const val ACTION_LOCK = "com.example.phoneunlock.WIDGET_LOCK"
+        const val ACTION_WAKE = "com.example.phoneunlock.WIDGET_WAKE"
     }
 }

@@ -16,8 +16,14 @@ import com.example.phoneunlock.AuthApprovalActivity
 import com.example.phoneunlock.AuthPromptSettings
 import com.example.phoneunlock.PhoneUnlockProtocol
 import com.example.phoneunlock.R
+import com.example.phoneunlock.storage.ActivityLogStore
 import com.example.phoneunlock.storage.PairedComputer
 import com.example.phoneunlock.storage.SecurePairingStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -29,6 +35,8 @@ import kotlin.math.min
 
 class ConnectionService : Service() {
     private lateinit var pairingStore: SecurePairingStore
+    private val pairingClient = PairingClient()
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val handler = Handler(Looper.getMainLooper())
     private var webSocket: WebSocket? = null
     private var reconnectAttempt = 0
@@ -79,6 +87,7 @@ class ConnectionService : Service() {
                     sendOrQueue(request)
                 }
             }
+            ACTION_REFRESH_ROUTE -> pairingStore.load()?.let { refreshStoredRoute(it) }
             ACTION_DISCONNECT -> {
                 stopping = true
                 handler.removeCallbacksAndMessages(null)
@@ -135,6 +144,7 @@ class ConnectionService : Service() {
             startBleBeacon(computer.phoneId)
             activeComputerId = computer.computerId
             activeConnection = true
+            refreshStoredRoute(computer)
             pendingMessage?.let { queued ->
                 if (webSocket.send(queued)) {
                     pendingMessage = null
@@ -158,6 +168,26 @@ class ConnectionService : Service() {
                     showSmartArrivalNotification(
                         root.optJSONObject("payload")?.optString("computerName").orEmpty(),
                     )
+                    return
+                }
+                if (root.getString("type") == "AUTOMATION_NOTICE") {
+                    showAutomationNotification(root.optJSONObject("payload")?.optString("message").orEmpty())
+                    return
+                }
+                if (root.getString("type") == "ACTION_RESULT") {
+                    val payload = root.optJSONObject("payload")
+                    val action = payload?.optString("action").orEmpty()
+                    val success = payload?.optBoolean("success", false) == true
+                    val message = payload?.optString("message").orEmpty()
+                    ActivityLogStore(this@ConnectionService).append(
+                        "PC ${actionLabel(action)} ${if (success) "완료" else "실패"}",
+                        message.ifBlank { computer.computerName },
+                    )
+                    sendBroadcast(Intent(ACTION_REMOTE_ACTION_RESULT)
+                        .setPackage(packageName)
+                        .putExtra(EXTRA_ACTION, action)
+                        .putExtra(EXTRA_ACTION_SUCCESS, success)
+                        .putExtra(EXTRA_ACTION_MESSAGE, message))
                     return
                 }
                 if (root.getString("type") != "AUTH_REQUEST") return
@@ -267,6 +297,18 @@ class ConnectionService : Service() {
         getSystemService(NotificationManager::class.java).notify(requestCode, notification)
     }
 
+    private fun refreshStoredRoute(computer: PairedComputer) {
+        serviceScope.launch {
+            runCatching { pairingClient.refreshConnectionInfo(computer) }
+                .getOrNull()
+                ?.let { refreshed ->
+                    if (refreshed != computer) {
+                        pairingStore.save(refreshed, select = false)
+                    }
+                }
+        }
+    }
+
     private fun showSecurityAlertNotification(message: String) {
         val notification = Notification.Builder(this, AUTH_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_phone_unlock)
@@ -315,6 +357,29 @@ class ConnectionService : Service() {
             .build()
         getSystemService(NotificationManager::class.java)
             .notify(SMART_ARRIVAL_NOTIFICATION_ID, notification)
+    }
+
+    private fun showAutomationNotification(message: String) {
+        val notification = Notification.Builder(this, AUTOMATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_phone_unlock)
+            .setContentTitle("Phone Unlock 자동화")
+            .setContentText(message.ifBlank { "인증된 휴대폰으로 자동 잠금 해제를 승인했습니다." })
+            .setCategory(Notification.CATEGORY_STATUS)
+            .setPriority(Notification.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .build()
+        getSystemService(NotificationManager::class.java).notify(AUTOMATION_NOTIFICATION_ID, notification)
+    }
+
+    private fun actionLabel(action: String): String = when (action.uppercase()) {
+        "UNLOCK" -> "잠금 해제"
+        "LOCK" -> "잠금"
+        "SLEEP" -> "절전"
+        "HIBERNATE" -> "최대 절전"
+        "RESTART" -> "재시작"
+        "SHUTDOWN" -> "종료"
+        else -> "작업"
     }
 
     private fun authIntent(requestJson: String, requestCode: Int): Intent = Intent(this, AuthApprovalActivity::class.java)
@@ -374,6 +439,13 @@ class ConnectionService : Service() {
             description = "휴대폰 생체인증이 필요한 Windows 로그인 요청"
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         })
+        manager.createNotificationChannel(NotificationChannel(
+            AUTOMATION_CHANNEL_ID,
+            "자동 잠금 해제 알림",
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = "인증된 휴대폰 또는 재실 센서로 실행한 자동 잠금 해제 알림"
+        })
     }
 
     override fun onDestroy() {
@@ -383,6 +455,7 @@ class ConnectionService : Service() {
         webSocket = null
         stopBleBeacon()
         activeConnection = false
+        serviceScope.cancel()
         super.onDestroy()
     }
 
@@ -408,12 +481,19 @@ class ConnectionService : Service() {
         private const val ACTION_SEND_REMOTE_UNLOCK = "com.example.phoneunlock.SEND_REMOTE_UNLOCK"
         private const val ACTION_SEND_REMOTE_LOCK = "com.example.phoneunlock.SEND_REMOTE_LOCK"
         private const val ACTION_SEND_REMOTE_POWER = "com.example.phoneunlock.SEND_REMOTE_POWER"
+        private const val ACTION_REFRESH_ROUTE = "com.example.phoneunlock.REFRESH_ROUTE"
         private const val ACTION_DISCONNECT = "com.example.phoneunlock.DISCONNECT"
+        const val ACTION_REMOTE_ACTION_RESULT = "com.example.phoneunlock.REMOTE_ACTION_RESULT"
+        const val EXTRA_ACTION = "remote_action"
+        const val EXTRA_ACTION_SUCCESS = "remote_action_success"
+        const val EXTRA_ACTION_MESSAGE = "remote_action_message"
         private const val CONNECTION_CHANNEL_ID = "phone_unlock_connection"
         private const val AUTH_CHANNEL_ID = "phone_unlock_auth"
+        private const val AUTOMATION_CHANNEL_ID = "phone_unlock_automation"
         private const val CONNECTION_NOTIFICATION_ID = 48231
         private const val SECURITY_NOTIFICATION_ID = 48232
-        private const val SMART_ARRIVAL_NOTIFICATION_ID = 48233
+        private const val AUTOMATION_NOTIFICATION_ID = 48233
+        private const val SMART_ARRIVAL_NOTIFICATION_ID = 48234
         private const val HEARTBEAT_INTERVAL_MS = 10_000L
         @Volatile private var activeComputerId: UUID? = null
         @Volatile private var activeConnection: Boolean = false
@@ -459,6 +539,13 @@ class ConnectionService : Service() {
                 Intent(context, ConnectionService::class.java)
                     .setAction(ACTION_SEND_REMOTE_POWER)
                     .putExtra(EXTRA_REMOTE_POWER, request),
+            )
+        }
+
+        fun refreshConnectionRoute(context: Context) {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, ConnectionService::class.java).setAction(ACTION_REFRESH_ROUTE),
             )
         }
 

@@ -2,6 +2,7 @@ using System.IO.Pipes;
 using System.Globalization;
 using System.Text;
 using PhoneUnlock.Service.Configuration;
+using PhoneUnlock.Service.Models;
 using PhoneUnlock.Service.Networking;
 using PhoneUnlock.Service.Security;
 using PhoneUnlock.Service.Storage;
@@ -13,6 +14,7 @@ public sealed class AgentPipeService(
     PhoneConnectionRegistry connectionRegistry,
     PresenceSensorClient presenceSensorClient,
     AgentConnectionState agentConnectionState,
+    AgentNotificationQueue notificationQueue,
     WorkstationLockSignal lockSignal,
     ILogger<AgentPipeService> logger) : BackgroundService
 {
@@ -58,16 +60,29 @@ public sealed class AgentPipeService(
         using var agentLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var readTask = ReadAgentMessagesAsync(reader, agentLifetime.Token);
         var monitorTask = MonitorPresenceAsync(writer, agentLifetime.Token);
+        var noticeTask = notificationQueue.WaitAsync(agentLifetime.Token).AsTask();
+        var lockTask = lockSignal.WaitAsync(agentLifetime.Token).AsTask();
         while (!agentLifetime.IsCancellationRequested)
         {
-            var lockTask = lockSignal.WaitAsync(agentLifetime.Token).AsTask();
-            var completed = await Task.WhenAny(readTask, monitorTask, lockTask);
-            if (completed != lockTask)
+            var completed = await Task.WhenAny(readTask, monitorTask, lockTask, noticeTask);
+            if (completed == lockTask)
             {
-                break;
+                await writer.WriteLineAsync("LOCK");
+                lockTask = lockSignal.WaitAsync(agentLifetime.Token).AsTask();
+                continue;
             }
 
-            await writer.WriteLineAsync("LOCK");
+            if (completed == noticeTask)
+            {
+                var notice = await noticeTask;
+                var title = Convert.ToBase64String(Encoding.UTF8.GetBytes(notice.Title));
+                var message = Convert.ToBase64String(Encoding.UTF8.GetBytes(notice.Message));
+                await writer.WriteLineAsync($"NOTICE|{title}|{message}");
+                noticeTask = notificationQueue.WaitAsync(agentLifetime.Token).AsTask();
+                continue;
+            }
+
+            break;
         }
 
         agentLifetime.Cancel();
@@ -101,6 +116,15 @@ public sealed class AgentPipeService(
                 && int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var rssi))
             {
                 agentConnectionState.SetRssi(parts[1], rssi);
+                continue;
+            }
+
+            if (parts.Length == 2
+                && string.Equals(parts[0], "PRESENCE", StringComparison.Ordinal)
+                && (string.Equals(parts[1], "PRESENT", StringComparison.Ordinal)
+                    || string.Equals(parts[1], "ABSENT", StringComparison.Ordinal)))
+            {
+                agentConnectionState.SetHumanPresence(string.Equals(parts[1], "PRESENT", StringComparison.Ordinal));
             }
         }
     }
@@ -145,9 +169,7 @@ public sealed class AgentPipeService(
                     out var rssi)
                 && rssi >= configuration.BluetoothRssiThreshold;
             var present = heartbeatPresent && (!configuration.BluetoothRssiEnabled || rssiPresent);
-            var sensorPresent = configuration.PresenceSensorEnabled
-                ? await presenceSensorClient.ReadPresenceAsync(configuration, cancellationToken)
-                : null;
+            var sensorPresent = await ReadSensorPresenceAsync(configuration, cancellationToken);
             var now = DateTimeOffset.UtcNow;
             if (present)
             {
@@ -180,5 +202,24 @@ public sealed class AgentPipeService(
 
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
+    }
+
+    private async Task<bool?> ReadSensorPresenceAsync(
+        ServiceConfiguration configuration,
+        CancellationToken cancellationToken)
+    {
+        if (!configuration.PresenceSensorEnabled)
+        {
+            return null;
+        }
+
+        if (string.Equals(configuration.PresenceSensorProtocol, "windows", StringComparison.OrdinalIgnoreCase))
+        {
+            return agentConnectionState.TryGetRecentHumanPresence(TimeSpan.FromSeconds(12), out var present)
+                ? present
+                : null;
+        }
+
+        return await presenceSensorClient.ReadPresenceAsync(configuration, cancellationToken);
     }
 }

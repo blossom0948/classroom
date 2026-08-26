@@ -589,9 +589,9 @@ public sealed class SetupPipeService(
         }
 
         var protocol = request.SensorProtocol?.Trim().ToLowerInvariant() ?? "zigbee";
-        if (protocol is not ("zigbee" or "matter" or "smartthings"))
+        if (protocol is not ("zigbee" or "matter" or "smartthings" or "windows"))
         {
-            throw new ArgumentException("재실 센서 방식은 Zigbee, Matter, SmartThings 중 하나여야 합니다.");
+            throw new ArgumentException("재실 센서 방식은 Windows, Zigbee, Matter, SmartThings 중 하나여야 합니다.");
         }
 
         var componentId = string.IsNullOrWhiteSpace(request.ComponentId)
@@ -617,6 +617,25 @@ public sealed class SetupPipeService(
                 PresenceSensorGraceSeconds = graceSeconds
             }, cancellationToken);
             return new SetupResponse(true, "OK", "재실 센서 자동 잠금을 껐습니다.");
+        }
+
+        if (protocol == "windows")
+        {
+            await configurationStore.UpdateAsync(configuration => configuration with
+            {
+                PresenceSensorEnabled = true,
+                PresenceSensorProtocol = "windows",
+                PresenceSensorBaseUrl = null,
+                PresenceSensorEntityId = null,
+                PresenceSensorComponentId = "main",
+                PresenceSensorCapabilityId = "humanPresence",
+                PresenceSensorAttributeName = "presence",
+                PresenceSensorGraceSeconds = graceSeconds
+            }, cancellationToken);
+            return new SetupResponse(true, "OK",
+                agentConnectionState.IsConnected
+                    ? $"이 PC의 Windows 재실 센서를 사용합니다 · 사람이 없어진 뒤 {graceSeconds}초 후 잠금합니다."
+                    : $"이 PC의 Windows 재실 센서를 켰습니다 · 자동잠금 감시가 시작되면 사람이 없어진 뒤 {graceSeconds}초 후 잠금합니다.");
         }
 
         var baseUrl = string.IsNullOrWhiteSpace(request.Url)
@@ -668,10 +687,17 @@ public sealed class SetupPipeService(
             return new SetupResponse(false, "SENSOR_DISABLED", "먼저 재실 센서를 켜고 연결하세요.");
         }
 
-        var state = await presenceSensorClient.ReadPresenceAsync(configuration, cancellationToken);
+        var state = string.Equals(configuration.PresenceSensorProtocol, "windows", StringComparison.OrdinalIgnoreCase)
+            ? agentConnectionState.TryGetRecentHumanPresence(TimeSpan.FromSeconds(12), out var present)
+                ? present
+                : null
+            : await presenceSensorClient.ReadPresenceAsync(configuration, cancellationToken);
         if (state is null)
         {
-            return new SetupResponse(false, "SENSOR_UNAVAILABLE", "센서 상태를 읽지 못했습니다. 주소·토큰·허브 연결을 확인하세요.");
+            return new SetupResponse(false, "SENSOR_UNAVAILABLE",
+                string.Equals(configuration.PresenceSensorProtocol, "windows", StringComparison.OrdinalIgnoreCase)
+                    ? "이 PC에서 Windows 재실 센서를 찾지 못했습니다. Windows 11 지원 하드웨어와 자동잠금 감시 상태를 확인하세요."
+                    : "센서 상태를 읽지 못했습니다. 주소·토큰·허브 연결을 확인하세요.");
         }
 
         return new SetupResponse(true, "OK", state.Value
