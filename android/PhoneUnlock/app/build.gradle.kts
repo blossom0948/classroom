@@ -21,8 +21,8 @@ android {
         applicationId = "com.example.phoneunlock"
         minSdk = 30
         targetSdk = 36
-        versionCode = 16
-        versionName = "0.4.0-beta.13"
+        versionCode = 17
+        versionName = "0.4.0-beta.14"
     }
 
     signingConfigs {

@@ -22,5 +22,5 @@
 ## 알아둘 점
 
 - Android VPN 권한과 Tailscale 계정 로그인은 Android/서비스 정책상 최초 한 번 사용자가 승인해야 합니다. Phone Unlock은 그 다음부터 주소 선택·갱신·재연결을 자동 처리합니다.
-- Windows 내장 재실 센서는 지원되는 Windows 11 하드웨어에서만 동작합니다. 지원하지 않는 PC에서는 기존 휴대폰 근접 감지 또는 SmartThings/Home Assistant 연동을 사용할 수 있습니다.
+- Windows 내장 재실 센서는 Windows 11 24H2 이상과 지원되는 하드웨어에서만 동작합니다. 지원하지 않는 PC에서는 기존 휴대폰 근접 감지 또는 SmartThings/Home Assistant 연동을 사용할 수 있습니다.
 - SmartThings Station을 공식 API로 읽으려면 SmartThings 계정 API 인증이 필요합니다. 공개된 토큰 없는 로컬 재실 상태 인터페이스는 제공되지 않습니다.

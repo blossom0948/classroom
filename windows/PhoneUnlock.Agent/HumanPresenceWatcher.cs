@@ -25,7 +25,7 @@ internal sealed class HumanPresenceWatcher : IDisposable
 
     public static HumanPresenceWatcher? TryStart(Action<bool> report)
     {
-        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22621))
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 26100))
         {
             return null;
         }
