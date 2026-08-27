@@ -570,8 +570,17 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.downloadUrl)))
-        showResult("APK 다운로드가 열렸습니다. Android 설치 확인만 한 번 눌러 주세요.", success = true)
+        if (!ReleaseUpdateChecker.isSafeDownloadUrl(update.downloadUrl)) {
+            showResult("안전하지 않은 업데이트 주소라서 다운로드를 중단했습니다.", success = false)
+            return
+        }
+
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.downloadUrl)))
+            showResult("APK 다운로드가 열렸습니다. Android 설치 확인만 한 번 눌러 주세요.", success = true)
+        } catch (_: ActivityNotFoundException) {
+            showResult("APK를 열 수 있는 브라우저를 찾지 못했습니다.", success = false)
+        }
     }
 
     private fun checkForUpdate(silent: Boolean) {

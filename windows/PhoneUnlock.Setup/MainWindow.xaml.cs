@@ -32,9 +32,12 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        // Load the compiled XAML resources first. Applying a saved theme
+        // before InitializeComponent used to touch a frozen WPF brush in the
+        // beta.20 installer and terminate the setup app before it appeared.
+        InitializeComponent();
         var appearance = SetupAppearance.Load();
         SetupAppearance.Apply(Application.Current, appearance);
-        InitializeComponent();
         updatingAppearance = true;
         ThemeModeComboBox.SelectedItem = ThemeModeComboBox.Items
             .OfType<ComboBoxItem>()

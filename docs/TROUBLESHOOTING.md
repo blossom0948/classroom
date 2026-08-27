@@ -37,6 +37,14 @@ AGP 9.0.1은 JDK 17과 Gradle 9.1.0이 필요하다. `JAVA_HOME`을 JDK 17 폴�
 
 `0.4.0-beta.1` 이전 GitHub Actions의 debug APK는 빌드할 때마다 서명이 달라질 수 있다. 이번 한 번만 기존 Phone Unlock 앱을 삭제하고 릴리스의 `PhoneUnlock-Android.apk`를 설치한다. 이후 버전은 고정 서명을 사용하므로 앱의 **새 버전 받기** 버튼으로 덮어쓰기 업데이트할 수 있다. Android 시스템의 설치 확인은 보안상 생략할 수 없다.
 
+## 업데이트 서버 응답 오류
+
+beta.22부터 업데이트 확인은 GitHub REST API가 아니라 저장소의 `update.json`을 먼저 읽는다. 따라서 `api.github.com`의 익명 호출 제한으로 인해 업데이트가 "서버가 응답하지 않음"으로 표시되는 문제를 피한다. 그래도 실패하면 Android의 기본 브라우저에서 GitHub 저장소가 열리는지 확인하고, VPN·광고 차단 앱이 `raw.githubusercontent.com`을 차단하지 않는지 확인한다.
+
+## PC 설정창이 바로 닫히는 경우
+
+설치된 파일의 버전이 beta.22보다 낮으면 설정창 시작 전에 종료될 수 있다. 기존 PIN/비밀번호로 Windows에 로그인한 후 GitHub Releases의 `PhoneUnlock-Setup.exe`를 실행해 덮어 설치한다. beta.22부터 시작 예외는 `%LOCALAPPDATA%\PhoneUnlock\setup-startup.log`에도 남는다.
+
 ## Windows 암호를 확인하지 못함
 
 계정은 현재 로그인 사용자로 자동 선택된다. Windows Hello PIN이 아니라 계정의 실제 암호를 입력해야 한다. Microsoft 계정이면 Microsoft 계정 암호, 로컬 계정이면 로컬 계정 암호를 사용한다.

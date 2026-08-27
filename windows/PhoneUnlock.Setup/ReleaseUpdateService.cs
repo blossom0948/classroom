@@ -11,6 +11,7 @@ internal sealed record InstallerRelease(string Tag, Uri DownloadUri, string? Sha
 
 internal static class ReleaseUpdateService
 {
+    private const string UpdateManifestUrl = "https://raw.githubusercontent.com/blossom0948/windowslogin/main/update.json";
     private const string ReleasesUrl = "https://api.github.com/repos/blossom0948/windowslogin/releases?per_page=10";
     private const string InstallerAssetName = "PhoneUnlock-Setup.exe";
     private static readonly HttpClient Client = CreateClient();
@@ -22,6 +23,40 @@ internal static class ReleaseUpdateService
         ?? "0.0.0";
 
     public static async Task<InstallerRelease> GetLatestInstallerAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await GetFromManifestAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or JsonException)
+        {
+            // The manifest is intentionally the primary path. GitHub's
+            // unauthenticated API is rate-limited by public IP, so keep the
+            // API only as a compatibility fallback for older deployments.
+        }
+
+        return await GetFromGitHubApiAsync(cancellationToken);
+    }
+
+    private static async Task<InstallerRelease> GetFromManifestAsync(CancellationToken cancellationToken)
+    {
+        using var response = await Client.GetAsync(UpdateManifestUrl, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+
+        if (!document.RootElement.TryGetProperty("windows", out var windows))
+        {
+            throw new InvalidDataException("업데이트 매니페스트에 Windows 정보가 없습니다.");
+        }
+
+        var tag = GetRequiredString(windows, "tag", "Windows 릴리스 버전");
+        var url = GetRequiredString(windows, "downloadUrl", "설치 프로그램 주소");
+        return new InstallerRelease(tag, ParseDownloadUri(url),
+            windows.TryGetProperty("sha256", out var digest) ? ParseSha256(digest.GetString()) : null);
+    }
+
+    private static async Task<InstallerRelease> GetFromGitHubApiAsync(CancellationToken cancellationToken)
     {
         using var response = await Client.GetAsync(ReleasesUrl, cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -49,7 +84,7 @@ internal static class ReleaseUpdateService
                 var digest = asset.TryGetProperty("digest", out var digestElement)
                     ? digestElement.GetString()
                     : null;
-                return new InstallerRelease(tag, new Uri(url), ParseSha256(digest));
+                return new InstallerRelease(tag, ParseDownloadUri(url), ParseSha256(digest));
             }
         }
 
@@ -124,6 +159,27 @@ internal static class ReleaseUpdateService
         digest?.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) == true
             ? digest[7..]
             : null;
+
+    private static string GetRequiredString(JsonElement element, string propertyName, string label) =>
+        element.TryGetProperty(propertyName, out var property)
+            && property.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(property.GetString())
+            ? property.GetString()!
+            : throw new InvalidDataException($"업데이트 매니페스트의 {label} 정보가 없습니다.");
+
+    private static Uri ParseDownloadUri(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase)
+            || !uri.AbsolutePath.StartsWith("/blossom0948/windowslogin/releases/download/", StringComparison.OrdinalIgnoreCase)
+            || !uri.AbsolutePath.EndsWith('/' + InstallerAssetName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("안전하지 않은 업데이트 주소가 거부되었습니다.");
+        }
+
+        return uri;
+    }
 
     private static int CompareVersions(string left, string right)
     {

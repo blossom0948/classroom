@@ -2,25 +2,105 @@ package com.example.phoneunlock
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.IOException
+import java.net.URI
+import java.util.concurrent.CancellationException
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
+import org.json.JSONObject
 
 data class AndroidRelease(val tag: String, val downloadUrl: String)
 
 class ReleaseUpdateChecker(
     private val client: OkHttpClient = OkHttpClient()
 ) {
+    companion object {
+        private const val UPDATE_MANIFEST_URL =
+            "https://raw.githubusercontent.com/blossom0948/windowslogin/main/update.json"
+        private const val RELEASES_API_URL =
+            "https://api.github.com/repos/blossom0948/windowslogin/releases?per_page=10"
+
+        fun isSafeDownloadUrl(value: String): Boolean = try {
+            val uri = URI(value)
+            val path = uri.path.orEmpty()
+            uri.scheme.equals("https", ignoreCase = true)
+                && uri.host.equals("github.com", ignoreCase = true)
+                && path.startsWith("/blossom0948/windowslogin/releases/download/", ignoreCase = true)
+                && path.endsWith("/PhoneUnlock-Android.apk", ignoreCase = true)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     suspend fun findUpdate(currentVersion: String): AndroidRelease? = withContext(Dispatchers.IO) {
+        // GitHub's unauthenticated REST API is rate-limited per public IP. The
+        // small repository-owned manifest is the primary source so update
+        // checks keep working on mobile networks and behind shared NATs.
+        try {
+            return@withContext findFromManifest(currentVersion)
+        } catch (manifestException: Exception) {
+            if (manifestException is CancellationException) throw manifestException
+            // Keep the API path as a compatibility fallback for older
+            // manifests/mirrors. The caller will show a useful error if both
+            // public sources are unavailable.
+        }
+
+        findFromGitHubApi(currentVersion)
+    }
+
+    private fun findFromManifest(currentVersion: String): AndroidRelease? {
         val request = Request.Builder()
-            .url("https://api.github.com/repos/blossom0948/windowslogin/releases?per_page=10")
+            .url(UPDATE_MANIFEST_URL)
+            .header("Accept", "application/json")
+            .header("Cache-Control", "no-cache")
+            .header("User-Agent", "PhoneUnlock-Android/$currentVersion")
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IOException("업데이트 매니페스트 응답 오류: HTTP ${response.code}")
+            }
+            if (body.isBlank()) {
+                throw IOException("업데이트 매니페스트가 비어 있습니다.")
+            }
+
+            val root = JSONObject(body)
+            val android = root.optJSONObject("android")
+                ?: throw IOException("업데이트 매니페스트에 Android 정보가 없습니다.")
+            val tag = android.optString("tag").ifBlank { root.optString("tag") }
+            val version = android.optString("version").ifBlank { root.optString("version") }
+            val downloadUrl = safeDownloadUrl(android.optString("downloadUrl"))
+            if (tag.isBlank() || version.isBlank()) {
+                throw IOException("업데이트 매니페스트의 버전 정보가 없습니다.")
+            }
+            if (compareVersions(version, currentVersion) <= 0) {
+                return null
+            }
+            return AndroidRelease(tag, downloadUrl)
+        }
+    }
+
+    private fun findFromGitHubApi(currentVersion: String): AndroidRelease? {
+        val request = Request.Builder()
+            .url(RELEASES_API_URL)
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "PhoneUnlock-Android/$currentVersion")
             .build()
 
         client.newCall(request).execute().use { response ->
-            check(response.isSuccessful) { "업데이트 서버 응답 오류: HTTP ${response.code}" }
-            val releases = JSONArray(response.body?.string() ?: error("업데이트 응답이 비어 있습니다."))
+            if (!response.isSuccessful) {
+                throw IOException(
+                    if (response.code == 403) {
+                        "업데이트 서버 요청이 잠시 제한되었습니다. 잠시 후 다시 시도해 주세요."
+                    } else {
+                        "업데이트 서버 응답 오류: HTTP ${response.code}"
+                    }
+                )
+            }
+            val releases = JSONArray(response.body?.string().orEmpty())
+            var newest: AndroidRelease? = null
             for (releaseIndex in 0 until releases.length()) {
                 val release = releases.getJSONObject(releaseIndex)
                 if (release.optBoolean("draft")) continue
@@ -29,14 +109,36 @@ class ReleaseUpdateChecker(
                     val asset = assets.getJSONObject(assetIndex)
                     if (asset.getString("name") != "PhoneUnlock-Android.apk") continue
                     val tag = release.getString("tag_name")
-                    if (compareVersions(tag, currentVersion) > 0) {
-                        return@withContext AndroidRelease(tag, asset.getString("browser_download_url"))
+                    val candidate = AndroidRelease(
+                        tag,
+                        safeDownloadUrl(asset.getString("browser_download_url")),
+                    )
+                    if (compareVersions(candidate.tag, currentVersion) > 0
+                        && (newest == null || compareVersions(candidate.tag, newest!!.tag) > 0)
+                    ) {
+                        newest = candidate
                     }
-                    return@withContext null
                 }
             }
-            null
+            newest
         }
+    }
+
+    private fun safeDownloadUrl(value: String): String {
+        val uri = try {
+            URI(value)
+        } catch (exception: Exception) {
+            throw IOException("업데이트 주소를 해석할 수 없습니다.", exception)
+        }
+        val path = uri.path.orEmpty()
+        if (!uri.scheme.equals("https", ignoreCase = true)
+            || !uri.host.equals("github.com", ignoreCase = true)
+            || !path.startsWith("/blossom0948/windowslogin/releases/download/", ignoreCase = true)
+            || !path.endsWith("/PhoneUnlock-Android.apk", ignoreCase = true)
+        ) {
+            throw IOException("안전하지 않은 업데이트 주소가 거부되었습니다.")
+        }
+        return uri.toString()
     }
 
     private fun compareVersions(left: String, right: String): Int {
@@ -78,4 +180,5 @@ class ReleaseUpdateChecker(
     }
 
     private data class ParsedVersion(val core: List<Int>, val preRelease: List<String>)
+
 }

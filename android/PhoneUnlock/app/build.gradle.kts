@@ -26,8 +26,8 @@ android {
         applicationId = "com.example.phoneunlock"
         minSdk = 30
         targetSdk = 36
-        versionCode = 23
-        versionName = "0.4.0-beta.21"
+        versionCode = 24
+        versionName = "0.4.0-beta.22"
         buildConfigField("boolean", "HAS_FIREBASE_CONFIG", hasFirebaseConfig.toString())
     }
 

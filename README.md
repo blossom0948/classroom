@@ -60,7 +60,7 @@ GitHub Releases에서 Windows용 `PhoneUnlock-Setup.exe`와 휴대폰용 `PhoneU
 7. 이후 PC가 잠기면 Phone Unlock이 기본으로 열리고 휴대폰에 요청이 자동 전송됩니다. 휴대폰 잠금 화면 위에 인증창이 바로 열리며 별도의 승인 버튼은 필요하지 않습니다.
 8. Windows 설정 앱의 **연결이 끊기면 자동 잠금**은 기본 꺼짐이며, 켜면 선택한 휴대폰의 안전한 LAN/VPN 연결이 설정한 유예 시간 동안 끊길 때 PC를 잠급니다.
 
-PC와 Android 앱 모두 실행 화면에서 새 버전을 확인할 수 있습니다. Android에서 이전 `debug` APK를 사용했다면 고정 서명판으로 바뀌는 이번 한 번만 기존 앱을 삭제하고 다시 설치해야 합니다. 이후 release APK는 연결 정보를 유지한 채 업데이트됩니다. beta.15부터는 집 네트워크에서 PC·휴대폰 모두 Tailscale에 한 번 로그인하면 Phone Unlock이 VPN 주소를 자동으로 저장·갱신하므로 QR을 다시 만들거나 재페어링할 필요가 없습니다.
+PC와 Android 앱 모두 실행 화면에서 새 버전을 확인할 수 있습니다. 업데이트 확인은 저장소의 공개 `update.json`을 먼저 사용하므로 GitHub API의 공유 IP 호출 제한에 막히지 않습니다. Android에서 이전 `debug` APK를 사용했다면 고정 서명판으로 바뀌는 이번 한 번만 기존 앱을 삭제하고 다시 설치해야 합니다. 이후 release APK는 연결 정보를 유지한 채 업데이트됩니다. beta.15부터는 집 네트워크에서 PC·휴대폰 모두 Tailscale에 한 번 로그인하면 Phone Unlock이 VPN 주소를 자동으로 저장·갱신하므로 QR을 다시 만들거나 재페어링할 필요가 없습니다.
 
 Windows 설정 창은 닫아도 됩니다. 로그인 요청을 처리하는 `PhoneUnlockService`가 Windows 서비스로 백그라운드에서 자동 실행됩니다. 설정을 다시 열 때는 바탕 화면의 **Phone Unlock 설정** 또는 시작 메뉴에서 `Phone Unlock 설정`을 검색합니다.
 
