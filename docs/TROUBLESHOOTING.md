@@ -39,11 +39,11 @@ AGP 9.0.1은 JDK 17과 Gradle 9.1.0이 필요하다. `JAVA_HOME`을 JDK 17 폴�
 
 ## 업데이트 서버 응답 오류
 
-beta.22부터 업데이트 확인은 GitHub REST API가 아니라 저장소의 `update.json`을 먼저 읽는다. 따라서 `api.github.com`의 익명 호출 제한으로 인해 업데이트가 "서버가 응답하지 않음"으로 표시되는 문제를 피한다. 그래도 실패하면 Android의 기본 브라우저에서 GitHub 저장소가 열리는지 확인하고, VPN·광고 차단 앱이 `raw.githubusercontent.com`을 차단하지 않는지 확인한다.
+beta.23부터 업데이트 확인은 GitHub REST API가 아니라 저장소의 `update.json`을 먼저 읽는다. 따라서 `api.github.com`의 익명 호출 제한으로 인해 업데이트가 "서버가 응답하지 않음"으로 표시되는 문제를 피한다. 그래도 실패하면 Android의 기본 브라우저에서 GitHub 저장소가 열리는지 확인하고, VPN·광고 차단 앱이 `raw.githubusercontent.com`을 차단하지 않는지 확인한다.
 
 ## PC 설정창이 바로 닫히는 경우
 
-설치된 파일의 버전이 beta.22보다 낮으면 설정창 시작 전에 종료될 수 있다. 기존 PIN/비밀번호로 Windows에 로그인한 후 GitHub Releases의 `PhoneUnlock-Setup.exe`를 실행해 덮어 설치한다. beta.22부터 시작 예외는 `%LOCALAPPDATA%\PhoneUnlock\setup-startup.log`에도 남는다.
+설치된 파일의 버전이 beta.23보다 낮으면 설정창 시작 전에 종료될 수 있다. 기존 PIN/비밀번호로 Windows에 로그인한 후 GitHub Releases의 `PhoneUnlock-Setup.exe`를 실행해 덮어 설치한다. beta.23부터 시작 예외는 `%LOCALAPPDATA%\PhoneUnlock\setup-startup.log`에도 남는다.
 
 ## Windows 암호를 확인하지 못함
 

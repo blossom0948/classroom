@@ -1,4 +1,4 @@
-# 0.4.0-beta.22
+# 0.4.0-beta.23
 
 ## 수정
 
@@ -9,5 +9,5 @@
 
 ## 설치
 
-- Windows는 `PhoneUnlock-Setup.exe`를 실행해 beta.22로 덮어 설치해야 설정창 수정이 반영됩니다.
+- Windows는 `PhoneUnlock-Setup.exe`를 실행해 beta.23으로 덮어 설치해야 설정창 수정이 반영됩니다.
 - Android는 앱 설정의 업데이트 버튼에서 새 APK를 내려받아 Android의 설치 확인을 한 번 눌러야 합니다.

@@ -1,15 +1,15 @@
 {
   "schema": 1,
-  "version": "0.4.0-beta.22",
-  "tag": "v0.4.0-beta.22",
+  "version": "0.4.0-beta.23",
+  "tag": "v0.4.0-beta.23",
   "android": {
-    "version": "0.4.0-beta.22",
-    "tag": "v0.4.0-beta.22",
-    "downloadUrl": "https://github.com/blossom0948/windowslogin/releases/download/v0.4.0-beta.22/PhoneUnlock-Android.apk"
+    "version": "0.4.0-beta.23",
+    "tag": "v0.4.0-beta.23",
+    "downloadUrl": "https://github.com/blossom0948/windowslogin/releases/download/v0.4.0-beta.23/PhoneUnlock-Android.apk"
   },
   "windows": {
-    "version": "0.4.0-beta.22",
-    "tag": "v0.4.0-beta.22",
-    "downloadUrl": "https://github.com/blossom0948/windowslogin/releases/download/v0.4.0-beta.22/PhoneUnlock-Setup.exe"
+    "version": "0.4.0-beta.23",
+    "tag": "v0.4.0-beta.23",
+    "downloadUrl": "https://github.com/blossom0948/windowslogin/releases/download/v0.4.0-beta.23/PhoneUnlock-Setup.exe"
   }
 }

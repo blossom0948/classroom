@@ -57,7 +57,7 @@ class ReleaseUpdateChecker(
             .header("User-Agent", "PhoneUnlock-Android/$currentVersion")
             .build()
 
-        client.newCall(request).execute().use { response ->
+        return client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw IOException("업데이트 매니페스트 응답 오류: HTTP ${response.code}")
@@ -89,7 +89,7 @@ class ReleaseUpdateChecker(
             .header("User-Agent", "PhoneUnlock-Android/$currentVersion")
             .build()
 
-        client.newCall(request).execute().use { response ->
+        return client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw IOException(
                     if (response.code == 403) {
