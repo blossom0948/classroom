@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Diagnostics;
 using System.Text;
 using System.Windows.Forms;
 using PhoneUnlock.Agent;

@@ -97,7 +97,7 @@ public partial class MainWindow : Window
             .OfType<PhoneSelectionItem>()
             .FirstOrDefault(candidate => candidate.PhoneId == phone.PhoneId);
         ShowSettingsPanel();
-        var target = destination switch
+        FrameworkElement target = destination switch
         {
             "login" => LoginSection,
             "automation" => AutomationSection,
