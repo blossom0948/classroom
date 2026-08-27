@@ -818,7 +818,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshPcState() {
         val computer = pairingStore.load()
-        val state = computer?.let(pcStateStore::load)
+        val state = computer?.let { pcStateStore.load(it.computerId) }
         val connected = computer != null && ConnectionService.isConnected(computer.computerId)
         val effective = if (connected) state ?: PcRuntimeState("ON", "UNKNOWN", "", Instant.now().epochSecond) else state
         val online = connected && effective?.powerState == "ON"
