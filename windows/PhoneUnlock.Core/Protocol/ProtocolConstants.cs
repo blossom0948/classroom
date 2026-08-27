@@ -20,4 +20,6 @@ public static class ProtocolConstants
     public const string SecurityAlert = "SECURITY_ALERT";
     public const string ActionResult = "ACTION_RESULT";
     public const string AutomationNotice = "AUTOMATION_NOTICE";
+    public const string PcState = "PC_STATE";
+    public const string DeckAction = "DECK_ACTION";
 }

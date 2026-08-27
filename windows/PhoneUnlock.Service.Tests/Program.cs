@@ -10,7 +10,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("device token is random and fixed-time verifiable", TestTokenAsync),
     ("pairing token is one-use and stores a P-256 phone", TestPairingAsync),
     ("invalid phone public keys are rejected", TestInvalidPublicKeyAsync),
-    ("pairing audit records keep the phone and remote IP", TestAuditAsync)
+    ("pairing audit records keep the phone and remote IP", TestAuditAsync),
+    ("authentication requests are rate limited", TestAuthenticationRateLimitAsync)
 };
 
 var failures = new List<string>();
@@ -98,6 +99,22 @@ static async Task TestAuditAsync()
         Assert(entry!.PhoneId == phoneId && entry.PhoneName == "Audit phone", "audit event lost phone identity");
         Assert(entry.RemoteIp == "192.168.10.24", "audit event lost remote IP");
     });
+}
+
+static Task TestAuthenticationRateLimitAsync()
+{
+    var limiter = new AuthenticationRequestLimiter();
+    var now = DateTimeOffset.UtcNow;
+    Assert(limiter.TryAcquire("pc|sid|phone", now).Allowed, "first request was rejected");
+    Assert(limiter.TryAcquire("pc|sid|phone", now.AddSeconds(1)).Allowed, "second request was rejected");
+    Assert(limiter.TryAcquire("pc|sid|phone", now.AddSeconds(2)).Allowed, "third request was rejected");
+    var blocked = limiter.TryAcquire("pc|sid|phone", now.AddSeconds(3));
+    Assert(!blocked.Allowed && blocked.RetryAfter >= TimeSpan.FromSeconds(29), "fourth request was not cooled down");
+    Assert(limiter.TryAcquire("other-pc|sid|phone", now.AddSeconds(3)).Allowed,
+        "one PC incorrectly rate limited another PC");
+    Assert(limiter.TryAcquire("pc|sid|phone", now.AddSeconds(64)).Allowed,
+        "request stayed limited after the rolling window");
+    return Task.CompletedTask;
 }
 
 static async Task WithCoordinatorAsync(Func<PairingCoordinator, ConfigurationStore, AuditLogStore, Task> test)

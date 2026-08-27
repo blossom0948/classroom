@@ -84,7 +84,7 @@ public sealed class RemoteUnlockService(
             }
 
             grantStore.Grant(phone.PhoneId, configuration.ConfiguredAccountSid, now.AddSeconds(30));
-            proximityUnlockSignal.Signal(ProximityUnlockSource.TrustedPhone);
+            proximityUnlockSignal.Signal(ProximityUnlockSource.PhoneBiometric);
             await RecordAsync(request, phone, "SUCCESS", "휴대폰 생체인증으로 1회성 원격 잠금 해제 승인", suspicious: false, cancellationToken);
             await connectionRegistry.TrySendActionResultAsync(
                 phone.PhoneId,

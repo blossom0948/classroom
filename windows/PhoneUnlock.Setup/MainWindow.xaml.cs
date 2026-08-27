@@ -32,9 +32,9 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        InitializeComponent();
         var appearance = SetupAppearance.Load();
         SetupAppearance.Apply(Application.Current, appearance);
+        InitializeComponent();
         updatingAppearance = true;
         ThemeModeComboBox.SelectedItem = ThemeModeComboBox.Items
             .OfType<ComboBoxItem>()
@@ -53,6 +53,62 @@ public partial class MainWindow : Window
     }
 
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshStatusAsync();
+
+    private void SidebarNav_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        var destination = button.Tag?.ToString();
+        if (destination == "network")
+        {
+            RemoteConnection_Click(sender, e);
+            return;
+        }
+        if (destination == "update")
+        {
+            Update_Click(sender, e);
+            return;
+        }
+        if (destination is "home" or "devices")
+        {
+            ShowHomePanel();
+            if (destination == "devices")
+            {
+                Dispatcher.BeginInvoke(new Action(HomePhoneList.BringIntoView));
+            }
+            return;
+        }
+
+        var phone = currentStatus?.Phones
+            .OrderByDescending(candidate => candidate.PhoneId == currentStatus.PreferredPhoneId)
+            .FirstOrDefault();
+        if (phone is null)
+        {
+            ShowHomePanel();
+            SetOperation("먼저 휴대폰을 연결하세요.", success: false);
+            return;
+        }
+
+        SettingsHeaderText.Text = phone.PhoneName;
+        PhoneSelectorComboBox.SelectedItem = PhoneSelectorComboBox.Items
+            .OfType<PhoneSelectionItem>()
+            .FirstOrDefault(candidate => candidate.PhoneId == phone.PhoneId);
+        ShowSettingsPanel();
+        var target = destination switch
+        {
+            "login" => LoginSection,
+            "automation" => AutomationSection,
+            "remote" => RemoteControlSection,
+            "security" => SecuritySection,
+            "activity" => AuditSection,
+            "diagnostics" => DiagnosticsSection,
+            _ => SettingsPanel,
+        };
+        Dispatcher.BeginInvoke(new Action(target.BringIntoView));
+    }
 
     private void ThemeMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -984,6 +1040,8 @@ public partial class MainWindow : Window
             InstallRequiredCard.Visibility = Visibility.Collapsed;
             ServiceStatusText.Text = "● 서비스 실행 중";
             ServiceStatusText.Foreground = BrushFrom("#8FE0B0");
+            SidebarServiceStatusText.Text = "● 실행 중";
+            SidebarServiceStatusText.Foreground = BrushFrom("#8FE0B0");
             ComputerText.Text = currentStatus.ComputerName;
             CredentialStateText.Text = currentStatus.CredentialConfigured
                 ? "✓ 현재 계정 암호가 안전하게 저장되어 있습니다."
@@ -1105,6 +1163,8 @@ public partial class MainWindow : Window
             InstallButton.IsEnabled = true;
             ServiceStatusText.Text = "● 설치되지 않음";
             ServiceStatusText.Foreground = BrushFrom("#FFB4AB");
+            SidebarServiceStatusText.Text = "● 확인 필요";
+            SidebarServiceStatusText.Foreground = BrushFrom("#FFB4AB");
             ComputerText.Text = "설정 앱만 실행된 상태입니다.";
             CredentialStateText.Text = "서비스 설치 후 자동으로 현재 계정을 사용합니다.";
             PhoneStateText.Text = "서비스가 없어 연결 QR을 만들 수 없습니다.";

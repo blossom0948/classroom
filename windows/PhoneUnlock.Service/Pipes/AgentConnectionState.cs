@@ -7,6 +7,8 @@ public sealed class AgentConnectionState
     private int connected;
     private int humanPresence = -1;
     private long humanPresenceTicks;
+    private int workstationLocked = -1;
+    private long workstationStateTicks;
     private readonly ConcurrentDictionary<string, RssiSample> latestRssi = new(StringComparer.Ordinal);
 
     public bool IsConnected => Volatile.Read(ref connected) == 1;
@@ -42,6 +44,19 @@ public sealed class AgentConnectionState
     {
         Interlocked.Exchange(ref humanPresence, present ? 1 : 0);
         Interlocked.Exchange(ref humanPresenceTicks, DateTimeOffset.UtcNow.Ticks);
+    }
+
+    public void SetWorkstationLocked(bool locked)
+    {
+        Interlocked.Exchange(ref workstationLocked, locked ? 1 : 0);
+        Interlocked.Exchange(ref workstationStateTicks, DateTimeOffset.UtcNow.Ticks);
+    }
+
+    public bool TryGetWorkstationLocked(out bool locked)
+    {
+        var state = Volatile.Read(ref workstationLocked);
+        locked = state == 1;
+        return state >= 0;
     }
 
     public bool TryGetRecentHumanPresence(TimeSpan maxAge, out bool present)

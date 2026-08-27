@@ -15,6 +15,7 @@ public sealed class AgentPipeService(
     PresenceSensorClient presenceSensorClient,
     AgentConnectionState agentConnectionState,
     AgentNotificationQueue notificationQueue,
+    AgentCommandQueue commandQueue,
     WorkstationLockSignal lockSignal,
     ILogger<AgentPipeService> logger) : BackgroundService
 {
@@ -61,10 +62,11 @@ public sealed class AgentPipeService(
         var readTask = ReadAgentMessagesAsync(reader, agentLifetime.Token);
         var monitorTask = MonitorPresenceAsync(writer, agentLifetime.Token);
         var noticeTask = notificationQueue.WaitAsync(agentLifetime.Token).AsTask();
+        var commandTask = commandQueue.WaitAsync(agentLifetime.Token).AsTask();
         var lockTask = lockSignal.WaitAsync(agentLifetime.Token).AsTask();
         while (!agentLifetime.IsCancellationRequested)
         {
-            var completed = await Task.WhenAny(readTask, monitorTask, lockTask, noticeTask);
+            var completed = await Task.WhenAny(readTask, monitorTask, lockTask, noticeTask, commandTask);
             if (completed == lockTask)
             {
                 await writer.WriteLineAsync("LOCK");
@@ -79,6 +81,14 @@ public sealed class AgentPipeService(
                 var message = Convert.ToBase64String(Encoding.UTF8.GetBytes(notice.Message));
                 await writer.WriteLineAsync($"NOTICE|{title}|{message}");
                 noticeTask = notificationQueue.WaitAsync(agentLifetime.Token).AsTask();
+                continue;
+            }
+
+            if (completed == commandTask)
+            {
+                var command = await commandTask;
+                await writer.WriteLineAsync($"DECK|{command}");
+                commandTask = commandQueue.WaitAsync(agentLifetime.Token).AsTask();
                 continue;
             }
 
@@ -125,6 +135,17 @@ public sealed class AgentPipeService(
                     || string.Equals(parts[1], "ABSENT", StringComparison.Ordinal)))
             {
                 agentConnectionState.SetHumanPresence(string.Equals(parts[1], "PRESENT", StringComparison.Ordinal));
+                continue;
+            }
+
+            if (parts.Length == 2
+                && string.Equals(parts[0], "SESSION", StringComparison.Ordinal)
+                && (string.Equals(parts[1], "LOCKED", StringComparison.Ordinal)
+                    || string.Equals(parts[1], "UNLOCKED", StringComparison.Ordinal)))
+            {
+                var locked = string.Equals(parts[1], "LOCKED", StringComparison.Ordinal);
+                agentConnectionState.SetWorkstationLocked(locked);
+                await connectionRegistry.PublishPcStateAsync(locked, cancellationToken);
             }
         }
     }

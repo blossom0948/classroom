@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Threading.Channels;
 using PhoneUnlock.Service.Models;
+using PhoneUnlock.Service.Pipes;
 using PhoneUnlock.Service.Security;
 using PhoneUnlock.Service.Storage;
 
@@ -10,6 +11,7 @@ namespace PhoneUnlock.Service.Networking;
 public sealed class PhoneConnectionRegistry(
     ConfigurationStore configurationStore,
     AuditLogStore auditLog,
+    AgentConnectionState agentConnectionState,
     ILoggerFactory loggerFactory)
 {
     private readonly ConcurrentDictionary<string, PhoneConnection> connections = new(StringComparer.Ordinal);
@@ -19,10 +21,13 @@ public sealed class PhoneConnectionRegistry(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
     private readonly Channel<RemoteUnlockRequest> remotePowerRequests = Channel.CreateUnbounded<RemoteUnlockRequest>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+    private readonly Channel<RemoteUnlockRequest> deckActionRequests = Channel.CreateBounded<RemoteUnlockRequest>(
+        new BoundedChannelOptions(128) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.DropOldest });
 
     public ChannelReader<RemoteUnlockRequest> RemoteUnlockRequests => remoteUnlockRequests.Reader;
     public ChannelReader<RemoteUnlockRequest> RemoteLockRequests => remoteLockRequests.Reader;
     public ChannelReader<RemoteUnlockRequest> RemotePowerRequests => remotePowerRequests.Reader;
+    public ChannelReader<RemoteUnlockRequest> DeckActionRequests => deckActionRequests.Reader;
 
     public async Task<PairedPhoneRecord?> AuthenticateDeviceAsync(
         string? phoneId,
@@ -73,16 +78,26 @@ public sealed class PhoneConnectionRegistry(
             loggerFactory.CreateLogger<PhoneConnection>(),
             json => remoteUnlockRequests.Writer.TryWrite(new RemoteUnlockRequest(phone.PhoneId, remoteIp, json)),
             json => remoteLockRequests.Writer.TryWrite(new RemoteUnlockRequest(phone.PhoneId, remoteIp, json)),
-            json => remotePowerRequests.Writer.TryWrite(new RemoteUnlockRequest(phone.PhoneId, remoteIp, json)));
+            json => remotePowerRequests.Writer.TryWrite(new RemoteUnlockRequest(phone.PhoneId, remoteIp, json)),
+            json => deckActionRequests.Writer.TryWrite(new RemoteUnlockRequest(phone.PhoneId, remoteIp, json)));
         if (connections.TryGetValue(phone.PhoneId, out var previous))
         {
             await previous.DisposeAsync();
         }
 
         connections[phone.PhoneId] = connection;
-        await UpdateLastSeenAsync(phone.PhoneId, cancellationToken);
         try
         {
+            await UpdateLastSeenAsync(phone.PhoneId, cancellationToken);
+            var configuration = await configurationStore.GetAsync(cancellationToken);
+            var sessionState = agentConnectionState.TryGetWorkstationLocked(out var locked)
+                ? locked ? "LOCKED" : "UNLOCKED"
+                : "UNKNOWN";
+            await connection.SendPcStateAsync(
+                configuration.ComputerId,
+                configuration.ComputerName,
+                sessionState,
+                cancellationToken);
             await connection.RunReceiveLoopAsync(cancellationToken);
         }
         finally
@@ -165,6 +180,26 @@ public sealed class PhoneConnectionRegistry(
         {
             // The operation result was already audited. A closed phone connection
             // only means the optional in-app confirmation could not be delivered.
+        }
+    }
+
+    public async Task PublishPcStateAsync(bool locked, CancellationToken cancellationToken)
+    {
+        var configuration = await configurationStore.GetAsync(cancellationToken);
+        foreach (var connection in connections.Values.Where(candidate => candidate.IsOpen))
+        {
+            try
+            {
+                await connection.SendPcStateAsync(
+                    configuration.ComputerId,
+                    configuration.ComputerName,
+                    locked ? "LOCKED" : "UNLOCKED",
+                    cancellationToken);
+            }
+            catch (Exception exception) when (exception is IOException or WebSocketException or OperationCanceledException)
+            {
+                // The state will be sent again after the phone reconnects.
+            }
         }
     }
 

@@ -25,6 +25,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.CredentialManager
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.phoneunlock.network.ConnectionService
@@ -33,6 +36,8 @@ import com.example.phoneunlock.network.WakeOnLanSender
 import com.example.phoneunlock.storage.ActivityLogStore
 import com.example.phoneunlock.storage.PairedComputer
 import com.example.phoneunlock.storage.PairingPayload
+import com.example.phoneunlock.storage.PcRuntimeState
+import com.example.phoneunlock.storage.PcStateStore
 import com.example.phoneunlock.storage.SecurePairingStore
 import com.example.phoneunlock.widget.PcWidgetProvider
 import com.example.phoneunlock.widget.WidgetAppearanceSettings
@@ -42,11 +47,18 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.radiobutton.MaterialRadioButton
 import com.google.android.material.textfield.TextInputEditText
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.tasks.await
 import org.json.JSONException
 import java.security.SecureRandom
 import java.time.Instant
@@ -58,6 +70,8 @@ import java.util.UUID
 class MainActivity : AppCompatActivity() {
     private lateinit var homePanel: LinearLayout
     private lateinit var settingsPanel: LinearLayout
+    private lateinit var automationPanel: LinearLayout
+    private lateinit var deckPanel: LinearLayout
     private lateinit var homeControlsCard: View
     private lateinit var historyPanel: LinearLayout
     private lateinit var historyList: LinearLayout
@@ -78,6 +92,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var disconnectButton: MaterialButton
     private lateinit var computerListGroup: RadioGroup
     private lateinit var updateButton: MaterialButton
+    private lateinit var versionText: TextView
+    private lateinit var openDeckButton: MaterialButton
+    private lateinit var automationDiagnosticsButton: MaterialButton
+    private lateinit var automationStatusText: TextView
+    private lateinit var walletCompatibilityButton: MaterialButton
+    private lateinit var googleSignInButton: MaterialButton
+    private lateinit var googleAccountStatusText: TextView
+    private lateinit var pcStateStatusText: TextView
+    private lateinit var pcStateRouteText: TextView
+    private lateinit var pcOfflineScreen: View
+    private lateinit var pcLockScreen: View
+    private lateinit var pcUnlockedScreen: View
     private lateinit var autoPromptSwitch: MaterialSwitch
     private lateinit var autoPromptStatusText: TextView
     private lateinit var fullScreenPermissionButton: MaterialButton
@@ -99,6 +125,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var widgetTransparencySwitch: MaterialSwitch
     private lateinit var keystoreSigner: KeystoreSigner
     private lateinit var pairingStore: SecurePairingStore
+    private lateinit var pcStateStore: PcStateStore
     private lateinit var activityLogStore: ActivityLogStore
     private val pairingClient = PairingClient()
     private val releaseUpdateChecker = ReleaseUpdateChecker()
@@ -108,15 +135,19 @@ class MainActivity : AppCompatActivity() {
     private var updatingAppearance = false
     private val remoteResultReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
-            if (intent.action != ConnectionService.ACTION_REMOTE_ACTION_RESULT) return
-            val action = intent.getStringExtra(ConnectionService.EXTRA_ACTION).orEmpty()
-            val success = intent.getBooleanExtra(ConnectionService.EXTRA_ACTION_SUCCESS, false)
-            val message = intent.getStringExtra(ConnectionService.EXTRA_ACTION_MESSAGE).orEmpty()
-            showResult(
-                message.ifBlank { "PC ${remoteActionLabel(action)} ${if (success) "완료" else "실패"}" },
-                success,
-            )
-            PcWidgetProvider.refresh(this@MainActivity)
+            when (intent.action) {
+                ConnectionService.ACTION_REMOTE_ACTION_RESULT -> {
+                    val action = intent.getStringExtra(ConnectionService.EXTRA_ACTION).orEmpty()
+                    val success = intent.getBooleanExtra(ConnectionService.EXTRA_ACTION_SUCCESS, false)
+                    val message = intent.getStringExtra(ConnectionService.EXTRA_ACTION_MESSAGE).orEmpty()
+                    showResult(
+                        message.ifBlank { "PC ${remoteActionLabel(action)} ${if (success) "완료" else "실패"}" },
+                        success,
+                    )
+                    PcWidgetProvider.refresh(this@MainActivity)
+                }
+                ConnectionService.ACTION_PC_STATE_CHANGED -> refreshPcState()
+            }
         }
     }
 
@@ -150,6 +181,8 @@ class MainActivity : AppCompatActivity() {
 
         homePanel = findViewById(R.id.homePanel)
         settingsPanel = findViewById(R.id.settingsPanel)
+        automationPanel = findViewById(R.id.automationPanel)
+        deckPanel = findViewById(R.id.deckPanel)
         homeControlsCard = findViewById(R.id.homeControlsCard)
         historyPanel = findViewById(R.id.historyPanel)
         historyList = findViewById(R.id.historyList)
@@ -170,6 +203,18 @@ class MainActivity : AppCompatActivity() {
         disconnectButton = findViewById(R.id.disconnectButton)
         computerListGroup = findViewById(R.id.computerListGroup)
         updateButton = findViewById(R.id.updateButton)
+        versionText = findViewById(R.id.versionText)
+        openDeckButton = findViewById(R.id.openDeckButton)
+        automationDiagnosticsButton = findViewById(R.id.automationDiagnosticsButton)
+        automationStatusText = findViewById(R.id.automationStatusText)
+        walletCompatibilityButton = findViewById(R.id.walletCompatibilityButton)
+        googleSignInButton = findViewById(R.id.googleSignInButton)
+        googleAccountStatusText = findViewById(R.id.googleAccountStatusText)
+        pcStateStatusText = findViewById(R.id.pcStateStatusText)
+        pcStateRouteText = findViewById(R.id.pcStateRouteText)
+        pcOfflineScreen = findViewById(R.id.pcOfflineScreen)
+        pcLockScreen = findViewById(R.id.pcLockScreen)
+        pcUnlockedScreen = findViewById(R.id.pcUnlockedScreen)
         autoPromptSwitch = findViewById(R.id.autoPromptSwitch)
         autoPromptStatusText = findViewById(R.id.autoPromptStatusText)
         fullScreenPermissionButton = findViewById(R.id.fullScreenPermissionButton)
@@ -191,6 +236,7 @@ class MainActivity : AppCompatActivity() {
         widgetTransparencySwitch = findViewById(R.id.widgetTransparencySwitch)
         keystoreSigner = KeystoreSigner(this)
         pairingStore = SecurePairingStore(this)
+        pcStateStore = PcStateStore(this)
         activityLogStore = ActivityLogStore(this)
         phoneId = loadOrCreatePhoneId()
 
@@ -208,6 +254,23 @@ class MainActivity : AppCompatActivity() {
         shutdownButton.setOnClickListener { requestRemotePower("SHUTDOWN") }
         wakeButton.setOnClickListener { requestWakeComputer() }
         updateButton.setOnClickListener { handleUpdateClick() }
+        versionText.text = "Phone Unlock ${BuildConfig.VERSION_NAME}"
+        openDeckButton.setOnClickListener { startActivity(Intent(this, StreamDeckActivity::class.java)) }
+        automationDiagnosticsButton.setOnClickListener {
+            showSettings(pairingStore.load() ?: return@setOnClickListener)
+            diagnosticsButton.performClick()
+        }
+        walletCompatibilityButton.setOnClickListener { openWalletCompatibilitySetup() }
+        googleSignInButton.setOnClickListener {
+            if (BuildConfig.HAS_FIREBASE_CONFIG && FirebaseApp.getApps(this).isNotEmpty()
+                && FirebaseAuth.getInstance().currentUser != null) {
+                FirebaseAuth.getInstance().signOut()
+                updateGoogleAccountUi()
+                showResult("Google 계정 연결을 해제했습니다", success = true)
+            } else {
+                beginGoogleSignIn()
+            }
+        }
         autoPromptSwitch.isChecked = AuthPromptSettings.isAutoOpenEnabled(this)
         autoPromptSwitch.setOnCheckedChangeListener { _, enabled ->
             AuthPromptSettings.setAutoOpenEnabled(this, enabled)
@@ -273,11 +336,19 @@ class MainActivity : AppCompatActivity() {
                         true
                     }
                     R.id.nav_automation -> {
-                        pairingStore.load()?.let { showSettings(it) } ?: showHome()
+                        showAutomation()
+                        true
+                    }
+                    R.id.nav_deck -> {
+                        showDeck()
                         true
                     }
                     R.id.nav_history -> {
                         showHistory()
+                        true
+                    }
+                    R.id.nav_settings -> {
+                        pairingStore.load()?.let { showSettings(it) } ?: showSettingsWithoutComputer()
                         true
                     }
                     else -> false
@@ -287,7 +358,8 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
-                    settingsPanel.visibility == View.VISIBLE || historyPanel.visibility == View.VISIBLE -> showHome()
+                    settingsPanel.visibility == View.VISIBLE || historyPanel.visibility == View.VISIBLE ||
+                        automationPanel.visibility == View.VISIBLE || deckPanel.visibility == View.VISIBLE -> showHome()
                     manualCodeGroup.visibility == View.VISIBLE -> manualCodeGroup.visibility = View.GONE
                     else -> finish()
                 }
@@ -305,6 +377,7 @@ class MainActivity : AppCompatActivity() {
         updateAutoPromptControls()
         updateAuthMethodControls()
         updateAppearanceControls()
+        updateGoogleAccountUi()
 
         pairingStore.load()?.let {
             displayPairedComputer(it)
@@ -332,18 +405,17 @@ class MainActivity : AppCompatActivity() {
             updateAutoPromptControls()
             pairingStore.load()?.let { refreshComputerChoices(it) }
             pairingStore.load()?.let { ConnectionService.refreshConnectionRoute(this) }
+            refreshPcState()
             PcWidgetProvider.refresh(this)
         }
     }
 
     override fun onStart() {
         super.onStart()
-        ContextCompat.registerReceiver(
-            this,
-            remoteResultReceiver,
-            IntentFilter(ConnectionService.ACTION_REMOTE_ACTION_RESULT),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
+        val filter = IntentFilter(ConnectionService.ACTION_REMOTE_ACTION_RESULT).apply {
+            addAction(ConnectionService.ACTION_PC_STATE_CHANGED)
+        }
+        ContextCompat.registerReceiver(this, remoteResultReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     override fun onStop() {
@@ -419,6 +491,69 @@ class MainActivity : AppCompatActivity() {
         } catch (_: ActivityNotFoundException) {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$TAILSCALE_PACKAGE")))
             showResult("Tailscale 설치 화면을 열었습니다. 설치 후 한 번만 로그인하세요.", success = true)
+        }
+    }
+
+    private fun openWalletCompatibilitySetup() {
+        val tailscaleIntent = packageManager.getLaunchIntentForPackage(TAILSCALE_PACKAGE)
+        if (tailscaleIntent == null) {
+            showResult("먼저 Tailscale을 설치하세요", success = false)
+            return
+        }
+        startActivity(tailscaleIntent)
+        showResult(
+            "Tailscale의 프로필 → 앱 기반 분할 터널링에서 Samsung Wallet을 제외하면 VPN을 켠 채 결제할 수 있습니다.",
+            success = true,
+        )
+    }
+
+    private fun updateGoogleAccountUi() {
+        if (!BuildConfig.HAS_FIREBASE_CONFIG || FirebaseApp.getApps(this).isEmpty()) {
+            googleAccountStatusText.text = "Google 로그인 설정이 아직 연결되지 않았습니다"
+            googleSignInButton.text = "Google 로그인 설정"
+            return
+        }
+        val user = FirebaseAuth.getInstance().currentUser
+        googleAccountStatusText.text = user?.email ?: "Google 계정 연결 안 됨"
+        googleSignInButton.text = if (user == null) "Google로 로그인" else "Google 로그아웃"
+    }
+
+    private fun beginGoogleSignIn() {
+        if (!BuildConfig.HAS_FIREBASE_CONFIG || FirebaseApp.getApps(this).isEmpty()) {
+            showResult("Firebase Google 로그인을 연결하려면 앱의 Google 서비스 설정이 필요합니다.", success = false)
+            return
+        }
+        val resourceId = resources.getIdentifier("default_web_client_id", "string", packageName)
+        if (resourceId == 0) {
+            showResult("Google OAuth 클라이언트 설정을 찾지 못했습니다.", success = false)
+            return
+        }
+        val serverClientId = getString(resourceId)
+        val option = GetGoogleIdOption.Builder()
+            .setServerClientId(serverClientId)
+            .setFilterByAuthorizedAccounts(false)
+            .setAutoSelectEnabled(true)
+            .build()
+        val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
+        googleSignInButton.isEnabled = false
+        lifecycleScope.launch {
+            try {
+                val credential = CredentialManager.create(this@MainActivity)
+                    .getCredential(this@MainActivity, request).credential
+                require(credential is CustomCredential
+                    && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                    "Google 계정 응답 형식이 올바르지 않습니다."
+                }
+                val google = GoogleIdTokenCredential.createFrom(credential.data)
+                val firebaseCredential = GoogleAuthProvider.getCredential(google.idToken, null)
+                FirebaseAuth.getInstance().signInWithCredential(firebaseCredential).await()
+                updateGoogleAccountUi()
+                showResult("Google 계정으로 로그인했습니다", success = true)
+            } catch (exception: Exception) {
+                showResult(exception.message ?: "Google 로그인에 실패했습니다", success = false)
+            } finally {
+                googleSignInButton.isEnabled = true
+            }
         }
     }
 
@@ -586,6 +721,7 @@ class MainActivity : AppCompatActivity() {
         homeControlsCard.visibility = View.VISIBLE
         pairingControls.visibility = View.VISIBLE
         disconnectButton.visibility = View.VISIBLE
+        refreshPcState()
     }
 
     private fun displayNoPairedComputer() {
@@ -602,14 +738,35 @@ class MainActivity : AppCompatActivity() {
     private fun showHome() {
         showPanel(homePanel, R.id.nav_pc)
         pairingStore.load()?.let { refreshComputerChoices(it) }
+        refreshPcState()
+    }
+
+    private fun showAutomation() {
+        showPanel(automationPanel, R.id.nav_automation)
+        val computer = pairingStore.load()
+        automationStatusText.text = when {
+            computer == null -> "등록된 PC 없음"
+            ConnectionService.isConnected(computer.computerId) -> "${computer.computerName} · 온라인 · 자동화 상태 점검 가능"
+            else -> "${computer.computerName} · 오프라인 · 마지막 설정 유지"
+        }
+    }
+
+    private fun showDeck() {
+        showPanel(deckPanel, R.id.nav_deck)
     }
 
     private fun showSettings(computer: PairedComputer) {
-        showPanel(settingsPanel, R.id.nav_automation)
+        showPanel(settingsPanel, R.id.nav_settings)
         computerNameText.text = computer.computerName
         settingsTitleText.text = computer.computerName
         updateAutoPromptControls()
         updateAuthMethodControls()
+    }
+
+    private fun showSettingsWithoutComputer() {
+        showPanel(settingsPanel, R.id.nav_settings)
+        settingsTitleText.text = "설정"
+        disconnectButton.visibility = View.GONE
     }
 
     private fun showHistory() {
@@ -645,6 +802,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPanel(panel: View, tabId: Int) {
         homePanel.visibility = if (panel === homePanel) View.VISIBLE else View.GONE
+        automationPanel.visibility = if (panel === automationPanel) View.VISIBLE else View.GONE
+        deckPanel.visibility = if (panel === deckPanel) View.VISIBLE else View.GONE
         settingsPanel.visibility = if (panel === settingsPanel) View.VISIBLE else View.GONE
         historyPanel.visibility = if (panel === historyPanel) View.VISIBLE else View.GONE
         selectTab(tabId)
@@ -655,6 +814,45 @@ class MainActivity : AppCompatActivity() {
             .translationY(0f)
             .setDuration(180L)
             .start()
+    }
+
+    private fun refreshPcState() {
+        val computer = pairingStore.load()
+        val state = computer?.let(pcStateStore::load)
+        val connected = computer != null && ConnectionService.isConnected(computer.computerId)
+        val effective = if (connected) state ?: PcRuntimeState("ON", "UNKNOWN", "", Instant.now().epochSecond) else state
+        val online = connected && effective?.powerState == "ON"
+        val locked = online && effective?.sessionState == "LOCKED"
+        val unlocked = online && effective?.sessionState == "UNLOCKED"
+
+        pcOfflineScreen.visibility = if (!online) View.VISIBLE else View.GONE
+        pcLockScreen.visibility = if (locked) View.VISIBLE else View.GONE
+        pcUnlockedScreen.visibility = if (online && !locked) View.VISIBLE else View.GONE
+        pcStateStatusText.text = when {
+            computer == null -> "PC 없음"
+            locked -> "● 잠김"
+            unlocked -> "● 잠금 해제됨"
+            online -> "● 온라인"
+            else -> "○ 오프라인"
+        }
+        val statusColor = when {
+            online -> R.color.brand_success
+            computer == null -> R.color.brand_muted
+            else -> R.color.brand_error
+        }
+        pcStateStatusText.setTextColor(ContextCompat.getColor(this, statusColor))
+        pcStateRouteText.text = when {
+            computer == null -> "새 PC 연결 버튼으로 시작하세요"
+            online -> listOfNotNull(
+                effective?.route?.takeIf { it.isNotBlank() },
+                when (effective?.sessionState) {
+                    "LOCKED" -> "Windows 잠금 화면"
+                    "UNLOCKED" -> "Windows 사용 중"
+                    else -> "세션 상태 확인 중"
+                },
+            ).joinToString(" · ")
+            else -> "전원이 꺼졌거나 네트워크에 연결할 수 없습니다"
+        }
     }
 
     private fun selectTab(tabId: Int) {
@@ -995,10 +1193,28 @@ class MainActivity : AppCompatActivity() {
                 if (sent > 0) {
                     activityLogStore.append("PC 켜기 신호", computer.computerName)
                 }
+                if (sent <= 0) {
+                    showResult("Wake-on-LAN 신호를 보낼 수 없습니다.", success = false)
+                    return@launch
+                }
+
+                showResult("PC 켜는 중 · WOL 전송 ✓ · 온라인 대기…", success = true)
+                repeat(20) {
+                    delay(3_000)
+                    val online = withContext(Dispatchers.IO) {
+                        runCatching { pairingClient.checkHealth(computer) }.getOrDefault(false)
+                    }
+                    if (online) {
+                        ConnectionService.connect(this@MainActivity)
+                        activityLogStore.append("PC 온라인 확인", computer.computerName)
+                        showResult("PC 켜기 완료 · 온라인 연결 ✓", success = true)
+                        refreshPcState()
+                        return@launch
+                    }
+                }
                 showResult(
-                    if (sent > 0) "PC 켜기 신호를 보냈습니다. WOL 설정이 켜져 있어야 합니다."
-                    else "Wake-on-LAN 신호를 보낼 수 없습니다.",
-                    success = sent > 0,
+                    "WOL은 전송했지만 PC가 온라인이 되지 않았습니다. 집 밖에서는 같은 LAN의 상시 전원 WOL 릴레이가 필요합니다.",
+                    success = false,
                 )
             } catch (exception: Exception) {
                 showResult(exception.message ?: "Wake-on-LAN 신호를 보내지 못했습니다.", success = false)

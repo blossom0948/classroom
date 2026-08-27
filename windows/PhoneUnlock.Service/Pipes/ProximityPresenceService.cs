@@ -88,9 +88,15 @@ public sealed class ProximityPresenceService(
             return;
         }
 
-        var (title, message, sourceName) = source == ProximityUnlockSource.RoomSensor
-            ? ("Phone Unlock", "재실 센서 감지로 PC 잠금 해제 완료", "room_sensor")
-            : ("Phone Unlock", "인증된 휴대폰 감지로 PC 잠금 해제 완료", "trusted_phone");
+        var (title, message, sourceName) = source switch
+        {
+            ProximityUnlockSource.RoomSensor =>
+                ("Phone Unlock", "재실 센서 감지로 PC 잠금 해제 완료", "room_sensor"),
+            ProximityUnlockSource.PhoneBiometric =>
+                ("Phone Unlock", "휴대폰 생체인식으로 PC 잠금 해제 완료", "phone_biometric"),
+            _ =>
+                ("Phone Unlock", "인증된 휴대폰 근접 감지로 PC 잠금 해제 완료", "trusted_phone"),
+        };
         notificationQueue.Publish(title, message);
 
         var selectedConnection = await GetSelectedPhoneAsync(configuration, cancellationToken);

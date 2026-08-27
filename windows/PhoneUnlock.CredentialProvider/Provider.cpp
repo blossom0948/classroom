@@ -10,6 +10,7 @@ namespace
 constexpr wchar_t ProximityUnlockEventName[] = L"Global\\PhoneUnlock.ProximityUnlock";
 constexpr wchar_t TrustedPhoneProximityUnlockEventName[] = L"Global\\PhoneUnlock.ProximityUnlock.TrustedPhone";
 constexpr wchar_t RoomSensorProximityUnlockEventName[] = L"Global\\PhoneUnlock.ProximityUnlock.RoomSensor";
+constexpr wchar_t PhoneBiometricProximityUnlockEventName[] = L"Global\\PhoneUnlock.ProximityUnlock.PhoneBiometric";
 }
 
 void DllAddRef();
@@ -230,7 +231,8 @@ void PhoneUnlockProvider::StartProximityWatcher()
         {
             HANDLE trustedPhoneEvent = OpenEventW(SYNCHRONIZE, FALSE, TrustedPhoneProximityUnlockEventName);
             HANDLE roomSensorEvent = OpenEventW(SYNCHRONIZE, FALSE, RoomSensorProximityUnlockEventName);
-            if (trustedPhoneEvent == nullptr && roomSensorEvent == nullptr)
+            HANDLE phoneBiometricEvent = OpenEventW(SYNCHRONIZE, FALSE, PhoneBiometricProximityUnlockEventName);
+            if (trustedPhoneEvent == nullptr && roomSensorEvent == nullptr && phoneBiometricEvent == nullptr)
             {
                 HANDLE legacyEvent = OpenEventW(SYNCHRONIZE, FALSE, ProximityUnlockEventName);
                 if (legacyEvent != nullptr)
@@ -249,29 +251,31 @@ void PhoneUnlockProvider::StartProximityWatcher()
 
             DWORD result = WAIT_TIMEOUT;
             int source = 0;
-            if (trustedPhoneEvent != nullptr && roomSensorEvent != nullptr)
+            HANDLE events[] = { trustedPhoneEvent, roomSensorEvent, phoneBiometricEvent };
+            HANDLE availableEvents[3] = {};
+            int availableSources[3] = {};
+            DWORD availableCount = 0;
+            for (int index = 0; index < 3; ++index)
             {
-                HANDLE events[] = { trustedPhoneEvent, roomSensorEvent };
-                result = WaitForMultipleObjects(2, events, FALSE, 1000);
-                source = result == WAIT_OBJECT_0 ? 1 : result == WAIT_OBJECT_0 + 1 ? 2 : 0;
+                if (events[index] != nullptr)
+                {
+                    availableEvents[availableCount] = events[index];
+                    availableSources[availableCount] = index + 1;
+                    ++availableCount;
+                }
             }
-            else if (trustedPhoneEvent != nullptr)
+            if (availableCount > 0)
             {
-                result = WaitForSingleObject(trustedPhoneEvent, 1000);
-                source = result == WAIT_OBJECT_0 ? 1 : 0;
-            }
-            else
-            {
-                result = WaitForSingleObject(roomSensorEvent, 1000);
-                source = result == WAIT_OBJECT_0 ? 2 : 0;
+                result = WaitForMultipleObjects(availableCount, availableEvents, FALSE, 1000);
+                if (result >= WAIT_OBJECT_0 && result < WAIT_OBJECT_0 + availableCount)
+                {
+                    source = availableSources[result - WAIT_OBJECT_0];
+                }
             }
             if (trustedPhoneEvent != nullptr) CloseHandle(trustedPhoneEvent);
             if (roomSensorEvent != nullptr) CloseHandle(roomSensorEvent);
-            if (result == WAIT_OBJECT_0 && !proximityWatcherStopping_)
-            {
-                NotifyProximityUnlock(source);
-            }
-            else if (result == WAIT_OBJECT_0 + 1 && !proximityWatcherStopping_)
+            if (phoneBiometricEvent != nullptr) CloseHandle(phoneBiometricEvent);
+            if (source != 0 && !proximityWatcherStopping_)
             {
                 NotifyProximityUnlock(source);
             }

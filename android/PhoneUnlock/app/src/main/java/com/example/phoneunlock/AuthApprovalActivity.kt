@@ -2,6 +2,7 @@ package com.example.phoneunlock
 
 import android.app.NotificationManager
 import android.os.Bundle
+import android.os.CountDownTimer
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -18,7 +19,11 @@ class AuthApprovalActivity : AppCompatActivity() {
     private lateinit var request: AuthRequest
     private lateinit var pairedComputer: com.example.phoneunlock.storage.PairedComputer
     private lateinit var statusText: TextView
+    private lateinit var countdownText: TextView
+    private lateinit var approveButton: MaterialButton
+    private lateinit var denyButton: MaterialButton
     private lateinit var signer: KeystoreSigner
+    private var countdown: CountDownTimer? = null
     private var responseSent = false
     private var authenticationStarted = false
     private var notificationId = 0
@@ -27,6 +32,9 @@ class AuthApprovalActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_auth_approval)
         statusText = findViewById(R.id.authStatusText)
+        countdownText = findViewById(R.id.authCountdownText)
+        approveButton = findViewById(R.id.approveButton)
+        denyButton = findViewById(R.id.denyButton)
         signer = KeystoreSigner(this)
         notificationId = intent.getIntExtra(ConnectionService.EXTRA_AUTH_NOTIFICATION_ID, 0)
 
@@ -40,23 +48,56 @@ class AuthApprovalActivity : AppCompatActivity() {
             }
         } catch (exception: Exception) {
             statusText.text = exception.message ?: "요청이 올바르지 않습니다."
-            findViewById<MaterialButton>(R.id.approveButton).isEnabled = false
+            approveButton.isEnabled = false
+            denyButton.isEnabled = false
             return
         }
 
         findViewById<TextView>(R.id.authComputerNameText).text =
             "${request.computerName}에서 로그인을 요청했습니다."
-        findViewById<TextView>(R.id.authCountdownText).text =
-            "${request.expiresAt - Instant.now().epochSecond}초 안에 승인하세요"
-        findViewById<MaterialButton>(R.id.approveButton).setOnClickListener { authenticate() }
-        findViewById<MaterialButton>(R.id.denyButton).setOnClickListener {
+        approveButton.setOnClickListener { authenticate() }
+        denyButton.setOnClickListener {
             sendAndFinish(PhoneUnlockProtocol.deniedResponse(request, "USER_DENIED"))
         }
+        startCountdown()
 
         if (savedInstanceState == null) {
             statusText.text = "인증 창을 여는 중…"
             window.decorView.post { authenticate() }
         }
+    }
+
+    override fun onDestroy() {
+        countdown?.cancel()
+        countdown = null
+        super.onDestroy()
+    }
+
+    private fun startCountdown() {
+        val remainingMillis = ((request.expiresAt - Instant.now().epochSecond) * 1_000L)
+            .coerceAtLeast(0L)
+        countdown?.cancel()
+        countdown = object : CountDownTimer(remainingMillis, 250L) {
+            override fun onTick(millisUntilFinished: Long) {
+                val seconds = ((millisUntilFinished + 999L) / 1_000L).coerceAtLeast(1L)
+                countdownText.text = "${seconds}초 안에 승인하세요"
+                if (seconds <= 10L) {
+                    countdownText.setTextColor(ContextCompat.getColor(
+                        this@AuthApprovalActivity,
+                        R.color.brand_error,
+                    ))
+                }
+            }
+
+            override fun onFinish() {
+                if (responseSent) return
+                approveButton.isEnabled = false
+                denyButton.isEnabled = false
+                countdownText.text = "요청이 만료되었습니다"
+                statusText.text = "PC에서 다시 요청하세요."
+                sendAndFinish(PhoneUnlockProtocol.expiredResponse(request))
+            }
+        }.start()
     }
 
     private fun authenticate() {
@@ -197,6 +238,7 @@ class AuthApprovalActivity : AppCompatActivity() {
     private fun sendAndFinish(response: String) {
         if (responseSent) return
         responseSent = true
+        countdown?.cancel()
         if (notificationId != 0) {
             getSystemService(NotificationManager::class.java).cancel(notificationId)
         }

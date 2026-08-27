@@ -13,6 +13,7 @@ namespace PhoneUnlock.Service.Security;
 public sealed class PhoneAuthenticationCoordinator(
     ConfigurationStore configurationStore,
     PhoneConnectionRegistry connectionRegistry,
+    AuthenticationRequestLimiter requestLimiter,
     AuditLogStore auditLog,
     ILogger<PhoneAuthenticationCoordinator> logger)
 {
@@ -68,6 +69,24 @@ public sealed class PhoneAuthenticationCoordinator(
 
             selectedPhone = connected.Value.Phone;
             selectedConnection = connected.Value.Connection;
+
+            var limitKey = string.Join('|',
+                configuration.ComputerId,
+                expectedSid ?? configuration.ConfiguredAccountSid,
+                selectedPhone.PhoneId);
+            var limit = requestLimiter.TryAcquire(limitKey, DateTimeOffset.UtcNow);
+            if (!limit.Allowed)
+            {
+                var retrySeconds = Math.Max(1, (int)Math.Ceiling(limit.RetryAfter.TotalSeconds));
+                return await CompleteAsync(
+                    new PhoneAuthOutcome(
+                        PhoneAuthResultCode.RateLimited,
+                        $"Too many login requests. Try again in {retrySeconds} seconds."),
+                    selectedPhone,
+                    selectedConnection,
+                    requestId,
+                    suspicious: false);
+            }
 
             var request = challengeGenerator.Create(
                 configuration.ComputerId,

@@ -9,9 +9,11 @@ public sealed class ProximityUnlockResultSignal : IDisposable
 {
     public const string TrustedPhoneEventName = @"Global\PhoneUnlock.ProximityUnlockSucceeded.TrustedPhone";
     public const string RoomSensorEventName = @"Global\PhoneUnlock.ProximityUnlockSucceeded.RoomSensor";
+    public const string PhoneBiometricEventName = @"Global\PhoneUnlock.ProximityUnlockSucceeded.PhoneBiometric";
 
     private readonly EventWaitHandle? trustedPhoneHandle = CreateHandle(TrustedPhoneEventName);
     private readonly EventWaitHandle? roomSensorHandle = CreateHandle(RoomSensorEventName);
+    private readonly EventWaitHandle? phoneBiometricHandle = CreateHandle(PhoneBiometricEventName);
 
     private static EventWaitHandle? CreateHandle(string name)
     {
@@ -49,6 +51,12 @@ public sealed class ProximityUnlockResultSignal : IDisposable
                 source = ProximityUnlockSource.RoomSensor;
                 return true;
             }
+
+            if (phoneBiometricHandle?.WaitOne(0) == true)
+            {
+                source = ProximityUnlockSource.PhoneBiometric;
+                return true;
+            }
         }
         catch (ObjectDisposedException)
         {
@@ -61,5 +69,6 @@ public sealed class ProximityUnlockResultSignal : IDisposable
     {
         trustedPhoneHandle?.Dispose();
         roomSensorHandle?.Dispose();
+        phoneBiometricHandle?.Dispose();
     }
 }

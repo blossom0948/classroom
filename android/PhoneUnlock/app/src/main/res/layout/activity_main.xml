@@ -19,13 +19,13 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingStart="20dp"
-            android:paddingTop="20dp"
+            android:paddingTop="28dp"
             android:paddingEnd="20dp"
             android:paddingBottom="126dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="64dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -35,18 +35,21 @@
                     android:layout_weight="1"
                     android:text="Phone Unlock"
                     android:textColor="@color/brand_on_surface"
-                    android:textSize="28sp"
+                    android:textSize="27sp"
                     android:textStyle="bold" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/updateButton"
-                    style="@style/Widget.Material3.Button.TextButton"
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:minHeight="40dp"
-                    android:text="업데이트"
-                    android:textColor="@color/brand_muted"
-                    android:textSize="12sp" />
+                    android:background="@drawable/result_background"
+                    android:paddingStart="12dp"
+                    android:paddingTop="7dp"
+                    android:paddingEnd="12dp"
+                    android:paddingBottom="7dp"
+                    android:text="보안 연결"
+                    android:textColor="@color/brand_primary"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <TextView
@@ -64,11 +67,142 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
+                <GridLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="22dp"
+                    android:columnCount="2">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:text="내 PC"
+                        android:textColor="@color/brand_on_surface"
+                        android:textSize="21sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/pcStateStatusText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="end"
+                        android:text="상태 확인 중"
+                        android:textColor="@color/brand_muted"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+                </GridLayout>
+
+                <FrameLayout
+                    android:id="@+id/pcMonitorFrame"
+                    android:layout_width="match_parent"
+                    android:layout_height="204dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/pc_monitor_bezel"
+                    android:padding="10dp">
+
+                    <FrameLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent">
+
+                        <FrameLayout
+                            android:id="@+id/pcOfflineScreen"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="@drawable/pc_off_screen">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="center"
+                                android:text="전원 꺼짐 또는 오프라인"
+                                android:textColor="#747782"
+                                android:textSize="13sp" />
+                        </FrameLayout>
+
+                        <FrameLayout
+                            android:id="@+id/pcLockScreen"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="@drawable/pc_lock_screen"
+                            android:visibility="gone">
+                            <LinearLayout
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="center"
+                                android:gravity="center"
+                                android:orientation="vertical">
+                                <TextClock
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:format12Hour="h:mm"
+                                    android:format24Hour="HH:mm"
+                                    android:textColor="#FFFFFF"
+                                    android:textSize="36sp"
+                                    android:textStyle="bold" />
+                                <TextClock
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:format12Hour="M월 d일 EEEE"
+                                    android:format24Hour="M월 d일 EEEE"
+                                    android:textColor="#DCE8FF"
+                                    android:textSize="12sp" />
+                            </LinearLayout>
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="bottom|center_horizontal"
+                                android:layout_marginBottom="14dp"
+                                android:text="🔒 잠김"
+                                android:textColor="#EAF0FF"
+                                android:textSize="12sp" />
+                        </FrameLayout>
+
+                        <FrameLayout
+                            android:id="@+id/pcUnlockedScreen"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="@drawable/pc_desktop_screen"
+                            android:visibility="gone">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="center"
+                                android:text="▦"
+                                android:textColor="#70B8FF"
+                                android:textSize="62sp" />
+                            <View
+                                android:layout_width="match_parent"
+                                android:layout_height="18dp"
+                                android:layout_gravity="bottom"
+                                android:background="#B30B1322" />
+                            <TextClock
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="bottom|end"
+                                android:layout_marginEnd="8dp"
+                                android:layout_marginBottom="2dp"
+                                android:format12Hour="h:mm"
+                                android:format24Hour="HH:mm"
+                                android:textColor="#F2F6FF"
+                                android:textSize="9sp" />
+                        </FrameLayout>
+                    </FrameLayout>
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/pcStateRouteText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="최근 상태를 기다리는 중"
+                    android:textColor="@color/brand_muted"
+                    android:textSize="12sp" />
+
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="25dp"
-                    android:text="컴퓨터"
+                    android:layout_marginTop="24dp"
+                    android:text="빠른 제어"
                     android:textColor="@color/brand_on_surface"
                     android:textSize="21sp"
                     android:textStyle="bold" />
@@ -315,6 +449,66 @@
                         android:layout_marginTop="8dp"
                         android:text="연결" />
                 </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/automationPanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="25dp"
+                    android:text="자동화"
+                    android:textColor="@color/brand_on_surface"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    app:cardBackgroundColor="@color/brand_card"
+                    app:cardCornerRadius="22dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="@color/brand_stroke"
+                    app:strokeWidth="1dp">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="자동 잠금" android:textColor="@color/brand_on_surface" android:textSize="16sp" android:textStyle="bold" />
+                        <TextView android:id="@+id/automationStatusText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="PC 설정과 연결 상태를 확인하는 중" android:textColor="@color/brand_muted" android:textSize="13sp" />
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="16dp" android:background="@color/brand_stroke" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="재실 센서 · Smart Arrival · 거리 잠금" android:textColor="@color/brand_on_surface" android:textSize="15sp" android:textStyle="bold" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="PC 설정에서 프로필별로 관리합니다" android:textColor="@color/brand_muted" android:textSize="12sp" />
+                        <com.google.android.material.button.MaterialButton android:id="@+id/automationDiagnosticsButton" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="16dp" android:text="자동화 진단" android:textColor="@color/brand_on_surface" app:strokeColor="@color/brand_stroke" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/deckPanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="25dp" android:text="Deck" android:textColor="@color/brand_on_surface" android:textSize="22sp" android:textStyle="bold" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="앱·미디어·Windows 동작을 휴대폰 버튼으로 실행" android:textColor="@color/brand_muted" android:textSize="12sp" />
+                <com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" app:cardBackgroundColor="@color/brand_card" app:cardCornerRadius="22dp" app:cardElevation="0dp" app:strokeColor="@color/brand_stroke" app:strokeWidth="1dp">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
+                        <GridLayout android:layout_width="match_parent" android:layout_height="150dp" android:columnCount="3" android:rowCount="2" android:useDefaultMargins="true">
+                            <TextView style="@style/Widget.PhoneUnlock.DeckPreview" android:text="▶\n재생" />
+                            <TextView style="@style/Widget.PhoneUnlock.DeckPreview" android:text="+\n볼륨" />
+                            <TextView style="@style/Widget.PhoneUnlock.DeckPreview" android:text="◎\n브라우저" />
+                            <TextView style="@style/Widget.PhoneUnlock.DeckPreview" android:text="▰\n탐색기" />
+                            <TextView style="@style/Widget.PhoneUnlock.DeckPreview" android:text="▣\n바탕화면" />
+                            <TextView style="@style/Widget.PhoneUnlock.DeckPreview" android:text="⌗\n캡처" />
+                        </GridLayout>
+                        <com.google.android.material.button.MaterialButton android:id="@+id/openDeckButton" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="12dp" android:text="가로 Deck 열기" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:gravity="center" android:text="버튼을 길게 눌러 동작 변경" android:textColor="@color/brand_muted" android:textSize="12sp" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
 
             <LinearLayout
@@ -576,6 +770,17 @@
                             android:textColor="@color/brand_on_surface"
                             app:strokeColor="@color/brand_stroke" />
 
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/walletCompatibilityButton"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:minHeight="46dp"
+                            android:text="Samsung Wallet VPN 호환 설정"
+                            android:textColor="@color/brand_on_surface"
+                            app:strokeColor="@color/brand_stroke" />
+
                         <TextView
                             android:id="@+id/diagnosticsText"
                             android:layout_width="match_parent"
@@ -594,6 +799,33 @@
                             android:text="이 PC 등록 해제"
                             android:textColor="@color/brand_error"
                             android:textSize="12sp" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="21dp"
+                    android:text="계정 및 앱 정보"
+                    android:textColor="@color/brand_on_surface"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="9dp"
+                    app:cardBackgroundColor="@color/brand_card"
+                    app:cardCornerRadius="18dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="@color/brand_stroke"
+                    app:strokeWidth="1dp">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <TextView android:id="@+id/googleAccountStatusText" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Google 계정 연결 안 됨" android:textColor="@color/brand_muted" android:textSize="13sp" />
+                        <com.google.android.material.button.MaterialButton android:id="@+id/googleSignInButton" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="10dp" android:text="Google로 로그인" android:textColor="@color/brand_on_surface" app:strokeColor="@color/brand_stroke" />
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="16dp" android:layout_marginBottom="16dp" android:background="@color/brand_stroke" />
+                        <TextView android:id="@+id/versionText" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Phone Unlock" android:textColor="@color/brand_muted" android:textSize="13sp" />
+                        <com.google.android.material.button.MaterialButton android:id="@+id/updateButton" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="10dp" android:text="업데이트 확인" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
@@ -657,10 +889,10 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|start"
         android:layout_marginStart="18dp"
-        android:layout_marginEnd="86dp"
+        android:layout_marginEnd="88dp"
         android:layout_marginBottom="16dp"
         app:cardBackgroundColor="@color/brand_nav"
-        app:cardCornerRadius="34dp"
+        app:cardCornerRadius="37dp"
         app:cardElevation="10dp"
         app:strokeColor="@color/brand_stroke"
         app:strokeWidth="1dp">
@@ -668,12 +900,12 @@
         <com.google.android.material.bottomnavigation.BottomNavigationView
             android:id="@+id/bottomNavigation"
             android:layout_width="match_parent"
-            android:layout_height="68dp"
+            android:layout_height="74dp"
             android:background="@android:color/transparent"
             android:clipToPadding="false"
             app:itemIconTint="@color/bottom_nav_item_colors"
             app:itemActiveIndicatorStyle="@style/Widget.PhoneUnlock.BottomNavigation.ActiveIndicator"
-            app:itemIconSize="23dp"
+            app:itemIconSize="22dp"
             app:itemHorizontalTranslationEnabled="false"
             app:itemTextColor="@color/bottom_nav_item_colors"
             app:itemRippleColor="@android:color/transparent"

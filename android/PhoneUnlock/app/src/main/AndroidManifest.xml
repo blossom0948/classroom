@@ -45,6 +45,11 @@
             android:exported="false"
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
+        <activity
+            android:name=".StreamDeckActivity"
+            android:configChanges="orientation|screenSize"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape" />
         <receiver
             android:name=".widget.PcWidgetProvider"
             android:exported="false">

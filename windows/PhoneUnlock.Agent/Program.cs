@@ -40,6 +40,25 @@ static async Task RunAgentAsync(AgentTrayContext tray, CancellationToken stoppin
             using var reader = new StreamReader(pipe, Encoding.UTF8, false, leaveOpen: true);
             await using var writer = new StreamWriter(pipe, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
             await writer.WriteLineAsync("READY");
+            await writer.WriteLineAsync($"SESSION|{(tray.IsWorkstationLocked ? "LOCKED" : "UNLOCKED")}");
+            void PublishSessionState(bool locked)
+            {
+                try
+                {
+                    lock (writer)
+                    {
+                        if (pipe.IsConnected)
+                        {
+                            writer.WriteLine($"SESSION|{(locked ? "LOCKED" : "UNLOCKED")}");
+                        }
+                    }
+                }
+                catch (IOException)
+                {
+                    // The next pipe connection publishes a fresh state.
+                }
+            }
+            tray.WorkstationLockStateChanged += PublishSessionState;
             using var rssiWatcher = new BluetoothRssiWatcher((phoneId, rssi) =>
             {
                 try
@@ -83,18 +102,29 @@ static async Task RunAgentAsync(AgentTrayContext tray, CancellationToken stoppin
                 // Bluetooth is optional. Phone heartbeat and presence sensors remain available.
             }
 
-            while (pipe.IsConnected && !stoppingToken.IsCancellationRequested)
+            try
             {
-                var command = await reader.ReadLineAsync(stoppingToken);
-                if (command is null) break;
-                if (string.Equals(command, "LOCK", StringComparison.Ordinal))
+                while (pipe.IsConnected && !stoppingToken.IsCancellationRequested)
                 {
-                    LockWorkStation();
+                    var command = await reader.ReadLineAsync(stoppingToken);
+                    if (command is null) break;
+                    if (string.Equals(command, "LOCK", StringComparison.Ordinal))
+                    {
+                        LockWorkStation();
+                    }
+                    else if (command.StartsWith("NOTICE|", StringComparison.Ordinal))
+                    {
+                        ShowNotice(tray, command);
+                    }
+                    else if (command.StartsWith("DECK|", StringComparison.Ordinal))
+                    {
+                        ExecuteDeckAction(command["DECK|".Length..]);
+                    }
                 }
-                else if (command.StartsWith("NOTICE|", StringComparison.Ordinal))
-                {
-                    ShowNotice(tray, command);
-                }
+            }
+            finally
+            {
+                tray.WorkstationLockStateChanged -= PublishSessionState;
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -135,9 +165,58 @@ static void LockWorkStation()
     _ = NativeMethods.LockWorkStation();
 }
 
+static void ExecuteDeckAction(string action)
+{
+    switch (action)
+    {
+        case "MEDIA_PLAY_PAUSE": NativeMethods.PressKey(0xB3); break;
+        case "MEDIA_NEXT": NativeMethods.PressKey(0xB0); break;
+        case "MEDIA_PREVIOUS": NativeMethods.PressKey(0xB1); break;
+        case "VOLUME_UP": NativeMethods.PressKey(0xAF); break;
+        case "VOLUME_DOWN": NativeMethods.PressKey(0xAE); break;
+        case "VOLUME_MUTE": NativeMethods.PressKey(0xAD); break;
+        case "SCREENSHOT": NativeMethods.PressKey(0x2C); break;
+        case "SHOW_DESKTOP": NativeMethods.PressChord(0x5B, 0x44); break;
+        case "OPEN_EXPLORER": StartTarget("explorer.exe"); break;
+        case "OPEN_BROWSER": StartTarget("https://www.google.com"); break;
+        case "OPEN_SPOTIFY": StartTarget("spotify:"); break;
+        case "OPEN_STEAM": StartTarget("steam:"); break;
+    }
+}
+
+static void StartTarget(string target)
+{
+    try
+    {
+        Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+    }
+    catch (Exception) when (OperatingSystem.IsWindows())
+    {
+        // Optional applications may not be installed.
+    }
+}
+
 static class NativeMethods
 {
+    private const uint KeyEventKeyUp = 0x0002;
     [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     public static extern bool LockWorkStation();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
+
+    public static void PressKey(byte virtualKey)
+    {
+        keybd_event(virtualKey, 0, 0, UIntPtr.Zero);
+        keybd_event(virtualKey, 0, KeyEventKeyUp, UIntPtr.Zero);
+    }
+
+    public static void PressChord(byte modifier, byte key)
+    {
+        keybd_event(modifier, 0, 0, UIntPtr.Zero);
+        keybd_event(key, 0, 0, UIntPtr.Zero);
+        keybd_event(key, 0, KeyEventKeyUp, UIntPtr.Zero);
+        keybd_event(modifier, 0, KeyEventKeyUp, UIntPtr.Zero);
+    }
 }

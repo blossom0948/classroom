@@ -2,6 +2,11 @@ plugins {
     id("com.android.application")
 }
 
+val hasFirebaseConfig = file("google-services.json").isFile
+if (hasFirebaseConfig) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 val releaseKeystorePath = providers.environmentVariable("PHONE_UNLOCK_KEYSTORE_PATH").orNull
 val releaseKeystorePassword = providers.environmentVariable("PHONE_UNLOCK_KEYSTORE_PASSWORD").orNull
 val releaseKeyAlias = providers.environmentVariable("PHONE_UNLOCK_KEY_ALIAS").orNull
@@ -21,8 +26,9 @@ android {
         applicationId = "com.example.phoneunlock"
         minSdk = 30
         targetSdk = 36
-        versionCode = 22
-        versionName = "0.4.0-beta.20"
+        versionCode = 23
+        versionName = "0.4.0-beta.21"
+        buildConfigField("boolean", "HAS_FIREBASE_CONFIG", hasFirebaseConfig.toString())
     }
 
     signingConfigs {
@@ -68,6 +74,12 @@ dependencies {
     implementation("com.google.android.material:material:1.13.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
 }
 
 gradle.taskGraph.whenReady {

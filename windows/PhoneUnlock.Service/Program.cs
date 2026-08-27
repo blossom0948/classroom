@@ -31,6 +31,7 @@ builder.Services.AddSingleton<WindowsAccountValidator>();
 builder.Services.AddSingleton<PairingCoordinator>();
 builder.Services.AddSingleton<PhoneConnectionRegistry>();
 builder.Services.AddSingleton<PhoneAuthenticationCoordinator>();
+builder.Services.AddSingleton<AuthenticationRequestLimiter>();
 builder.Services.AddSingleton<ProximityUnlockSignal>();
 builder.Services.AddSingleton<ProximityUnlockResultSignal>();
 builder.Services.AddSingleton<RemoteUnlockGrantStore>();
@@ -38,6 +39,7 @@ builder.Services.AddSingleton<RemotePowerController>();
 builder.Services.AddSingleton<WorkstationLockSignal>();
 builder.Services.AddSingleton<AgentConnectionState>();
 builder.Services.AddSingleton<AgentNotificationQueue>();
+builder.Services.AddSingleton<AgentCommandQueue>();
 builder.Services.AddHostedService<SetupPipeService>();
 builder.Services.AddHostedService<AuthPipeService>();
 builder.Services.AddHostedService<AgentPipeService>();
@@ -45,6 +47,7 @@ builder.Services.AddHostedService<ProximityPresenceService>();
 builder.Services.AddHostedService<RemoteUnlockService>();
 builder.Services.AddHostedService<RemoteLockService>();
 builder.Services.AddHostedService<RemotePowerService>();
+builder.Services.AddHostedService<DeckActionService>();
 
 var app = builder.Build();
 app.UseWebSockets(new WebSocketOptions

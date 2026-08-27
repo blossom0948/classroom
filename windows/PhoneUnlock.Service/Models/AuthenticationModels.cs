@@ -8,6 +8,7 @@ public enum PhoneAuthResultCode
     Expired,
     InvalidResponse,
     Timeout,
+    RateLimited,
     NotConfigured,
     InternalError
 }

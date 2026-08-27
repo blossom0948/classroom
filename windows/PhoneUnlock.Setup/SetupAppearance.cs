@@ -62,10 +62,13 @@ internal static class SetupAppearance
 
     private static void SetBrush(Application application, string key, string color)
     {
-        if (application.Resources[key] is SolidColorBrush brush)
-        {
-            brush.Color = (Color)ColorConverter.ConvertFromString(color);
-        }
+        // Brushes loaded from compiled XAML can be frozen by WPF. Mutating a
+        // frozen brush crashes the setup app before its first window appears.
+        // Replacing the resource keeps DynamicResource consumers up to date
+        // and is safe regardless of the original brush's frozen state.
+        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
+        brush.Freeze();
+        application.Resources[key] = brush;
     }
 
     private static bool IsSystemDark() => SystemParameters.HighContrast

@@ -3,13 +3,21 @@
     <item
         android:id="@+id/nav_pc"
         android:icon="@drawable/ic_nav_pc"
-        android:title="PC" />
+        android:title="홈" />
     <item
         android:id="@+id/nav_automation"
         android:icon="@drawable/ic_nav_automation"
         android:title="자동화" />
     <item
+        android:id="@+id/nav_deck"
+        android:icon="@drawable/ic_nav_deck"
+        android:title="Deck" />
+    <item
         android:id="@+id/nav_history"
         android:icon="@drawable/ic_nav_history"
-        android:title="기록" />
+        android:title="활동" />
+    <item
+        android:id="@+id/nav_settings"
+        android:icon="@drawable/ic_nav_settings"
+        android:title="설정" />
 </menu>

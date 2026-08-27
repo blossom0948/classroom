@@ -17,12 +17,16 @@ constexpr wchar_t TrustedPhoneUnlockSucceededEventName[] =
     L"Global\\PhoneUnlock.ProximityUnlockSucceeded.TrustedPhone";
 constexpr wchar_t RoomSensorUnlockSucceededEventName[] =
     L"Global\\PhoneUnlock.ProximityUnlockSucceeded.RoomSensor";
+constexpr wchar_t PhoneBiometricUnlockSucceededEventName[] =
+    L"Global\\PhoneUnlock.ProximityUnlockSucceeded.PhoneBiometric";
 
 void SignalProximityUnlockSucceeded(int source)
 {
     const wchar_t* eventName = source == 2
         ? RoomSensorUnlockSucceededEventName
-        : TrustedPhoneUnlockSucceededEventName;
+        : source == 3
+            ? PhoneBiometricUnlockSucceededEventName
+            : TrustedPhoneUnlockSucceededEventName;
     HANDLE event = OpenEventW(EVENT_MODIFY_STATE, FALSE, eventName);
     if (event != nullptr)
     {
@@ -211,7 +215,14 @@ HRESULT PhoneUnlockCredential::GetSerialization(
         ? proximityUnlockPending_->exchange(0)
         : 0;
     const bool proximityOnly = proximityUnlockSource_ != 0;
-    SetStatus(proximityOnly ? L"휴대폰 근접 자동 해제 확인 중…" : L"휴대폰 승인 대기 중…");
+    const wchar_t* waitingStatus = proximityUnlockSource_ == 2
+        ? L"재실 센서 자동 해제 확인 중…"
+        : proximityUnlockSource_ == 3
+            ? L"휴대폰 생체인식 승인 확인 중…"
+            : proximityUnlockSource_ == 1
+                ? L"인증된 휴대폰 근접 자동 해제 확인 중…"
+                : L"휴대폰 승인 대기 중…";
+    SetStatus(waitingStatus);
     PhoneUnlockCredentialData credential;
     std::wstring error;
     HRESULT result = proximityOnly
@@ -250,7 +261,17 @@ HRESULT PhoneUnlockCredential::GetSerialization(
     {
         serialization->clsidCredentialProvider = CLSID_PhoneUnlockProvider;
         *response = CPGSR_RETURN_CREDENTIAL_FINISHED;
-        SetStatus(L"지문 승인 완료 · Windows 로그인 중…");
+        if (proximityUnlockSource_ == 0)
+        {
+            // A normal tile request also finishes through phone biometrics.
+            // Keep its success source separate from passive proximity.
+            proximityUnlockSource_ = 3;
+        }
+        SetStatus(proximityUnlockSource_ == 2
+            ? L"재실 센서 승인 완료 · Windows 로그인 중…"
+            : proximityUnlockSource_ == 1
+                ? L"인증된 휴대폰 감지 완료 · Windows 로그인 중…"
+                : L"휴대폰 생체인식 완료 · Windows 로그인 중…");
     }
     else
     {

@@ -10,10 +10,12 @@ public sealed class ProximityUnlockSignal : IDisposable
     public const string EventName = @"Global\PhoneUnlock.ProximityUnlock";
     public const string TrustedPhoneEventName = @"Global\PhoneUnlock.ProximityUnlock.TrustedPhone";
     public const string RoomSensorEventName = @"Global\PhoneUnlock.ProximityUnlock.RoomSensor";
+    public const string PhoneBiometricEventName = @"Global\PhoneUnlock.ProximityUnlock.PhoneBiometric";
 
     private readonly EventWaitHandle? handle = CreateHandle(EventName);
     private readonly EventWaitHandle? trustedPhoneHandle = CreateHandle(TrustedPhoneEventName);
     private readonly EventWaitHandle? roomSensorHandle = CreateHandle(RoomSensorEventName);
+    private readonly EventWaitHandle? phoneBiometricHandle = CreateHandle(PhoneBiometricEventName);
 
     private static EventWaitHandle? CreateHandle(string name)
     {
@@ -47,6 +49,9 @@ public sealed class ProximityUnlockSignal : IDisposable
                 case ProximityUnlockSource.RoomSensor:
                     roomSensorHandle?.Set();
                     break;
+                case ProximityUnlockSource.PhoneBiometric:
+                    phoneBiometricHandle?.Set();
+                    break;
             }
             // Keep the original event for older credential providers during an upgrade.
             handle?.Set();
@@ -63,6 +68,7 @@ public sealed class ProximityUnlockSignal : IDisposable
             handle?.Reset();
             trustedPhoneHandle?.Reset();
             roomSensorHandle?.Reset();
+            phoneBiometricHandle?.Reset();
         }
         catch (ObjectDisposedException)
         {
@@ -74,6 +80,7 @@ public sealed class ProximityUnlockSignal : IDisposable
         handle?.Dispose();
         trustedPhoneHandle?.Dispose();
         roomSensorHandle?.Dispose();
+        phoneBiometricHandle?.Dispose();
     }
 }
 
@@ -81,4 +88,5 @@ public enum ProximityUnlockSource
 {
     TrustedPhone = 1,
     RoomSensor = 2,
+    PhoneBiometric = 3,
 }

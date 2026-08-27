@@ -2,9 +2,9 @@
 <resources>
     <style name="Widget.PhoneUnlock.BottomNavigation.ActiveIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
         <item name="android:color">@color/brand_nav_active</item>
-        <item name="android:width">76dp</item>
-        <item name="android:height">48dp</item>
-        <item name="marginHorizontal">4dp</item>
+        <item name="android:width">58dp</item>
+        <item name="android:height">54dp</item>
+        <item name="marginHorizontal">2dp</item>
     </style>
 
     <style name="Theme.PhoneUnlock" parent="Theme.Material3.DayNight.NoActionBar">
@@ -19,5 +19,30 @@
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowBackground">@color/brand_surface</item>
         <item name="android:windowActionModeOverlay">true</item>
+    </style>
+
+    <style name="Widget.PhoneUnlock.DeckKey" parent="Widget.Material3.Button.TonalButton">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_rowWeight">1</item>
+        <item name="android:layout_columnWeight">1</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:minHeight">72dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/brand_on_surface</item>
+        <item name="backgroundTint">@color/brand_card_alt</item>
+        <item name="cornerRadius">18dp</item>
+    </style>
+
+    <style name="Widget.PhoneUnlock.DeckPreview">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_rowWeight">1</item>
+        <item name="android:layout_columnWeight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:background">@drawable/result_background</item>
+        <item name="android:textColor">@color/brand_on_surface</item>
+        <item name="android:textSize">12sp</item>
     </style>
 </resources>

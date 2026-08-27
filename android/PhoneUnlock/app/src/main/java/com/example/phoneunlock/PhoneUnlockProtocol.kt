@@ -173,6 +173,17 @@ object PhoneUnlockProtocol {
         return envelope("REMOTE_POWER_REQUEST", payload).toString(2)
     }
 
+    fun deckAction(computerId: UUID, phoneId: String, action: String): String {
+        require(action in DECK_ACTIONS) { "허용되지 않은 Deck 동작입니다." }
+        val payload = JSONObject()
+            .put("requestId", UUID.randomUUID().toString().lowercase())
+            .put("computerId", computerId.toString().lowercase())
+            .put("expiresAt", Instant.now().epochSecond + 30)
+            .put("phoneId", phoneId)
+            .put("action", action)
+        return envelope("DECK_ACTION", payload).toString(2)
+    }
+
     private fun envelope(type: String, payload: JSONObject): JSONObject = JSONObject()
         .put("version", VERSION)
         .put("type", type)
@@ -192,4 +203,11 @@ object PhoneUnlockProtocol {
             "challenge는 padding을 포함한 표준 Base64여야 합니다."
         }
     }
+
+    val DECK_ACTIONS = setOf(
+        "MEDIA_PLAY_PAUSE", "MEDIA_NEXT", "MEDIA_PREVIOUS",
+        "VOLUME_UP", "VOLUME_DOWN", "VOLUME_MUTE",
+        "SCREENSHOT", "SHOW_DESKTOP", "OPEN_EXPLORER",
+        "OPEN_BROWSER", "OPEN_SPOTIFY", "OPEN_STEAM",
+    )
 }

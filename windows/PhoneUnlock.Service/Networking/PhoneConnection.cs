@@ -14,7 +14,8 @@ public sealed class PhoneConnection(
     ILogger<PhoneConnection> logger,
     Action<string> remoteUnlockHandler,
     Action<string> remoteLockHandler,
-    Action<string> remotePowerHandler) : IAsyncDisposable
+    Action<string> remotePowerHandler,
+    Action<string> deckActionHandler) : IAsyncDisposable
 {
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<string>> pending = new();
     private readonly SemaphoreSlim sendGate = new(1, 1);
@@ -118,6 +119,30 @@ public sealed class PhoneConnection(
         return SendTextAsync(ProtocolJson.SerializeCompact(envelope), cancellationToken);
     }
 
+    public Task SendPcStateAsync(
+        Guid computerId,
+        string computerName,
+        string sessionState,
+        CancellationToken cancellationToken)
+    {
+        var envelope = new
+        {
+            version = ProtocolConstants.Version,
+            type = ProtocolConstants.PcState,
+            messageId = Guid.NewGuid(),
+            timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            payload = new
+            {
+                computerId,
+                computerName,
+                powerState = "ON",
+                sessionState,
+                observedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            }
+        };
+        return SendTextAsync(ProtocolJson.SerializeCompact(envelope), cancellationToken);
+    }
+
     public async Task RunReceiveLoopAsync(CancellationToken cancellationToken)
     {
         var buffer = new byte[8192];
@@ -212,6 +237,12 @@ public sealed class PhoneConnection(
             if (type == ProtocolConstants.RemotePowerRequest)
             {
                 remotePowerHandler(json);
+                return;
+            }
+
+            if (type == ProtocolConstants.DeckAction)
+            {
+                deckActionHandler(json);
                 return;
             }
 

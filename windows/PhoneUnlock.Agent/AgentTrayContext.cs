@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace PhoneUnlock.Agent;
 
@@ -11,6 +12,8 @@ internal sealed class AgentTrayContext : ApplicationContext
     private readonly SynchronizationContext uiContext;
 
     public CancellationToken StoppingToken => stopSource.Token;
+    public bool IsWorkstationLocked { get; private set; }
+    public event Action<bool>? WorkstationLockStateChanged;
 
     public AgentTrayContext()
     {
@@ -40,12 +43,14 @@ internal sealed class AgentTrayContext : ApplicationContext
             Visible = true
         };
         notifyIcon.DoubleClick += (_, _) => OpenSettings();
+        SystemEvents.SessionSwitch += SystemEvents_SessionSwitch;
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
+            SystemEvents.SessionSwitch -= SystemEvents_SessionSwitch;
             stopSource.Cancel();
             notifyIcon.Visible = false;
             notifyIcon.Dispose();
@@ -53,6 +58,23 @@ internal sealed class AgentTrayContext : ApplicationContext
 
         stopSource.Dispose();
         base.Dispose(disposing);
+    }
+
+    private void SystemEvents_SessionSwitch(object sender, SessionSwitchEventArgs e)
+    {
+        bool? locked = e.Reason switch
+        {
+            SessionSwitchReason.SessionLock => true,
+            SessionSwitchReason.SessionUnlock => false,
+            _ => null,
+        };
+        if (locked is null || IsWorkstationLocked == locked.Value)
+        {
+            return;
+        }
+
+        IsWorkstationLocked = locked.Value;
+        WorkstationLockStateChanged?.Invoke(locked.Value);
     }
 
     private static void OpenSettings()
