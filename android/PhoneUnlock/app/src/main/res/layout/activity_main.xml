@@ -498,12 +498,12 @@
                 <com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" app:cardBackgroundColor="@color/brand_card" app:cardCornerRadius="22dp" app:cardElevation="0dp" app:strokeColor="@color/brand_stroke" app:strokeWidth="1dp">
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
                         <GridLayout android:layout_width="match_parent" android:layout_height="150dp" android:columnCount="3" android:rowCount="2" android:useDefaultMargins="true">
-                            <TextView style="@style/Widget.PhoneUnlock.DeckPreview" android:text="▶\n재생" />
-                            <TextView style="@style/Widget.PhoneUnlock.DeckPreview" android:text="+\n볼륨" />
-                            <TextView style="@style/Widget.PhoneUnlock.DeckPreview" android:text="◎\n브라우저" />
-                            <TextView style="@style/Widget.PhoneUnlock.DeckPreview" android:text="▰\n탐색기" />
-                            <TextView style="@style/Widget.PhoneUnlock.DeckPreview" android:text="▣\n바탕화면" />
-                            <TextView style="@style/Widget.PhoneUnlock.DeckPreview" android:text="⌗\n캡처" />
+                            <TextView style="@style/PhoneUnlockDeckPreview" android:text="▶\n재생" />
+                            <TextView style="@style/PhoneUnlockDeckPreview" android:text="+\n볼륨" />
+                            <TextView style="@style/PhoneUnlockDeckPreview" android:text="◎\n브라우저" />
+                            <TextView style="@style/PhoneUnlockDeckPreview" android:text="▰\n탐색기" />
+                            <TextView style="@style/PhoneUnlockDeckPreview" android:text="▣\n바탕화면" />
+                            <TextView style="@style/PhoneUnlockDeckPreview" android:text="⌗\n캡처" />
                         </GridLayout>
                         <com.google.android.material.button.MaterialButton android:id="@+id/openDeckButton" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="12dp" android:text="가로 Deck 열기" />
                         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:gravity="center" android:text="버튼을 길게 눌러 동작 변경" android:textColor="@color/brand_muted" android:textSize="12sp" />
