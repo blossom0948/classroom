@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Blossom.Classroom.Student.Service.Tests</RootNamespace>
+    <AssemblyName>Classroom.Student.Service.Tests</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Classroom.Core\Classroom.Core.csproj" />
+    <ProjectReference Include="..\..\src\Classroom.Protocol\Classroom.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\Classroom.Student.Service\Classroom.Student.Service.csproj" />
+  </ItemGroup>
+</Project>

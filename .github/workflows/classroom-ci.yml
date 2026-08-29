@@ -1,0 +1,67 @@
+name: Classroom build and package
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  classroom-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build Classroom solution
+        run: dotnet build Classroom.sln -c Release --nologo
+
+      - name: Run Classroom self-tests
+        shell: pwsh
+        run: |
+          $tests = @(
+            'tests/Classroom.Core.Tests/Classroom.Core.Tests.csproj',
+            'tests/Classroom.Protocol.Tests/Classroom.Protocol.Tests.csproj',
+            'tests/Classroom.Server.Tests/Classroom.Server.Tests.csproj',
+            'tests/Classroom.Student.Service.Tests/Classroom.Student.Service.Tests.csproj'
+          )
+          foreach ($test in $tests) {
+            dotnet run --project $test -c Release --no-build --nologo
+            if ($LASTEXITCODE -ne 0) {
+              throw "Classroom self-test failed: $test"
+            }
+          }
+
+      - name: Publish Classroom Windows package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:GITHUB_WORKSPACE 'artifacts/classroom'
+          $package = Join-Path $root 'package'
+          New-Item -ItemType Directory -Path $package -Force | Out-Null
+
+          dotnet publish src/Classroom.Server/Classroom.Server.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -o (Join-Path $package 'server')
+          dotnet publish src/Classroom.Student.Service/Classroom.Student.Service.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -o (Join-Path $package 'student-service')
+          dotnet publish src/Classroom.Student.Desktop/Classroom.Student.Desktop.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -o (Join-Path $package 'student-desktop')
+
+          Copy-Item scripts/install/* $package -Force
+          Copy-Item docs/CLASSROOM_MVP.md $package -Force
+          Compress-Archive -Path (Join-Path $package '*') `
+            -DestinationPath (Join-Path $root 'Classroom-Windows-x64.zip') -Force
+
+      - name: Upload Classroom package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Classroom-Windows
+          path: artifacts/classroom/Classroom-Windows-x64.zip
+          if-no-files-found: error

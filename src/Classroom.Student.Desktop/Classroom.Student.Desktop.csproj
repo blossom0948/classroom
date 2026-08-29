@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>Blossom.Classroom.Student.Desktop</RootNamespace>
+    <AssemblyName>Classroom.Student.Desktop</AssemblyName>
+    <Version>0.1.0-dev</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Classroom.Core\Classroom.Core.csproj" />
+    <ProjectReference Include="..\Classroom.Protocol\Classroom.Protocol.csproj" />
+  </ItemGroup>
+</Project>

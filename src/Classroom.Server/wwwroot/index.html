@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Classroom Teacher Console</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <section id="login-view" class="login-shell">
+    <div class="login-card">
+      <div class="eyebrow">BLOSSOM CLASSROOM</div>
+      <h1>수업을 한눈에<br>안전하게 관리하세요.</h1>
+      <p class="muted">담당 학급의 장치 상태와 수업 명령을 한 화면에서 확인합니다.</p>
+      <form id="login-form" class="stack">
+        <label>교사 계정<input id="login-name" autocomplete="username" required placeholder="teacher"></label>
+        <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" required></label>
+        <button class="primary wide" type="submit">로그인</button>
+        <p id="login-error" class="error" hidden></p>
+      </form>
+      <p class="login-hint">개발 환경 기본 계정: <code>teacher</code> / <code>ChangeMe!Classroom123</code></p>
+    </div>
+  </section>
+
+  <div id="app-view" class="app-shell" hidden>
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">C</span><span>Classroom</span></div>
+      <nav class="nav" aria-label="주 메뉴">
+        <button class="nav-item active" data-section="class"><span>▦</span> 수업</button>
+        <button class="nav-item" data-section="activity"><span>◌</span> 활동</button>
+        <button class="nav-item" data-section="history"><span>↺</span> 기록</button>
+        <button class="nav-item" data-section="settings"><span>⚙</span> 설정</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="teacher-chip"><span class="avatar">교</span><div><strong id="teacher-name">교사</strong><small>Teacher</small></div></div>
+        <button id="logout-button" class="ghost-button">로그아웃</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">TODAY'S CLASS</div>
+          <div class="class-picker"><select id="class-select" aria-label="학급 선택"></select><span id="class-subject"></span></div>
+        </div>
+        <div class="top-actions"><span id="last-updated" class="muted small">연결 준비 중</span><button id="enroll-button" class="secondary">장치 등록</button><button id="end-session-button" class="danger-outline" hidden>수업 종료</button></div>
+      </header>
+
+      <section id="class-section" class="section-view">
+        <div class="hero-row">
+          <div><h2>수업 현황</h2><p id="session-caption" class="muted">활성 수업이 없습니다.</p></div>
+          <div class="hero-stat"><strong id="online-count">0 / 0</strong><span>온라인</span></div>
+        </div>
+        <div id="offline-banner" class="notice" hidden><span class="notice-icon">!</span><span>현재 진행 중인 수업이 없습니다. 아래에서 새 수업을 시작하세요.</span><button id="start-session-button" class="primary">수업 시작</button></div>
+        <div class="toolbar">
+          <div class="filters" role="tablist"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="online">온라인</button><button class="filter" data-filter="offline">오프라인</button><button class="filter" data-filter="focus">집중 모드</button></div>
+          <div class="bulk-actions"><button id="focus-on-button" class="secondary">전체 집중</button><button id="focus-off-button" class="secondary">집중 해제</button><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL 열기</button></div>
+        </div>
+        <div id="student-grid" class="student-grid" aria-live="polite"></div>
+      </section>
+
+      <section id="activity-section" class="section-view" hidden>
+        <div class="hero-row"><div><h2>학생 활동</h2><p class="muted">현재 앱과 제한된 웹 도메인 상태입니다.</p></div></div>
+        <div id="activity-table" class="table-card"></div>
+      </section>
+
+      <section id="history-section" class="section-view" hidden>
+        <div class="hero-row"><div><h2>수업 기록</h2><p class="muted">삭제할 수 없는 서버 감사 이벤트입니다.</p></div><button id="refresh-audit-button" class="secondary">새로고침</button></div>
+        <div id="audit-list" class="audit-list"></div>
+      </section>
+
+      <section id="settings-section" class="section-view" hidden>
+        <div class="hero-row"><div><h2>설정</h2><p class="muted">현재 서버 연결과 개인정보 경계를 확인합니다.</p></div></div>
+        <div class="settings-grid"><article class="settings-card"><span class="settings-icon">●</span><h3>연결 보안</h3><p id="security-setting">Teacher session bearer token으로 연결됨</p></article><article class="settings-card"><span class="settings-icon">▣</span><h3>학생 개인정보</h3><p>화면 캡처와 원격 셸을 사용하지 않습니다. 브라우저 도메인은 extension 연결 시에만 표시됩니다.</p></article><article class="settings-card"><span class="settings-icon">◷</span><h3>상태 갱신</h3><p>학생 상태는 2초 간격으로 갱신됩니다. 학생 순서는 이름 기준으로 고정됩니다.</p></article></div>
+        <form id="password-form" class="settings-card password-card stack">
+          <div><span class="settings-icon">🔐</span><h3>교사 비밀번호 변경</h3><p>현재 비밀번호를 확인한 뒤 새 비밀번호를 저장합니다. 새 비밀번호는 12자 이상이어야 합니다.</p></div>
+          <label>현재 비밀번호<input id="current-password" type="password" autocomplete="current-password" required></label>
+          <label>새 비밀번호<input id="new-password" type="password" autocomplete="new-password" minlength="12" required></label>
+          <label>새 비밀번호 확인<input id="new-password-confirm" type="password" autocomplete="new-password" minlength="12" required></label>
+          <button class="primary" type="submit">비밀번호 변경</button>
+          <p id="password-message" class="error" hidden></p>
+        </form>
+      </section>
+    </main>
+
+    <aside id="detail-pane" class="detail-pane" hidden>
+      <button id="close-detail" class="close-button" aria-label="상세 닫기">×</button>
+      <div id="detail-content"></div>
+    </aside>
+  </div>
+
+  <dialog id="command-dialog" class="command-dialog">
+    <form method="dialog" id="command-form" class="stack">
+      <div class="dialog-heading"><span id="dialog-kicker" class="eyebrow">COMMAND</span><h2 id="dialog-title">메시지 보내기</h2></div>
+      <label id="message-field">메시지<textarea id="command-message" rows="4" maxlength="2000" placeholder="학생에게 보낼 내용을 입력하세요."></textarea></label>
+      <label id="url-field" hidden>HTTPS URL<input id="command-url" type="url" placeholder="https://example.com"></label>
+      <label id="seconds-field">표시 시간(초)<input id="command-seconds" type="number" min="1" max="3600" value="10"></label>
+      <div class="dialog-actions"><button class="secondary" value="cancel">취소</button><button id="send-command-button" class="primary" value="default">보내기</button></div>
+      <p id="dialog-error" class="error" hidden></p>
+    </form>
+  </dialog>
+  <script src="/app.js" defer></script>
+</body>
+</html>
