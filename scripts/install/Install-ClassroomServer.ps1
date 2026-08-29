@@ -88,7 +88,14 @@ $installedService.WaitForStatus("Running", [TimeSpan]::FromSeconds(20))
 $readyUrl = [UriBuilder]::new($ListenUrl)
 $readyUrl.Path = "/health/ready"
 try {
-    $ready = Invoke-RestMethod -Method Get -Uri $readyUrl.Uri -TimeoutSec 15
+    $ready = Invoke-RestMethod `
+        -Method Get `
+        -Uri $readyUrl.Uri `
+        -Headers @{
+            "X-Forwarded-For" = "127.0.0.1"
+            "X-Forwarded-Proto" = "https"
+        } `
+        -TimeoutSec 15
     if ($ready.status -ne "ready") {
         throw "준비 상태 응답이 올바르지 않습니다."
     }
