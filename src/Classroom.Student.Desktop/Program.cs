@@ -15,6 +15,7 @@ var connectionTask = client.RunAsync(
     form.ApplyCommandAsync,
     form.ShowStatus,
     form.SetConnectionState,
+    form.SetServerConnectionState,
     cancellation.Token);
 Application.Run(form);
 cancellation.Cancel();

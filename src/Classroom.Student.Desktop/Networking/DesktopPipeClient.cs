@@ -21,6 +21,7 @@ public sealed class DesktopPipeClient(
         Func<CommandRequest, Task<DesktopCommandApplyResult>> commandHandler,
         Action<DesktopStatusData> statusHandler,
         Action<bool> connectionHandler,
+        Action<bool, Guid> serverConnectionHandler,
         CancellationToken cancellationToken)
     {
         var retryDelay = TimeSpan.FromSeconds(1);
@@ -28,7 +29,12 @@ public sealed class DesktopPipeClient(
         {
             try
             {
-                await RunConnectionAsync(commandHandler, statusHandler, connectionHandler, cancellationToken);
+                await RunConnectionAsync(
+                    commandHandler,
+                    statusHandler,
+                    connectionHandler,
+                    serverConnectionHandler,
+                    cancellationToken);
                 retryDelay = TimeSpan.FromSeconds(1);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -41,6 +47,7 @@ public sealed class DesktopPipeClient(
             }
 
             connectionHandler(false);
+            serverConnectionHandler(false, Guid.Empty);
             await Task.Delay(retryDelay, cancellationToken);
             retryDelay = TimeSpan.FromSeconds(Math.Min(retryDelay.TotalSeconds * 2, 15));
         }
@@ -50,6 +57,7 @@ public sealed class DesktopPipeClient(
         Func<CommandRequest, Task<DesktopCommandApplyResult>> commandHandler,
         Action<DesktopStatusData> statusHandler,
         Action<bool> connectionHandler,
+        Action<bool, Guid> serverConnectionHandler,
         CancellationToken cancellationToken)
     {
         using var pipe = new NamedPipeClientStream(
@@ -95,7 +103,13 @@ public sealed class DesktopPipeClient(
         var statusTask = SendStatusLoopAsync(writer, writeGate, statusHandler, lifetime.Token);
         try
         {
-            await ReceiveLoopAsync(reader, writer, writeGate, commandHandler, lifetime.Token);
+            await ReceiveLoopAsync(
+                reader,
+                writer,
+                writeGate,
+                commandHandler,
+                serverConnectionHandler,
+                lifetime.Token);
         }
         finally
         {
@@ -138,6 +152,7 @@ public sealed class DesktopPipeClient(
         StreamWriter writer,
         SemaphoreSlim writeGate,
         Func<CommandRequest, Task<DesktopCommandApplyResult>> commandHandler,
+        Action<bool, Guid> serverConnectionHandler,
         CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -152,6 +167,13 @@ public sealed class DesktopPipeClient(
             var kind = document.RootElement.TryGetProperty("kind", out var kindElement)
                 ? kindElement.GetString()
                 : null;
+            if (string.Equals(kind, "server-status", StringComparison.Ordinal))
+            {
+                var serverStatus = ClassroomJson.Deserialize<DesktopServerStatusMessage>(json);
+                serverConnectionHandler(serverStatus.Connected, serverStatus.SessionId);
+                continue;
+            }
+
             if (!string.Equals(kind, "command", StringComparison.Ordinal))
             {
                 throw new InvalidDataException("Unexpected Student Service IPC message.");
@@ -217,6 +239,11 @@ public sealed class DesktopPipeClient(
         int? BatteryPercent,
         string? NetworkStatus,
         bool PolicyApplied);
+
+    private sealed record DesktopServerStatusMessage(
+        string Kind,
+        bool Connected,
+        Guid SessionId);
 
     private sealed record DesktopCommandMessage(
         string Kind,

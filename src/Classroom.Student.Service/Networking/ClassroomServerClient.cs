@@ -7,6 +7,7 @@ using Blossom.Classroom.Protocol.Serialization;
 using Blossom.Classroom.Protocol.Validation;
 using Blossom.Classroom.Student.Service.Commands;
 using Blossom.Classroom.Student.Service.Configuration;
+using Blossom.Classroom.Student.Service.Desktop;
 using Blossom.Classroom.Student.Service.Status;
 
 namespace Blossom.Classroom.Student.Service.Networking;
@@ -15,6 +16,7 @@ public sealed class ClassroomServerClient(
     StudentAgentOptions options,
     IStudentStatusSource statusSource,
     IStudentCommandSink commandSink,
+    DesktopStatusBridge desktopBridge,
     ILogger<ClassroomServerClient> logger)
 {
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -38,6 +40,10 @@ public sealed class ClassroomServerClient(
                     exception.Message,
                     retryDelay.TotalSeconds);
             }
+            finally
+            {
+                await desktopBridge.UpdateServerConnectionAsync(false, Guid.Empty, CancellationToken.None);
+            }
 
             await Task.Delay(retryDelay, cancellationToken);
             retryDelay = TimeSpan.FromSeconds(Math.Min(retryDelay.TotalSeconds * 2, 30));
@@ -54,17 +60,18 @@ public sealed class ClassroomServerClient(
 
         using var sendGate = new SemaphoreSlim(1, 1);
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var sessionState = new DeviceSessionState(options.SessionId);
         await SendEnvelopeAsync(
             socket,
             sendGate,
             ProtocolConstants.DeviceHello,
-            new DeviceHello(options.DeviceId, options.SessionId, options.AgentVersion),
+            new DeviceHello(options.DeviceId, sessionState.SessionId, options.AgentVersion),
             lifetime.Token);
 
-        var heartbeatTask = SendHeartbeatLoopAsync(socket, sendGate, lifetime.Token);
+        var heartbeatTask = SendHeartbeatLoopAsync(socket, sendGate, sessionState, lifetime.Token);
         try
         {
-            await ReceiveLoopAsync(socket, sendGate, lifetime.Token);
+            await ReceiveLoopAsync(socket, sendGate, sessionState, lifetime.Token);
         }
         finally
         {
@@ -82,6 +89,7 @@ public sealed class ClassroomServerClient(
     private async Task SendHeartbeatLoopAsync(
         ClientWebSocket socket,
         SemaphoreSlim sendGate,
+        DeviceSessionState sessionState,
         CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -93,7 +101,7 @@ public sealed class ClassroomServerClient(
                 ProtocolConstants.DeviceHeartbeat,
                 new DeviceHeartbeat(
                     options.DeviceId,
-                    options.SessionId,
+                    sessionState.SessionId,
                     options.AgentVersion,
                     DateTimeOffset.UtcNow,
                     status.Activity,
@@ -108,6 +116,7 @@ public sealed class ClassroomServerClient(
     private async Task ReceiveLoopAsync(
         ClientWebSocket socket,
         SemaphoreSlim sendGate,
+        DeviceSessionState sessionState,
         CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -136,6 +145,27 @@ public sealed class ClassroomServerClient(
 
             if (type == ProtocolConstants.DeviceSessionAccepted)
             {
+                var accepted = ProtocolCodec.Deserialize<DeviceSessionAccepted>(json);
+                if (accepted.Payload.DeviceId != options.DeviceId)
+                {
+                    throw new ProtocolValidationException("Server session update belongs to another device.");
+                }
+
+                sessionState.SessionId = accepted.Payload.SessionId;
+                await desktopBridge.UpdateServerConnectionAsync(
+                    true,
+                    accepted.Payload.SessionId,
+                    cancellationToken);
+                if (accepted.Payload.SessionId == Guid.Empty)
+                {
+                    logger.LogInformation("Student device is connected and waiting for a class session.");
+                }
+                else
+                {
+                    logger.LogInformation(
+                        "Student device switched to class session {SessionId}.",
+                        accepted.Payload.SessionId);
+                }
                 continue;
             }
 
@@ -264,5 +294,28 @@ public sealed class ClassroomServerClient(
             sendGate.Release();
         }
     }
-}
 
+    private sealed class DeviceSessionState(Guid initialSessionId)
+    {
+        private readonly object gate = new();
+        private Guid sessionId = initialSessionId;
+
+        public Guid SessionId
+        {
+            get
+            {
+                lock (gate)
+                {
+                    return sessionId;
+                }
+            }
+            set
+            {
+                lock (gate)
+                {
+                    sessionId = value;
+                }
+            }
+        }
+    }
+}

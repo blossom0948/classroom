@@ -16,7 +16,6 @@ public static class ProtocolValidation
     public static void ValidateHello(DeviceHello hello)
     {
         RequireGuid(hello.DeviceId, nameof(hello.DeviceId));
-        RequireGuid(hello.SessionId, nameof(hello.SessionId));
         RequireText(hello.AgentVersion, nameof(hello.AgentVersion), 64);
     }
 

@@ -79,9 +79,10 @@ Teacher Console에서 할 수 있는 일:
 1. 학급 선택
 2. 수업 시작/종료
 3. 학생 장치 온라인/오프라인, 현재 앱, 배터리, 네트워크, Agent 버전 확인
-4. 한 명 또는 전체 학급에 메시지, HTTPS URL, 집중 모드 on/off 전송
-5. 최근 ACK/result와 감사 기록 확인
-6. 장치 등록을 위해 enrollment ticket 발급
+4. 선택 학생 또는 전체 학급에 메시지, HTTPS URL, 집중 모드, 승인 앱 전송
+5. 각 명령의 장치별 ACK/result와 감사 기록 확인
+6. 학생 이름으로 일회용 등록 파일 생성·다운로드
+7. 등록 장치 연결 해제(revoke)
 
 학생 Desktop이 연결된 경우 명령 결과가 `APPLIED`가 되고, 연결되지 않은
 경우 성공으로 위장하지 않고 `STUDENT_DESKTOP_OFFLINE`으로 기록된다.
@@ -95,8 +96,9 @@ Teacher Console에서 할 수 있는 일:
 
 ### 2. 장치 등록
 
-Teacher Console에서 `장치 등록`을 누르고 학생 ID/이름을 입력해 ticket을
-발급한다. API를 직접 사용할 때의 순서는 다음과 같다.
+Teacher Console에서 `장치 등록`을 누르고 학생 이름을 입력해 등록 파일을
+발급한다. 학생 ID를 비워두면 서버가 새 ID를 생성한다. API를 직접 사용할
+때의 순서는 다음과 같다.
 
 ```text
 POST /api/classes/{classId}/enrollment-tickets
@@ -104,29 +106,26 @@ POST /api/devices/enroll
 POST /api/classes/{classId}/sessions
 ```
 
-`/api/devices/enroll` 응답의 `deviceToken`은 한 번만 표시해 안전한 배포
-경로로 전달한다. 서버는 device token 원문이 아니라 SHA-256 해시만 저장한다.
+학생 설치 스크립트가 등록 파일의 일회용 token을 `/api/devices/enroll`에
+제출하고 device token을 서비스 설정에만 저장한다. 서버는 device token
+원문이 아니라 SHA-256 해시만 저장한다.
 
 ### 3. 학생 프로그램 설치
 
+GitHub Actions의 `Classroom-Windows` artifact를 내려받아 압축을 풀거나,
 관리자 PowerShell에서 두 프로그램을 publish한다.
 
 ```powershell
-& $dotnet publish src\Classroom.Student.Service\Classroom.Student.Service.csproj -c Release -r win-x64 --self-contained false -o artifacts\student
-& $dotnet publish src\Classroom.Student.Desktop\Classroom.Student.Desktop.csproj -c Release -r win-x64 --self-contained false -o artifacts\student
+& $dotnet publish src\Classroom.Student.Service\Classroom.Student.Service.csproj -c Release -r win-x64 --self-contained false -o artifacts\student-service
+& $dotnet publish src\Classroom.Student.Desktop\Classroom.Student.Desktop.csproj -c Release -r win-x64 --self-contained false -o artifacts\student-desktop
 ```
 
 그 다음 관리자 PowerShell에서 설치한다.
 
 ```powershell
-$ipcToken = "replace-with-a-random-32-byte-token"
 .\scripts\install\Install-ClassroomStudent.ps1 `
-  -PackageRoot (Resolve-Path .\artifacts\student) `
-  -ServerUrl wss://classroom.example.edu `
-  -DeviceId "<device-id>" `
-  -SessionId "<active-session-id>" `
-  -DeviceToken "<device-token-from-enrollment>" `
-  -IpcToken $ipcToken
+  -PackageRoot (Resolve-Path .\artifacts) `
+  -EnrollmentFile .\classroom-enrollment-학생이름.json
 ```
 
 설치 스크립트는 `ClassroomStudentService`를 Automatic 서비스로 등록하고,
@@ -196,6 +195,7 @@ rate limit은 IP/계정 조합별로 적용된다. 운영에서는 초기 bootst
 | API | 용도 |
 | --- | --- |
 | `GET /health` | 서버 실행 상태 |
+| `GET /health/ready` | SQLite 포함 readiness |
 | `POST /auth/login` | 교사 login 및 bearer session 발급 |
 | `GET /auth/me` | 현재 교사와 허용 학급 확인 |
 | `POST /auth/logout` | 현재 teacher session revoke |
@@ -207,7 +207,9 @@ rate limit은 IP/계정 조합별로 적용된다. 운영에서는 초기 bootst
 | `POST /api/classes/{classId}/sessions` | 수업 시작 |
 | `DELETE /api/classes/{classId}/sessions/{sessionId}` | 수업 종료 |
 | `GET /api/classes/{classId}/students` | 제한된 학생 상태 snapshot |
+| `DELETE /api/classes/{classId}/devices/{deviceId}` | 등록 장치 revoke |
 | `POST /api/classes/{classId}/commands` | 검증된 명령 queue 등록 |
+| `GET /api/classes/{classId}/commands/{requestId}` | 장치별 ACK/result 상태 |
 | `GET /api/classes/{classId}/audit?limit=100` | 교사 범위 감사 이벤트 |
 | `GET /ws/student?deviceId=...` | 학생 Agent WSS 연결 |
 
@@ -237,10 +239,10 @@ WAL과 busy timeout을 사용하며 DB 디렉터리가 없으면 자동 생성�
 - 임의 PowerShell, arbitrary shell, keylogger, webcam/microphone, 비밀번호/
   쿠키 수집, 숨은 화면 수집은 제공하지 않는다.
 - FocusMode는 수업 전용 visible overlay이며 Windows 잠금 화면을 대체하지
-  않는다. 수업 종료 시 서버가 세션을 종료하고 다음 적용 정책을 정리하는
-  확장 지점이 남아 있다.
+  않는다. 수업 종료 시 서버가 해제 명령을 queue에 남기고, 서버 연결이
+  60초 이상 끊기면 Student Desktop fail-safe가 overlay를 해제한다.
 - 현재 P0에는 browser extension, thumbnail, individual live view, 정책
-  catalog, revoke/rotate 관리자 화면, signed installer/updater가 아직 없다.
+  catalog, signed MSI/installer와 updater가 아직 없다.
   이를 구현하기 전까지는 실제 학교 전체 배포가 아니라 승인된 파일럿으로
   운영한다.
 

@@ -36,6 +36,16 @@ using var writer = new StreamWriter(pipe, new UTF8Encoding(false), 8 * 1024, tru
 await WriteAsync(writer, new { kind = "hello", token = options.IpcToken });
 var accepted = await reader.ReadLineAsync() ?? throw new InvalidOperationException("IPC handshake response was empty.");
 Assert(accepted.Contains("hello-accepted", StringComparison.Ordinal), "Student Desktop handshake was rejected.");
+var initialServerState = await reader.ReadLineAsync()
+    ?? throw new InvalidOperationException("Initial server state was empty.");
+Assert(initialServerState.Contains("server-status", StringComparison.Ordinal),
+    "Student Desktop did not receive the initial server state.");
+
+await bridge.UpdateServerConnectionAsync(true, sessionId, CancellationToken.None);
+var connectedServerState = await reader.ReadLineAsync()
+    ?? throw new InvalidOperationException("Connected server state was empty.");
+Assert(connectedServerState.Contains(sessionId.ToString(), StringComparison.OrdinalIgnoreCase),
+    "Student Desktop did not receive the active class session.");
 
 var activity = new ActivitySnapshot("Chrome", "chrome.exe", "classroom.google.com", null, DateTimeOffset.UtcNow);
 await WriteAsync(writer, new

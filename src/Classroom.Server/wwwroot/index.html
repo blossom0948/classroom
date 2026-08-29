@@ -20,7 +20,7 @@
         <button class="primary wide" type="submit">로그인</button>
         <p id="login-error" class="error" hidden></p>
       </form>
-      <p class="login-hint">개발 환경 기본 계정: <code>teacher</code> / <code>ChangeMe!Classroom123</code></p>
+      <p id="dev-login-hint" class="login-hint" hidden>개발 환경 기본 계정: <code>teacher</code> / <code>ChangeMe!Classroom123</code></p>
     </div>
   </section>
 
@@ -56,7 +56,8 @@
         <div id="offline-banner" class="notice" hidden><span class="notice-icon">!</span><span>현재 진행 중인 수업이 없습니다. 아래에서 새 수업을 시작하세요.</span><button id="start-session-button" class="primary">수업 시작</button></div>
         <div class="toolbar">
           <div class="filters" role="tablist"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="online">온라인</button><button class="filter" data-filter="offline">오프라인</button><button class="filter" data-filter="focus">집중 모드</button></div>
-          <div class="bulk-actions"><button id="focus-on-button" class="secondary">전체 집중</button><button id="focus-off-button" class="secondary">집중 해제</button><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL 열기</button></div>
+          <label class="student-search"><span class="sr-only">학생 검색</span><input id="student-search" type="search" placeholder="학생·PC 검색"></label>
+          <div class="bulk-actions"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">집중 해제</button><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL 열기</button><button id="app-button" class="secondary">앱 실행</button></div>
         </div>
         <div id="student-grid" class="student-grid" aria-live="polite"></div>
       </section>
@@ -96,11 +97,49 @@
       <div class="dialog-heading"><span id="dialog-kicker" class="eyebrow">COMMAND</span><h2 id="dialog-title">메시지 보내기</h2></div>
       <label id="message-field">메시지<textarea id="command-message" rows="4" maxlength="2000" placeholder="학생에게 보낼 내용을 입력하세요."></textarea></label>
       <label id="url-field" hidden>HTTPS URL<input id="command-url" type="url" placeholder="https://example.com"></label>
+      <label id="app-field" hidden>승인된 앱<select id="command-app"><option value="notepad">메모장</option><option value="calculator">계산기</option></select></label>
       <label id="seconds-field">표시 시간(초)<input id="command-seconds" type="number" min="1" max="3600" value="10"></label>
       <div class="dialog-actions"><button class="secondary" value="cancel">취소</button><button id="send-command-button" class="primary" value="default">보내기</button></div>
       <p id="dialog-error" class="error" hidden></p>
     </form>
   </dialog>
+  <dialog id="session-dialog" class="command-dialog">
+    <form method="dialog" id="session-form" class="stack">
+      <div class="dialog-heading"><span class="eyebrow">CLASS SESSION</span><h2>수업 시작</h2></div>
+      <label>과목<input id="session-subject" maxlength="128" required placeholder="정보"></label>
+      <p class="muted dialog-copy">학생 프로그램은 수업이 바뀌어도 자동으로 새 세션에 연결됩니다.</p>
+      <div class="dialog-actions"><button class="secondary" value="cancel">취소</button><button class="primary" value="default">수업 시작</button></div>
+      <p id="session-error" class="error" hidden></p>
+    </form>
+  </dialog>
+  <dialog id="enrollment-dialog" class="command-dialog enrollment-dialog">
+    <form method="dialog" id="enrollment-form" class="stack">
+      <div class="dialog-heading"><span class="eyebrow">STUDENT DEVICE</span><h2>학생 PC 등록</h2></div>
+      <div id="enrollment-fields" class="stack">
+        <label>학생 이름<input id="enrollment-name" maxlength="128" required placeholder="김민수" autocomplete="off"></label>
+        <label>학생 ID <span class="optional-label">선택 사항</span><input id="enrollment-student-id" placeholder="비워두면 안전한 ID를 자동 생성합니다." autocomplete="off"></label>
+        <p class="muted dialog-copy">등록 파일은 10분 동안 한 번만 사용할 수 있습니다. 학생 PC에는 별도 비밀번호를 전달하지 않습니다.</p>
+      </div>
+      <section id="enrollment-result" class="enrollment-result" hidden>
+        <div class="success-mark">✓</div>
+        <div><strong id="enrollment-result-name"></strong><p id="enrollment-expiry" class="muted"></p></div>
+        <div class="enrollment-steps">
+          <span>1</span><p><strong>학생용 프로그램</strong> 패키지의 압축을 풉니다.</p>
+          <span>2</span><p>다운로드한 <strong>등록 파일</strong>을 같은 PC로 옮깁니다.</p>
+          <span>3</span><p>관리자 PowerShell에서 설치 스크립트를 등록 파일과 함께 실행합니다.</p>
+        </div>
+        <code id="enrollment-command" class="command-preview"></code>
+      </section>
+      <div class="dialog-actions">
+        <button id="enrollment-cancel" class="secondary" value="cancel">취소</button>
+        <button id="enrollment-create" class="primary" value="default">등록 파일 만들기</button>
+        <button id="enrollment-download" class="primary" type="button" hidden>등록 파일 다운로드</button>
+        <button id="enrollment-done" class="secondary" value="cancel" hidden>완료</button>
+      </div>
+      <p id="enrollment-error" class="error" hidden></p>
+    </form>
+  </dialog>
+  <script src="/config.js"></script>
   <script src="/app.js" defer></script>
 </body>
 </html>

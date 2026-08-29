@@ -36,6 +36,16 @@ jobs:
             }
           }
 
+      - name: Build Cloudflare Pages console
+        shell: pwsh
+        run: |
+          npm run check:pages
+          npm run test:pages
+          npm run build
+          if (-not (Test-Path -LiteralPath 'dist/index.html')) {
+            throw 'Cloudflare Pages index was not generated.'
+          }
+
       - name: Publish Classroom Windows package
         shell: pwsh
         run: |
@@ -56,6 +66,7 @@ jobs:
 
           Copy-Item scripts/install/* $package -Force
           Copy-Item docs/CLASSROOM_MVP.md $package -Force
+          Copy-Item docs/DEPLOYMENT.md $package -Force
           Compress-Archive -Path (Join-Path $package '*') `
             -DestinationPath (Join-Path $root 'Classroom-Windows-x64.zip') -Force
 

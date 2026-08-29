@@ -198,6 +198,22 @@ public sealed class ClassroomDatabase : IDisposable
         transaction.Commit();
     }
 
+    public bool IsReady()
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT 1;";
+            return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture) == 1;
+        }
+        catch (Exception exception) when (
+            exception is SqliteException or IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     public bool TryGetTeacher(string loginName, out TeacherAccount? account)
     {
         account = null;

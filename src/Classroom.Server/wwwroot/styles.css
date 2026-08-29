@@ -70,15 +70,22 @@ h2 { font-size: 24px; letter-spacing: -.03em; margin: 0 0 7px; }
 .notice { align-items: center; background: var(--orange-soft); border: 1px solid #f5deb2; border-radius: 12px; color: #895514; display: flex; gap: 11px; margin-bottom: 22px; padding: 12px 15px; }
 .notice-icon { align-items: center; background: #f2b456; border-radius: 50%; color: white; display: inline-flex; font-weight: 900; height: 21px; justify-content: center; width: 21px; }
 .notice .primary { margin-left: auto; padding: 8px 12px; }
-.toolbar { align-items: center; display: flex; justify-content: space-between; margin-bottom: 18px; }
+.toolbar { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; margin-bottom: 18px; }
 .filters, .bulk-actions { display: flex; gap: 6px; }
 .filter { background: transparent; border: 0; border-radius: 8px; color: var(--muted); font-size: 13px; padding: 8px 12px; }
 .filter.active { background: var(--blue-soft); color: #3157d5; font-weight: 800; }
-.bulk-actions { gap: 8px; }
+.bulk-actions { align-items: center; gap: 8px; }
 .bulk-actions .secondary { font-size: 12px; padding: 8px 11px; }
+.student-search { margin-left: auto; }
+.student-search input { min-width: 180px; padding: 8px 11px; }
+.selection-caption { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .student-grid { display: grid; gap: 15px; grid-template-columns: repeat(4, minmax(185px, 1fr)); }
 .student-card { background: white; border: 1px solid var(--line); border-radius: 15px; cursor: pointer; min-height: 180px; padding: 17px; position: relative; transition: box-shadow .15s, transform .15s; }
 .student-card:hover { box-shadow: 0 10px 28px rgba(31, 49, 83, .1); transform: translateY(-2px); }
+.student-card.selected { border-color: #5271e8; box-shadow: 0 0 0 2px rgba(82, 113, 232, .16); }
+.student-selector { align-items: center; display: flex; height: 25px; justify-content: center; left: 10px; position: absolute; top: 10px; width: 25px; z-index: 1; }
+.student-selector input { accent-color: #5271e8; height: 16px; margin: 0; width: 16px; }
+.student-card .student-head { padding-left: 20px; }
 .student-head { align-items: flex-start; display: flex; justify-content: space-between; }
 .student-name { font-size: 15px; font-weight: 800; }
 .student-device { color: var(--muted); font-size: 11px; margin-top: 4px; }
@@ -130,7 +137,19 @@ h2 { font-size: 24px; letter-spacing: -.03em; margin: 0 0 7px; }
 .command-dialog { border: 0; border-radius: 17px; box-shadow: 0 24px 80px rgba(20, 31, 54, .25); padding: 28px; width: 430px; }
 .command-dialog::backdrop { background: rgba(20, 31, 54, .35); }
 .dialog-heading h2 { margin-top: 8px; }
+.dialog-copy { font-size: 12px; line-height: 1.6; margin: -2px 0 0; }
 .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+.enrollment-dialog { width: 560px; }
+.optional-label { color: var(--muted); font-size: 10px; font-weight: 500; margin-left: 5px; }
+.enrollment-result { align-items: center; background: #f7f9ff; border: 1px solid #dfe6fb; border-radius: 13px; display: grid; gap: 13px; grid-template-columns: 38px 1fr; padding: 16px; }
+.enrollment-result p { font-size: 11px; margin: 4px 0 0; }
+.success-mark { align-items: center; background: var(--green); border-radius: 50%; color: white; display: flex; font-size: 18px; font-weight: 900; height: 34px; justify-content: center; width: 34px; }
+.enrollment-steps { display: grid; gap: 9px 10px; grid-column: 1 / -1; grid-template-columns: 25px 1fr; margin-top: 5px; }
+.enrollment-steps span { align-items: center; background: var(--blue-soft); border-radius: 50%; color: var(--blue); display: flex; font-size: 11px; font-weight: 900; height: 23px; justify-content: center; width: 23px; }
+.enrollment-steps p { color: #475467; font-size: 12px; line-height: 1.5; margin: 1px 0 0; }
+.command-preview { background: #202c42; border-radius: 8px; color: #e8edff; display: block; font-size: 11px; grid-column: 1 / -1; line-height: 1.55; overflow-wrap: anywhere; padding: 12px; }
+.danger-action { background: #fff4f4; border: 1px solid #f2c7c7; border-radius: 9px; color: var(--red); font-weight: 750; padding: 10px 14px; }
+.sr-only { clip: rect(0, 0, 0, 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; white-space: nowrap; width: 1px; }
 .toast { background: #25334d; border-radius: 8px; bottom: 25px; box-shadow: var(--shadow); color: white; font-size: 13px; left: 50%; opacity: 0; padding: 11px 16px; pointer-events: none; position: fixed; transform: translate(-50%, 12px); transition: opacity .2s, transform .2s; z-index: 10; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 @media (max-width: 1250px) { .main-content { padding-left: 30px; padding-right: 30px; } .student-grid { grid-template-columns: repeat(3, minmax(185px, 1fr)); } }

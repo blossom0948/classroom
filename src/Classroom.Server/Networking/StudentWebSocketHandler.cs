@@ -58,8 +58,12 @@ public sealed class StudentWebSocketHandler(
                 return;
             }
 
-            sessionId = hello.Payload.SessionId;
-            if (!store.TryOpenConnection(identity, sessionId, out var code, out var message))
+            if (!store.TryOpenConnection(
+                    identity,
+                    hello.Payload.SessionId,
+                    out sessionId,
+                    out var code,
+                    out var message))
             {
                 await SendErrorAsync(socket, sendGate, code, message, context.RequestAborted);
                 return;
@@ -104,10 +108,7 @@ public sealed class StudentWebSocketHandler(
         }
         finally
         {
-            if (sessionId != Guid.Empty)
-            {
-                store.CloseConnection(deviceId, sessionId);
-            }
+            store.CloseConnection(deviceId);
 
             if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
             {
@@ -149,6 +150,26 @@ public sealed class StudentWebSocketHandler(
                     if (!result.Succeeded)
                     {
                         await SendErrorAsync(socket, sendGate, result.Code, result.Message, cancellationToken);
+                        if (result.Code == "DEVICE_REVOKED")
+                        {
+                            await socket.CloseAsync(
+                                WebSocketCloseStatus.PolicyViolation,
+                                "Device access was revoked",
+                                cancellationToken);
+                            return;
+                        }
+                    }
+                    else if (result.Value != heartbeat.Payload.SessionId)
+                    {
+                        await SendEnvelopeAsync(
+                            socket,
+                            sendGate,
+                            ProtocolConstants.DeviceSessionAccepted,
+                            new DeviceSessionAccepted(
+                                identity.DeviceId,
+                                result.Value,
+                                DateTimeOffset.UtcNow),
+                            cancellationToken);
                     }
 
                     break;

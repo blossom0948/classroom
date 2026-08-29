@@ -3,8 +3,13 @@ using Blossom.Classroom.Server.Storage;
 namespace Blossom.Classroom.Server.Models;
 
 public sealed record CreateEnrollmentTicketRequest(
-    Guid StudentId,
+    Guid? StudentId,
     string StudentDisplayName);
+
+public sealed record DeviceActionResponse(
+    Guid DeviceId,
+    string Status,
+    DateTimeOffset UpdatedAtUtc);
 
 public sealed record StartClassSessionRequest(string Subject);
 
@@ -22,6 +27,18 @@ public sealed record CommandDispatchSummary(
     int QueuedCount,
     IReadOnlyList<Guid> QueuedDeviceIds,
     IReadOnlyList<Guid> RejectedDeviceIds);
+
+public sealed record DeviceCommandStatus(
+    Guid DeviceId,
+    string State);
+
+public sealed record CommandStatusResponse(
+    Guid RequestId,
+    int TotalCount,
+    int CompletedCount,
+    int FailedCount,
+    bool Finished,
+    IReadOnlyList<DeviceCommandStatus> Devices);
 
 public sealed record TeacherLoginRequest(
     string LoginName,

@@ -8,8 +8,10 @@ var tests = new (string Name, Action Run)[]
 {
     ("enrollment binds a server-issued device to a student", EnrollmentBindsIdentity),
     ("device token authentication rejects wrong tokens", DeviceAuthenticationIsBound),
-    ("session and heartbeat create an online status", HeartbeatUpdatesStatus),
+    ("devices follow the server session without reinstalling", HeartbeatUpdatesStatus),
     ("commands are queued and ACK/result are audited", CommandsAreTracked),
+    ("ending a session queues focus mode cleanup", SessionEndQueuesCleanup),
+    ("revoked devices can no longer authenticate", RevokedDevicesAreRejected),
     ("teachers cannot access unassigned classes", TeacherScopeIsEnforced),
     ("sqlite restores sessions and enrollment state", SqliteRestoresState),
     ("teacher session tokens can be revoked", TeacherSessionsCanBeRevoked),
@@ -87,17 +89,24 @@ static void DeviceAuthenticationIsBound()
 static void HeartbeatUpdatesStatus()
 {
     var fixture = CreateEnrolledFixture();
-    var session = fixture.Store.StartSession(fixture.TeacherId, fixture.ClassId, "정보");
     Assert(fixture.Store.TryAuthenticateDevice(
         fixture.DeviceId,
         fixture.DeviceToken,
         out var identity) && identity is not null, "Device authentication failed.");
-    Assert(fixture.Store.TryOpenConnection(identity!, session.SessionId, out var code, out var message),
+    Assert(fixture.Store.TryOpenConnection(
+        identity!,
+        Guid.Empty,
+        out var acceptedSessionId,
+        out var code,
+        out var message),
         $"{code}: {message}");
+    Assert(acceptedSessionId == Guid.Empty, "Device should be allowed to wait without an active session.");
+
+    var session = fixture.Store.StartSession(fixture.TeacherId, fixture.ClassId, "정보");
 
     var heartbeat = new DeviceHeartbeat(
         fixture.DeviceId,
-        session.SessionId,
+        Guid.Empty,
         "0.1.0-dev",
         DateTimeOffset.UtcNow,
         new ActivitySnapshot("Chrome", "chrome.exe", "classroom.google.com", null, DateTimeOffset.UtcNow),
@@ -106,11 +115,17 @@ static void HeartbeatUpdatesStatus()
         true);
     var result = fixture.Store.RecordHeartbeat(identity!, heartbeat);
     Assert(result.Succeeded, $"{result.Code}: {result.Message}");
+    Assert(result.Value == session.SessionId, "Server did not move the device into the active session.");
 
     var status = fixture.Store.GetClassStatuses(fixture.TeacherId, fixture.ClassId).Single();
     Assert(status.Online, "Heartbeat did not make the device online.");
     Assert(status.StudentId == fixture.StudentId, "Status exposed a client-claimed student identity.");
     Assert(status.Activity?.BrowserDomain == "classroom.google.com", "Activity domain was not retained.");
+
+    fixture.Store.EndSession(fixture.TeacherId, fixture.ClassId, session.SessionId);
+    var nextSession = fixture.Store.StartSession(fixture.TeacherId, fixture.ClassId, "수학");
+    var nextHeartbeat = fixture.Store.RecordHeartbeat(identity!, heartbeat with { SessionId = session.SessionId });
+    Assert(nextHeartbeat.Value == nextSession.SessionId, "Device stayed pinned to an ended session.");
 }
 
 static void CommandsAreTracked()
@@ -162,6 +177,32 @@ static void CommandsAreTracked()
     Assert(audit.Any(entry => entry.Action == "COMMAND_RESULT"
         && entry.Result == "SUCCESS"
         && entry.TeacherId == fixture.TeacherId), "Result audit is missing the teacher identity.");
+    var status = fixture.Store.GetCommandStatus(fixture.TeacherId, fixture.ClassId, command.RequestId);
+    Assert(status.Finished && status.CompletedCount == 1 && status.FailedCount == 0,
+        "Teacher command status did not expose the completed result.");
+}
+
+static void SessionEndQueuesCleanup()
+{
+    var fixture = CreateEnrolledFixture();
+    var session = fixture.Store.StartSession(fixture.TeacherId, fixture.ClassId, "정보");
+    fixture.Store.EndSession(fixture.TeacherId, fixture.ClassId, session.SessionId);
+
+    var cleanup = fixture.Store.WaitForCommandAsync(fixture.DeviceId, CancellationToken.None)
+        .AsTask()
+        .GetAwaiter()
+        .GetResult();
+    Assert(cleanup.Kind == ClassroomCommandKind.FocusMode && cleanup.FocusEnabled is false,
+        "Session end did not queue a visible focus overlay cleanup.");
+}
+
+static void RevokedDevicesAreRejected()
+{
+    var fixture = CreateEnrolledFixture();
+    var response = fixture.Store.RevokeDevice(fixture.TeacherId, fixture.ClassId, fixture.DeviceId);
+    Assert(response.Status == "revoked", "Device revoke did not succeed.");
+    Assert(!fixture.Store.TryAuthenticateDevice(fixture.DeviceId, fixture.DeviceToken, out _),
+        "Revoked device token was still accepted.");
 }
 
 static void TeacherScopeIsEnforced()

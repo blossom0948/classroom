@@ -1,0 +1,12 @@
+{
+  "name": "blossom-classroom-deployment",
+  "private": true,
+  "type": "module",
+  "version": "0.2.0",
+  "scripts": {
+    "build": "node scripts/deploy/build-pages.mjs",
+    "build:pages": "node scripts/deploy/build-pages.mjs",
+    "check:pages": "node --check functions/_middleware.js && node --check scripts/deploy/build-pages.mjs",
+    "test:pages": "node tests/pages-proxy.test.mjs"
+  }
+}

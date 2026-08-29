@@ -9,6 +9,13 @@ using Blossom.Classroom.Server.Security;
 using Blossom.Classroom.Server.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
+if (OperatingSystem.IsWindows())
+{
+    builder.Services.AddWindowsService(serviceOptions =>
+    {
+        serviceOptions.ServiceName = "ClassroomServer";
+    });
+}
 builder.Services.ConfigureHttpJsonOptions(jsonOptions =>
 {
     jsonOptions.SerializerOptions.PropertyNameCaseInsensitive = false;
@@ -22,6 +29,26 @@ var tlsTerminatedByProxy = string.Equals(
     StringComparison.OrdinalIgnoreCase);
 var tlsCertificatePath = builder.Configuration["Classroom:TlsCertificatePath"]
     ?? Environment.GetEnvironmentVariable("CLASSROOM_TLS_CERT_PATH");
+var consoleOriginsValue = builder.Configuration["Classroom:ConsoleOrigins"]
+    ?? Environment.GetEnvironmentVariable("CLASSROOM_CONSOLE_ORIGINS")
+    ?? string.Empty;
+var consoleOrigins = new List<string>();
+foreach (var originValue in consoleOriginsValue.Split(
+    ',',
+    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+{
+    if (!Uri.TryCreate(originValue, UriKind.Absolute, out var origin)
+        || origin.Scheme is not ("http" or "https")
+        || origin.AbsolutePath != "/"
+        || !string.IsNullOrEmpty(origin.Query)
+        || !string.IsNullOrEmpty(origin.Fragment))
+    {
+        throw new InvalidOperationException(
+            $"Invalid CLASSROOM_CONSOLE_ORIGINS entry: {originValue}");
+    }
+
+    consoleOrigins.Add(origin.GetLeftPart(UriPartial.Authority));
+}
 if (!serverOptions.DevelopmentMode && !tlsTerminatedByProxy)
 {
     if (string.IsNullOrWhiteSpace(tlsCertificatePath))
@@ -65,6 +92,16 @@ builder.Services.AddSingleton(classroomDatabase);
 builder.Services.AddSingleton<TeacherLoginRateLimiter>();
 builder.Services.AddSingleton<ClassroomStore>();
 builder.Services.AddSingleton<StudentWebSocketHandler>();
+builder.Services.AddCors(cors => cors.AddPolicy("TeacherConsole", policy =>
+{
+    if (consoleOrigins.Count > 0)
+    {
+        policy.WithOrigins([.. consoleOrigins])
+            .AllowAnyHeader()
+            .WithMethods("GET", "POST", "DELETE", "OPTIONS")
+            .SetPreflightMaxAge(TimeSpan.FromHours(1));
+    }
+}));
 
 var app = builder.Build();
 app.Use(async (context, next) =>
@@ -72,9 +109,12 @@ app.Use(async (context, next) =>
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    var connectSources = consoleOrigins.Count == 0
+        ? "'self'"
+        : $"'self' {string.Join(' ', consoleOrigins)}";
     context.Response.Headers["Content-Security-Policy"] =
         "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
-        "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+        $"connect-src {connectSources}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
     await next();
 });
 if (!serverOptions.DevelopmentMode && tlsTerminatedByProxy)
@@ -103,6 +143,7 @@ if (!serverOptions.DevelopmentMode)
 }
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseCors("TeacherConsole");
 app.UseWebSockets(new WebSocketOptions
 {
     KeepAliveInterval = TimeSpan.FromSeconds(15)
@@ -123,6 +164,12 @@ app.MapGet("/health", (ServerOptions serverOptions) => serverOptions.Development
         version = 1,
         status = "running"
     }));
+
+app.MapGet("/health/ready", (ClassroomDatabase database) => database.IsReady()
+    ? Results.Json(new { service = "Classroom.Server", status = "ready", database = "available" })
+    : Results.Json(
+        new { service = "Classroom.Server", status = "not-ready", database = "unavailable" },
+        statusCode: StatusCodes.Status503ServiceUnavailable));
 
 app.MapPost("/auth/login", (
     HttpContext context,
@@ -317,7 +364,7 @@ app.MapPost("/api/classes/{classId:guid}/enrollment-tickets", (
         var ticket = store.CreateEnrollmentTicket(
             teacherId,
             classId,
-            request.StudentId,
+            request.StudentId.GetValueOrDefault(),
             request.StudentDisplayName);
         return Results.Ok(ticket);
     }
@@ -417,6 +464,33 @@ app.MapGet("/api/classes/{classId:guid}/students", (
     }
 });
 
+app.MapDelete("/api/classes/{classId:guid}/devices/{deviceId:guid}", (
+    Guid classId,
+    Guid deviceId,
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database,
+    ClassroomStore store) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    try
+    {
+        return Results.Ok(store.RevokeDevice(teacherId, classId, deviceId));
+    }
+    catch (ClassroomStoreException exception)
+    {
+        return Results.Json(
+            new { code = exception.Code, message = exception.Message },
+            statusCode: exception.Code == "FORBIDDEN"
+                ? StatusCodes.Status403Forbidden
+                : StatusCodes.Status404NotFound);
+    }
+});
+
 app.MapPost("/api/classes/{classId:guid}/commands", (
     Guid classId,
     CommandRequest command,
@@ -457,6 +531,33 @@ app.MapPost("/api/classes/{classId:guid}/commands", (
         _ => StatusCodes.Status400BadRequest
     };
     return Results.Json(new { code = result.Code, message = result.Message }, statusCode: statusCode);
+});
+
+app.MapGet("/api/classes/{classId:guid}/commands/{requestId:guid}", (
+    Guid classId,
+    Guid requestId,
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database,
+    ClassroomStore store) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    try
+    {
+        return Results.Ok(store.GetCommandStatus(teacherId, classId, requestId));
+    }
+    catch (ClassroomStoreException exception)
+    {
+        return Results.Json(
+            new { code = exception.Code, message = exception.Message },
+            statusCode: exception.Code == "FORBIDDEN"
+                ? StatusCodes.Status403Forbidden
+                : StatusCodes.Status404NotFound);
+    }
 });
 
 app.MapGet("/api/classes/{classId:guid}/audit", (

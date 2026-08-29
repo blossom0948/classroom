@@ -23,7 +23,7 @@ public sealed record StudentAgentOptions(
         var deviceId = ParseRequiredGuid(
             configuration["Classroom:DeviceId"] ?? Environment.GetEnvironmentVariable("CLASSROOM_DEVICE_ID"),
             "CLASSROOM_DEVICE_ID");
-        var sessionId = ParseRequiredGuid(
+        var sessionId = ParseOptionalGuid(
             configuration["Classroom:SessionId"] ?? Environment.GetEnvironmentVariable("CLASSROOM_SESSION_ID"),
             "CLASSROOM_SESSION_ID");
         var token = configuration["Classroom:DeviceToken"]
@@ -71,6 +71,18 @@ public sealed record StudentAgentOptions(
         Guid.TryParse(value, out var parsed) && parsed != Guid.Empty
             ? parsed
             : throw new InvalidOperationException($"{name} must be a non-empty GUID.");
+
+    private static Guid ParseOptionalGuid(string? value, string name)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return Guid.Empty;
+        }
+
+        return Guid.TryParse(value, out var parsed)
+            ? parsed
+            : throw new InvalidOperationException($"{name} must be a GUID when configured.");
+    }
 
     private static Uri NormalizeWebSocketUri(Uri value)
     {

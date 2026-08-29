@@ -100,7 +100,7 @@ public sealed class ClassroomStore
         string studentDisplayName)
     {
         var schoolId = GetClassSchoolId(teacherId, classId);
-        RequireGuid(studentId, nameof(studentId));
+        studentId = studentId == Guid.Empty ? Guid.NewGuid() : studentId;
         RequireText(studentDisplayName, nameof(studentDisplayName), 128);
 
         var deviceId = Guid.NewGuid();
@@ -245,10 +245,12 @@ public sealed class ClassroomStore
 
     public bool TryOpenConnection(
         AuthenticatedDevice identity,
-        Guid sessionId,
+        Guid requestedSessionId,
+        out Guid acceptedSessionId,
         out string code,
         out string message)
     {
+        acceptedSessionId = Guid.Empty;
         code = "OK";
         message = "Connection accepted.";
         lock (gate)
@@ -261,41 +263,39 @@ public sealed class ClassroomStore
             }
 
             var active = FindActiveSessionLocked(device.ClassId);
-            if (active is null || active.SessionId != sessionId)
-            {
-                code = "SESSION_NOT_ACTIVE";
-                message = "The requested class session is not active.";
-                return false;
-            }
+            acceptedSessionId = active?.SessionId ?? Guid.Empty;
 
             device.ConnectionActive = true;
-            device.SessionId = sessionId;
-            device.LastHeartbeatUtc = DateTimeOffset.UtcNow;
-            RestorePendingCommandsLocked(device, sessionId);
+            device.SessionId = active?.SessionId;
+            RestorePendingCommandsLocked(device, acceptedSessionId);
             database?.SaveDevice(device.ToPersisted());
             AddAuditLocked(AuditEvent.Create(
                 "DEVICE_CONNECTION",
                 "CONNECTED",
+                reason: requestedSessionId == acceptedSessionId
+                    ? null
+                    : "Server selected the current class session.",
                 schoolId: device.SchoolId,
                 classId: device.ClassId,
-                sessionId: sessionId,
+                sessionId: acceptedSessionId == Guid.Empty ? null : acceptedSessionId,
                 studentId: device.StudentId,
                 studentDeviceId: device.DeviceId));
             return true;
         }
     }
 
-    public void CloseConnection(Guid deviceId, Guid sessionId)
+    public void CloseConnection(Guid deviceId)
     {
         lock (gate)
         {
-            if (!devices.TryGetValue(deviceId, out var device)
-                || device.SessionId != sessionId)
+            if (!devices.TryGetValue(deviceId, out var device))
             {
                 return;
             }
 
+            var sessionId = device.SessionId;
             device.ConnectionActive = false;
+            device.SessionId = null;
             database?.SaveDevice(device.ToPersisted());
             AddAuditLocked(AuditEvent.Create(
                 "DEVICE_CONNECTION",
@@ -308,7 +308,7 @@ public sealed class ClassroomStore
         }
     }
 
-    public StoreResult<bool> RecordHeartbeat(
+    public StoreResult<Guid> RecordHeartbeat(
         AuthenticatedDevice identity,
         DeviceHeartbeat heartbeat)
     {
@@ -318,38 +318,35 @@ public sealed class ClassroomStore
         }
         catch (ProtocolValidationException exception)
         {
-            return StoreResult<bool>.Failure("INVALID_HEARTBEAT", exception.Message);
+            return StoreResult<Guid>.Failure("INVALID_HEARTBEAT", exception.Message);
         }
 
         lock (gate)
         {
             if (heartbeat.DeviceId != identity.DeviceId)
             {
-                return StoreResult<bool>.Failure(
+                return StoreResult<Guid>.Failure(
                     "DEVICE_MISMATCH",
                     "Heartbeat device ID does not match the authenticated device.");
             }
 
             if (!devices.TryGetValue(identity.DeviceId, out var device) || device.Revoked)
             {
-                return StoreResult<bool>.Failure("DEVICE_REVOKED", "The student device is not enrolled.");
+                return StoreResult<Guid>.Failure("DEVICE_REVOKED", "The student device is not enrolled.");
             }
 
             var active = FindActiveSessionLocked(device.ClassId);
-            if (active is null || active.SessionId != heartbeat.SessionId)
-            {
-                return StoreResult<bool>.Failure(
-                    "SESSION_NOT_ACTIVE",
-                    "Heartbeat does not belong to the active class session.");
-            }
+            var acceptedSessionId = active?.SessionId ?? Guid.Empty;
+            var normalizedHeartbeat = heartbeat with { SessionId = acceptedSessionId };
 
             device.ConnectionActive = true;
-            device.SessionId = heartbeat.SessionId;
+            device.SessionId = active?.SessionId;
             device.AgentVersion = heartbeat.AgentVersion;
-            device.LatestHeartbeat = heartbeat;
+            device.LatestHeartbeat = normalizedHeartbeat;
             device.LastHeartbeatUtc = DateTimeOffset.UtcNow;
+            RestorePendingCommandsLocked(device, acceptedSessionId);
             database?.SaveDevice(device.ToPersisted());
-            return StoreResult<bool>.Success(true);
+            return StoreResult<Guid>.Success(acceptedSessionId);
         }
     }
 
@@ -631,12 +628,37 @@ public sealed class ClassroomStore
                 throw new ClassroomStoreException("SESSION_NOT_FOUND", "The class session was not found.");
             }
 
+            var targets = devices.Values
+                .Where(device => device.ClassId == classId && !device.Revoked)
+                .Select(device => device.DeviceId)
+                .ToArray();
+            if (targets.Length > 0)
+            {
+                var cleanup = new CommandRequest(
+                    Guid.NewGuid(),
+                    session.SessionId,
+                    targets,
+                    ClassroomCommandKind.FocusMode,
+                    FocusEnabled: false);
+                var cleanupResult = QueueCommand(teacherId, classId, cleanup);
+                if (!cleanupResult.Succeeded)
+                {
+                    AddAuditLocked(AuditEvent.Create(
+                        "SESSION_POLICY_CLEANUP",
+                        "FAILED",
+                        cleanupResult.Code,
+                        schoolId: session.SchoolId,
+                        classId: session.ClassId,
+                        sessionId: session.SessionId,
+                        teacherId: teacherId,
+                        requestId: cleanup.RequestId));
+                }
+            }
+
             session.EndedAtUtc = DateTimeOffset.UtcNow;
             foreach (var device in devices.Values.Where(device => device.ClassId == classId))
             {
-                device.ConnectionActive = false;
                 device.SessionId = null;
-                device.LatestHeartbeat = null;
                 database?.SaveDevice(device.ToPersisted());
             }
 
@@ -665,6 +687,37 @@ public sealed class ClassroomStore
                 .OrderBy(device => device.StudentDisplayName, StringComparer.Ordinal)
                 .Select(device => device.ToStatus(active?.SessionId ?? Guid.Empty, now, options.HeartbeatTimeout))
                 .ToArray();
+        }
+    }
+
+    public DeviceActionResponse RevokeDevice(
+        Guid teacherId,
+        Guid classId,
+        Guid deviceId)
+    {
+        EnsureTeacherAccess(teacherId, classId);
+        lock (gate)
+        {
+            if (!devices.TryGetValue(deviceId, out var device)
+                || device.ClassId != classId
+                || device.Revoked)
+            {
+                throw new ClassroomStoreException("DEVICE_NOT_FOUND", "The student device was not found.");
+            }
+
+            device.Revoked = true;
+            device.ConnectionActive = false;
+            device.SessionId = null;
+            database?.SaveDevice(device.ToPersisted());
+            AddAuditLocked(AuditEvent.Create(
+                "DEVICE_ACCESS",
+                "REVOKED",
+                schoolId: device.SchoolId,
+                classId: device.ClassId,
+                teacherId: teacherId,
+                studentId: device.StudentId,
+                studentDeviceId: device.DeviceId));
+            return new DeviceActionResponse(device.DeviceId, "revoked", DateTimeOffset.UtcNow);
         }
     }
 
@@ -711,6 +764,39 @@ public sealed class ClassroomStore
                 .Reverse()
                 .Take(Math.Clamp(limit, 1, 1_000))
                 .ToArray();
+        }
+    }
+
+    public CommandStatusResponse GetCommandStatus(
+        Guid teacherId,
+        Guid classId,
+        Guid requestId)
+    {
+        EnsureTeacherAccess(teacherId, classId);
+        lock (gate)
+        {
+            var statuses = commands
+                .Where(pair => pair.Key.RequestId == requestId
+                    && pair.Value.TeacherId == teacherId
+                    && devices.TryGetValue(pair.Key.DeviceId, out var device)
+                    && device.ClassId == classId)
+                .Select(pair => new DeviceCommandStatus(pair.Key.DeviceId, pair.Value.State))
+                .OrderBy(status => status.DeviceId)
+                .ToArray();
+            if (statuses.Length == 0)
+            {
+                throw new ClassroomStoreException("COMMAND_NOT_FOUND", "The command was not found.");
+            }
+
+            var completed = statuses.Count(status => status.State == "COMPLETED");
+            var failed = statuses.Count(status => status.State is "FAILED" or "ACK_REJECTED");
+            return new CommandStatusResponse(
+                requestId,
+                statuses.Length,
+                completed,
+                failed,
+                completed + failed == statuses.Length,
+                statuses);
         }
     }
 
@@ -762,10 +848,12 @@ public sealed class ClassroomStore
     {
         foreach (var pair in commands)
         {
+            var isSessionCleanup = pair.Value.Command.Kind == ClassroomCommandKind.FocusMode
+                && pair.Value.Command.FocusEnabled is false;
             if (pair.Key.DeviceId != device.DeviceId
-                || pair.Value.Command.SessionId != sessionId
-                || pair.Value.Command.SessionId == Guid.Empty
-                || pair.Value.State is "COMPLETED" or "FAILED")
+                || (!isSessionCleanup && pair.Value.Command.SessionId != sessionId)
+                || (!isSessionCleanup && pair.Value.Command.SessionId == Guid.Empty)
+                || pair.Value.State is "COMPLETED" or "FAILED" or "ACK_REJECTED")
             {
                 continue;
             }

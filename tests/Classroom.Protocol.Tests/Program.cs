@@ -8,7 +8,7 @@ var tests = new (string Name, Action Run)[]
 {
     ("envelope serializes with version and camelCase fields", EnvelopeSerializationWorks),
     ("malformed and unsupported envelopes are rejected", InvalidEnvelopeIsRejected),
-    ("heartbeat validates metadata without credential fields", HeartbeatValidationWorks),
+    ("hello and heartbeat can wait for a server-selected session", HeartbeatValidationWorks),
     ("activity keeps browser data to a hostname", ActivityValidationWorks),
     ("message command validates and canonicalizes", MessageCommandWorks),
     ("open URL rejects non-HTTPS and arbitrary targets", OpenUrlIsConstrained),
@@ -73,7 +73,7 @@ static void HeartbeatValidationWorks()
 {
     var heartbeat = new DeviceHeartbeat(
         Guid.NewGuid(),
-        Guid.NewGuid(),
+        Guid.Empty,
         "0.1.0-dev",
         DateTimeOffset.UtcNow,
         null,
@@ -81,6 +81,10 @@ static void HeartbeatValidationWorks()
         "wifi",
         false);
     ProtocolValidation.ValidateHeartbeat(heartbeat);
+    ProtocolValidation.ValidateHello(new DeviceHello(
+        heartbeat.DeviceId,
+        Guid.Empty,
+        heartbeat.AgentVersion));
 }
 
 static void ActivityValidationWorks()

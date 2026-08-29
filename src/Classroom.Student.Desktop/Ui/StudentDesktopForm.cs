@@ -12,9 +12,13 @@ public sealed class StudentDesktopForm : Form
     private readonly StudentDesktopOptions options;
     private readonly WindowsStudentStatusProvider statusProvider;
     private readonly Label connectionLabel = CreateLabel("● 서비스 연결 대기 중", 11, Color.DarkOrange);
+    private readonly Label serverLabel = CreateLabel("● Classroom 서버 재연결 중", 11, Color.DarkOrange);
     private readonly Label activityLabel = CreateLabel("현재 앱: 확인 중", 11, Color.FromArgb(35, 44, 58));
     private readonly Label deviceLabel;
+    private readonly NotifyIcon trayIcon = new();
+    private readonly System.Windows.Forms.Timer disconnectFailsafeTimer = new() { Interval = 60_000 };
     private FocusOverlayForm? focusOverlay;
+    private bool explicitExit;
 
     public StudentDesktopForm(
         StudentDesktopOptions options,
@@ -25,8 +29,8 @@ public sealed class StudentDesktopForm : Form
         deviceLabel = CreateLabel($"장치: {options.DeviceId:D}", 9, Color.DimGray);
         Text = "Classroom Student";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(520, 300);
-        MinimumSize = new Size(520, 300);
+        ClientSize = new Size(520, 335);
+        MinimumSize = new Size(520, 335);
         BackColor = Color.White;
         Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
 
@@ -37,20 +41,61 @@ public sealed class StudentDesktopForm : Form
 
         connectionLabel.Location = new Point(30, 72);
         connectionLabel.AutoSize = true;
-        activityLabel.Location = new Point(30, 126);
+        serverLabel.Location = new Point(30, 101);
+        serverLabel.AutoSize = true;
+        activityLabel.Location = new Point(30, 151);
         activityLabel.AutoSize = true;
 
         var transparency = CreateLabel(
             "이 화면은 학교 관리 상태와 교사가 보낼 수 있는 작업을 명확히 표시합니다.\n화면 캡처와 임의 원격 명령은 사용하지 않습니다.",
             10,
             Color.FromArgb(92, 102, 118));
-        transparency.Location = new Point(30, 175);
+        transparency.Location = new Point(30, 200);
         transparency.AutoSize = true;
 
-        deviceLabel.Location = new Point(30, 250);
+        deviceLabel.Location = new Point(30, 285);
         deviceLabel.AutoSize = true;
 
-        Controls.AddRange([title, connectionLabel, activityLabel, transparency, deviceLabel]);
+        Controls.AddRange([title, connectionLabel, serverLabel, activityLabel, transparency, deviceLabel]);
+
+        var trayMenu = new ContextMenuStrip();
+        trayMenu.Items.Add("상태 열기", null, (_, _) => ShowMainWindow());
+        trayMenu.Items.Add("종료", null, (_, _) =>
+        {
+            explicitExit = true;
+            Close();
+        });
+        trayIcon.Icon = SystemIcons.Information;
+        trayIcon.Text = "Classroom Student · 학교 관리 활성화";
+        trayIcon.ContextMenuStrip = trayMenu;
+        trayIcon.Visible = true;
+        trayIcon.DoubleClick += (_, _) => ShowMainWindow();
+
+        disconnectFailsafeTimer.Tick += (_, _) =>
+        {
+            disconnectFailsafeTimer.Stop();
+            ClearFocusMode();
+        };
+        FormClosing += (_, eventArgs) =>
+        {
+            if (!explicitExit && eventArgs.CloseReason == CloseReason.UserClosing)
+            {
+                eventArgs.Cancel = true;
+                Hide();
+                trayIcon.ShowBalloonTip(
+                    2_000,
+                    "Classroom Student",
+                    "학교 관리 상태는 알림 영역에서 계속 확인할 수 있습니다.",
+                    ToolTipIcon.Info);
+            }
+        };
+        FormClosed += (_, _) =>
+        {
+            disconnectFailsafeTimer.Dispose();
+            trayIcon.Visible = false;
+            trayIcon.Dispose();
+            trayMenu.Dispose();
+        };
     }
 
     public void SetConnectionState(bool connected)
@@ -61,6 +106,35 @@ public sealed class StudentDesktopForm : Form
                 ? "● Classroom 서비스 연결됨"
                 : "● Classroom 서비스 연결 대기 중";
             connectionLabel.ForeColor = connected ? Color.SeaGreen : Color.DarkOrange;
+        });
+    }
+
+    public void SetServerConnectionState(bool connected, Guid sessionId)
+    {
+        RunOnUiThread(() =>
+        {
+            if (connected)
+            {
+                serverLabel.Text = sessionId == Guid.Empty
+                    ? "● Classroom 서버 연결됨 · 수업 대기 중"
+                    : $"● Classroom 서버 연결됨 · 수업 참여 {sessionId.ToString("N")[..8]}";
+                serverLabel.ForeColor = Color.SeaGreen;
+                trayIcon.Text = sessionId == Guid.Empty
+                    ? "Classroom Student · 수업 대기"
+                    : "Classroom Student · 수업 참여 중";
+                disconnectFailsafeTimer.Stop();
+            }
+            else
+            {
+                serverLabel.Text = "● Classroom 서버 재연결 중";
+                serverLabel.ForeColor = Color.DarkOrange;
+                trayIcon.Text = "Classroom Student · 서버 재연결 중";
+                if (focusOverlay is not null)
+                {
+                    disconnectFailsafeTimer.Stop();
+                    disconnectFailsafeTimer.Start();
+                }
+            }
         });
     }
 
@@ -160,9 +234,24 @@ public sealed class StudentDesktopForm : Form
             return new DesktopCommandApplyResult(true, "FOCUS_MODE_ENABLED", "Focus mode enabled.");
         }
 
+        ClearFocusMode();
+        return new DesktopCommandApplyResult(true, "FOCUS_MODE_DISABLED", "Focus mode disabled.");
+    }
+
+    private void ClearFocusMode()
+    {
+        disconnectFailsafeTimer.Stop();
         focusOverlay?.Close();
         focusOverlay = null;
-        return new DesktopCommandApplyResult(true, "FOCUS_MODE_DISABLED", "Focus mode disabled.");
+        statusProvider.SetPolicyApplied(false);
+    }
+
+    private void ShowMainWindow()
+    {
+        Show();
+        WindowState = FormWindowState.Normal;
+        Activate();
+        BringToFront();
     }
 
     private DesktopCommandApplyResult LaunchApprovedApp(CommandRequest command)

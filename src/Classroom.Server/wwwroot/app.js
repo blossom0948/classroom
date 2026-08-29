@@ -1,4 +1,6 @@
 (() => {
+  const runtimeConfig = window.CLASSROOM_CONFIG || {};
+  const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const state = {
     token: sessionStorage.getItem("classroom.teacherToken"),
     teacher: null,
@@ -7,16 +9,32 @@
     session: null,
     students: [],
     filter: "all",
+    search: "",
+    selectedDeviceIds: new Set(),
     commandKind: "message",
     commandTargetIds: null,
     pollTimer: null,
-    toastTimer: null
+    toastTimer: null,
+    enrollmentBundle: null
   };
 
   const $ = (id) => document.getElementById(id);
   const loginView = $("login-view");
   const appView = $("app-view");
   const loginError = $("login-error");
+
+  function apiUrl(path) {
+    return apiOrigin ? `${apiOrigin}${path}` : path;
+  }
+
+  function studentServerUrl() {
+    const value = new URL(apiOrigin || window.location.origin);
+    value.protocol = value.protocol === "https:" ? "wss:" : "ws:";
+    value.pathname = value.pathname.replace(/\/+$/, "");
+    value.search = "";
+    value.hash = "";
+    return value.toString().replace(/\/+$/, "");
+  }
 
   async function api(path, options = {}) {
     const headers = { Accept: "application/json", ...(options.headers || {}) };
@@ -25,7 +43,12 @@
       headers["Content-Type"] = "application/json";
       options.body = JSON.stringify(options.body);
     }
-    const response = await fetch(path, { ...options, headers });
+    let response;
+    try {
+      response = await fetch(apiUrl(path), { ...options, headers });
+    } catch (_) {
+      throw new Error("Classroom 서버에 연결할 수 없습니다. 서버 주소와 배포 상태를 확인하세요.");
+    }
     let payload = null;
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("json")) payload = await response.json();
@@ -89,6 +112,10 @@
     ]);
     state.session = session;
     state.students = students || [];
+    const currentIds = new Set(state.students.map((student) => student.deviceId));
+    state.selectedDeviceIds = new Set(
+      [...state.selectedDeviceIds].filter((deviceId) => currentIds.has(deviceId))
+    );
     renderHeader();
     renderStudents();
     renderActivity();
@@ -103,18 +130,37 @@
       : "활성 수업이 없습니다.";
     $("end-session-button").hidden = !state.session;
     $("offline-banner").hidden = Boolean(state.session);
+    renderSelection();
+  }
+
+  function renderSelection() {
+    const count = state.selectedDeviceIds.size;
+    $("selection-caption").textContent = count ? `${count}명 선택됨` : "전체 학생 대상";
+    $("clear-selection-button").hidden = count === 0;
+  }
+
+  function commandTargets() {
+    return state.selectedDeviceIds.size ? [...state.selectedDeviceIds] : null;
   }
 
   function renderStudents() {
     const grid = $("student-grid");
+    const query = state.search.toLocaleLowerCase("ko-KR");
     const filtered = state.students.filter((student) => {
       if (state.filter === "online") return student.online;
       if (state.filter === "offline") return !student.online;
       if (state.filter === "focus") return student.policyApplied;
       return true;
-    });
+    }).filter((student) => !query
+      || student.studentDisplayName.toLocaleLowerCase("ko-KR").includes(query)
+      || student.computerName.toLocaleLowerCase("ko-KR").includes(query));
     if (!filtered.length) {
-      grid.innerHTML = `<div class="empty-state">${state.students.length ? "현재 필터에 해당하는 학생이 없습니다." : "등록된 학생 장치가 아직 없습니다."}</div>`;
+      if (state.students.length) {
+        grid.innerHTML = '<div class="empty-state">현재 필터에 해당하는 학생이 없습니다.</div>';
+      } else {
+        grid.innerHTML = '<div class="empty-state"><strong>첫 학생 PC를 등록해 보세요.</strong><p>학생 이름만 입력하면 일회성 등록 파일을 만들 수 있습니다.</p><button id="empty-enroll-button" class="primary">학생 PC 등록</button></div>';
+        $("empty-enroll-button").addEventListener("click", openEnrollmentDialog);
+      }
       return;
     }
     grid.innerHTML = filtered.map((student) => {
@@ -122,13 +168,25 @@
       const statusClass = student.policyApplied ? "focus" : student.online ? "online" : "";
       const statusText = student.policyApplied ? "집중 모드" : student.online ? "온라인" : "오프라인";
       const battery = student.batteryPercent == null ? "배터리 —" : `배터리 ${student.batteryPercent}%`;
-      return `<article class="student-card" data-device-id="${student.deviceId}">
+      const selected = state.selectedDeviceIds.has(student.deviceId);
+      return `<article class="student-card${selected ? " selected" : ""}" data-device-id="${student.deviceId}">
+        <label class="student-selector" title="명령 대상 선택"><input type="checkbox" aria-label="${escapeHtml(student.studentDisplayName)} 선택" ${selected ? "checked" : ""}></label>
         <div class="student-head"><div><div class="student-name">${escapeHtml(student.studentDisplayName)}</div><div class="student-device">${escapeHtml(student.computerName)}</div></div><span class="status-dot ${statusClass}">${statusText}</span></div>
         <div class="student-activity"><span class="app-icon">▣</span><div><div class="activity-app">${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div class="activity-domain">${escapeHtml(activity?.browserDomain || "현재 도메인 없음")}</div></div></div>
         <div class="student-meta"><span>${battery}</span><span>${escapeHtml(student.networkStatus || "unknown")}</span>${student.policyApplied ? '<span class="policy-tag">🔒 집중</span>' : ""}</div>
       </article>`;
     }).join("");
-    grid.querySelectorAll(".student-card").forEach((card) => card.addEventListener("click", () => openDetail(card.dataset.deviceId)));
+    grid.querySelectorAll(".student-card").forEach((card) => {
+      const checkbox = card.querySelector("input[type=checkbox]");
+      checkbox.addEventListener("click", (event) => event.stopPropagation());
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) state.selectedDeviceIds.add(card.dataset.deviceId);
+        else state.selectedDeviceIds.delete(card.dataset.deviceId);
+        renderStudents();
+        renderSelection();
+      });
+      card.addEventListener("click", () => openDetail(card.dataset.deviceId));
+    });
   }
 
   function renderActivity() {
@@ -145,8 +203,17 @@
     if (!student) return;
     $("detail-pane").hidden = false;
     const activity = student.activity;
-    $("detail-content").innerHTML = `<div class="eyebrow">STUDENT DEVICE</div><h2 class="detail-title">${escapeHtml(student.studentDisplayName)}</h2><div class="detail-status"><span class="status-dot ${student.online ? "online" : ""}">${student.online ? "온라인" : "오프라인"}</span></div><div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "확인 필요" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 heartbeat</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div><div class="detail-section"><h3>장치 식별자</h3><div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div><div class="detail-row"><span>Agent</span><strong>${escapeHtml(student.agentVersion)}</strong></div></div><div class="detail-section"><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button></div>`;
+    $("detail-content").innerHTML = `<div class="eyebrow">STUDENT DEVICE</div><h2 class="detail-title">${escapeHtml(student.studentDisplayName)}</h2><div class="detail-status"><span class="status-dot ${student.online ? "online" : ""}">${student.online ? "온라인" : "오프라인"}</span></div><div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "확인 필요" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 heartbeat</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div><div class="detail-section"><h3>장치 식별자</h3><div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div><div class="detail-row"><span>Agent</span><strong>${escapeHtml(student.agentVersion)}</strong></div></div><div class="detail-section stack"><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>`;
     $("detail-message-button").addEventListener("click", () => openCommandDialog("message", [deviceId]));
+    $("detail-revoke-button").addEventListener("click", () => revokeDevice(student).catch((error) => showToast(error.message)));
+  }
+
+  async function revokeDevice(student) {
+    if (!confirm(`${student.studentDisplayName} 학생의 ${student.computerName} 연결을 해제할까요?\n이 장치는 새 등록 파일 없이는 다시 연결할 수 없습니다.`)) return;
+    await api(`/api/classes/${state.classId}/devices/${student.deviceId}`, { method: "DELETE" });
+    $("detail-pane").hidden = true;
+    showToast("학생 장치 연결을 해제했습니다.");
+    await refreshClass();
   }
 
   async function loadAudit() {
@@ -166,10 +233,11 @@
     }
     state.commandKind = kind;
     state.commandTargetIds = targetIds;
-    $("dialog-title").textContent = kind === "url" ? "URL 열기" : "메시지 보내기";
+    $("dialog-title").textContent = kind === "url" ? "URL 열기" : kind === "app" ? "승인된 앱 실행" : "메시지 보내기";
     $("url-field").hidden = kind !== "url";
-    $("message-field").hidden = kind === "url";
-    $("seconds-field").hidden = kind === "url";
+    $("app-field").hidden = kind !== "app";
+    $("message-field").hidden = kind !== "message";
+    $("seconds-field").hidden = kind !== "message";
     $("command-message").value = "";
     $("command-url").value = "";
     $("dialog-error").hidden = true;
@@ -189,14 +257,35 @@
       requiresAcknowledgement: true
     };
     const result = await api(`/api/classes/${state.classId}/commands`, { method: "POST", body: payload });
-    showToast(`${result.queuedCount}대 장치에 명령을 전달했습니다.`);
+    showToast(`${result.queuedCount}대 장치에 명령을 대기열로 보냈습니다.`);
+    monitorCommand(result.requestId).catch((error) => showToast(error.message));
     return result;
   }
 
-  async function startSession() {
+  async function monitorCommand(requestId) {
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const status = await api(`/api/classes/${state.classId}/commands/${requestId}`);
+      if (status.finished) {
+        if (status.failedCount) {
+          showToast(`명령 결과: ${status.completedCount}대 성공, ${status.failedCount}대 실패`);
+        } else {
+          showToast(`명령 적용 완료: ${status.completedCount}/${status.totalCount}대`);
+        }
+        return;
+      }
+    }
+    showToast("명령은 전달됐지만 일부 학생 PC의 응답을 기다리는 중입니다.");
+  }
+
+  function openSessionDialog() {
     const selected = currentClass();
-    const subject = prompt("수업 과목을 입력하세요.", selected?.defaultSubject || "정보");
-    if (!subject) return;
+    $("session-subject").value = selected?.defaultSubject || "정보";
+    $("session-error").hidden = true;
+    $("session-dialog").showModal();
+  }
+
+  async function startSession(subject) {
     await api(`/api/classes/${state.classId}/sessions`, { method: "POST", body: { subject } });
     showToast("수업을 시작했습니다.");
     await refreshClass();
@@ -209,18 +298,62 @@
     await refreshClass();
   }
 
-  async function enrollDevice() {
-    const displayName = prompt("학생 이름을 입력하세요.");
-    if (!displayName) return;
-    const studentId = prompt("학생 ID를 입력하세요. (예: 학교 계정 UUID)");
-    if (!studentId) return;
+  function openEnrollmentDialog() {
+    state.enrollmentBundle = null;
+    $("enrollment-form").reset();
+    $("enrollment-fields").hidden = false;
+    $("enrollment-result").hidden = true;
+    $("enrollment-create").hidden = false;
+    $("enrollment-cancel").hidden = false;
+    $("enrollment-download").hidden = true;
+    $("enrollment-done").hidden = true;
+    $("enrollment-error").hidden = true;
+    $("enrollment-dialog").showModal();
+  }
+
+  async function createEnrollmentBundle() {
+    const displayName = $("enrollment-name").value.trim();
+    const studentId = $("enrollment-student-id").value.trim() || null;
     const ticket = await api(`/api/classes/${state.classId}/enrollment-tickets`, {
       method: "POST",
       body: { studentId, studentDisplayName: displayName }
     });
-    const message = `학생: ${ticket.studentId}\nDevice ID: ${ticket.deviceId}\nEnrollment token: ${ticket.enrollmentToken}\n\n학생 PC에서 이 값을 사용해 등록하세요.`;
-    try { await navigator.clipboard.writeText(message); showToast("등록 정보가 클립보드에 복사되었습니다."); } catch (_) { /* clipboard is optional */ }
-    window.prompt("학생 PC 등록에 전달할 일회성 정보입니다.", message);
+    const safeName = displayName.replace(/[^0-9A-Za-z가-힣_-]+/g, "-").replace(/^-|-$/g, "") || "student";
+    state.enrollmentBundle = {
+      fileName: `classroom-enrollment-${safeName}.json`,
+      value: {
+        format: "BLOSSOM-CLASSROOM-ENROLLMENT-V1",
+        serverUrl: studentServerUrl(),
+        deviceId: ticket.deviceId,
+        studentId: ticket.studentId,
+        studentDisplayName: displayName,
+        enrollmentToken: ticket.enrollmentToken,
+        expiresAtUtc: ticket.expiresAtUtc
+      }
+    };
+    $("enrollment-result-name").textContent = `${displayName} 학생 등록 파일이 준비되었습니다.`;
+    $("enrollment-expiry").textContent = `${formatTime(ticket.expiresAtUtc)}까지 한 번만 사용할 수 있습니다.`;
+    $("enrollment-command").textContent = `.\\Install-ClassroomStudent.ps1 -PackageRoot . -EnrollmentFile .\\${state.enrollmentBundle.fileName}`;
+    $("enrollment-fields").hidden = true;
+    $("enrollment-result").hidden = false;
+    $("enrollment-create").hidden = true;
+    $("enrollment-cancel").hidden = true;
+    $("enrollment-download").hidden = false;
+    $("enrollment-done").hidden = false;
+  }
+
+  function downloadEnrollmentBundle() {
+    if (!state.enrollmentBundle) return;
+    const blob = new Blob([`${JSON.stringify(state.enrollmentBundle.value, null, 2)}\n`], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = state.enrollmentBundle.fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    showToast("등록 파일을 다운로드했습니다.");
   }
 
   function formatTime(value) {
@@ -252,15 +385,26 @@
   $("class-select").addEventListener("change", async (event) => {
     state.classId = event.target.value;
     state.session = null;
+    state.selectedDeviceIds.clear();
     await refreshClass();
   });
-  $("start-session-button").addEventListener("click", () => startSession().catch((error) => showToast(error.message)));
-  $("enroll-button").addEventListener("click", () => enrollDevice().catch((error) => showToast(error.message)));
+  $("start-session-button").addEventListener("click", openSessionDialog);
+  $("enroll-button").addEventListener("click", openEnrollmentDialog);
   $("end-session-button").addEventListener("click", () => endSession().catch((error) => showToast(error.message)));
-  $("focus-on-button").addEventListener("click", () => sendCommand("focusMode", null, { message: "수업에 집중해 주세요.", focusEnabled: true }).catch((error) => showToast(error.message)));
-  $("focus-off-button").addEventListener("click", () => sendCommand("focusMode", null, { focusEnabled: false }).catch((error) => showToast(error.message)));
-  $("message-button").addEventListener("click", () => openCommandDialog("message"));
-  $("url-button").addEventListener("click", () => openCommandDialog("url"));
+  $("focus-on-button").addEventListener("click", () => sendCommand("focusMode", commandTargets(), { message: "수업에 집중해 주세요.", focusEnabled: true }).catch((error) => showToast(error.message)));
+  $("focus-off-button").addEventListener("click", () => sendCommand("focusMode", commandTargets(), { focusEnabled: false }).catch((error) => showToast(error.message)));
+  $("message-button").addEventListener("click", () => openCommandDialog("message", commandTargets()));
+  $("url-button").addEventListener("click", () => openCommandDialog("url", commandTargets()));
+  $("app-button").addEventListener("click", () => openCommandDialog("app", commandTargets()));
+  $("clear-selection-button").addEventListener("click", () => {
+    state.selectedDeviceIds.clear();
+    renderStudents();
+    renderSelection();
+  });
+  $("student-search").addEventListener("input", (event) => {
+    state.search = event.target.value.trim();
+    renderStudents();
+  });
   $("refresh-audit-button").addEventListener("click", () => loadAudit().catch((error) => showToast(error.message)));
   $("close-detail").addEventListener("click", () => { $("detail-pane").hidden = true; });
   $("password-form").addEventListener("submit", async (event) => {
@@ -306,6 +450,8 @@
     try {
       if (state.commandKind === "url") {
         await sendCommand("openUrl", state.commandTargetIds, { url: $("command-url").value });
+      } else if (state.commandKind === "app") {
+        await sendCommand("launchApprovedApp", state.commandTargetIds, { approvedAppId: $("command-app").value });
       } else {
         await sendCommand("message", state.commandTargetIds, { message: $("command-message").value, displaySeconds: Number($("command-seconds").value) });
       }
@@ -315,6 +461,44 @@
       errorTarget.hidden = false;
     }
   });
+
+  $("session-form").addEventListener("submit", async (event) => {
+    if (event.submitter?.value === "cancel") return;
+    event.preventDefault();
+    const errorTarget = $("session-error");
+    errorTarget.hidden = true;
+    try {
+      await startSession($("session-subject").value.trim());
+      $("session-dialog").close();
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
+    }
+  });
+
+  $("enrollment-form").addEventListener("submit", async (event) => {
+    if (event.submitter?.value === "cancel") return;
+    event.preventDefault();
+    const errorTarget = $("enrollment-error");
+    errorTarget.hidden = true;
+    try {
+      await createEnrollmentBundle();
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
+    }
+  });
+  $("enrollment-download").addEventListener("click", downloadEnrollmentBundle);
+
+  fetch(apiUrl("/health"), { headers: { Accept: "application/json" } })
+    .then((response) => response.ok ? response.json() : null)
+    .then((health) => {
+      $("dev-login-hint").hidden = !health?.devSchoolId;
+      $("security-setting").textContent = apiOrigin
+        ? `암호화된 외부 API ${apiOrigin}에 연결됨`
+        : "Teacher session bearer token으로 같은 서버에 연결됨";
+    })
+    .catch(() => { $("dev-login-hint").hidden = true; });
 
   if (state.token) {
     loadTeacher().catch((error) => { clearSession(); loginError.textContent = error.message; loginError.hidden = false; });

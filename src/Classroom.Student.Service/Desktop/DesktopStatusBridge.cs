@@ -30,6 +30,8 @@ public sealed class DesktopStatusBridge(
     private Task? acceptTask;
     private NamedPipeServerStream? connectedPipe;
     private StreamWriter? connectedWriter;
+    private bool serverConnected;
+    private Guid serverSessionId;
     private int disposed;
 
     public ValueTask<StudentStatusData> GetAsync(CancellationToken cancellationToken)
@@ -87,6 +89,32 @@ public sealed class DesktopStatusBridge(
         finally
         {
             pending.TryRemove(command.RequestId, out _);
+        }
+    }
+
+    public async Task UpdateServerConnectionAsync(
+        bool connected,
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            serverConnected = connected;
+            serverSessionId = connected ? sessionId : Guid.Empty;
+        }
+
+        try
+        {
+            await SendAsync(
+                new DesktopServerStatusMessage(
+                    "server-status",
+                    connected,
+                    connected ? sessionId : Guid.Empty),
+                cancellationToken);
+        }
+        catch (IOException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogDebug("Could not publish server state to Student Desktop: {Message}", exception.Message);
         }
     }
 
@@ -226,6 +254,19 @@ public sealed class DesktopStatusBridge(
             connectedWriter = writer;
         }
         await WriteAsync(writer, new DesktopReply("hello-accepted", "Student Desktop connected."));
+        bool currentServerConnected;
+        Guid currentServerSessionId;
+        lock (gate)
+        {
+            currentServerConnected = serverConnected;
+            currentServerSessionId = serverSessionId;
+        }
+        await WriteAsync(
+            writer,
+            new DesktopServerStatusMessage(
+                "server-status",
+                currentServerConnected,
+                currentServerSessionId));
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -354,6 +395,11 @@ public sealed class DesktopStatusBridge(
         int? BatteryPercent,
         string? NetworkStatus,
         bool PolicyApplied);
+
+    private sealed record DesktopServerStatusMessage(
+        string Kind,
+        bool Connected,
+        Guid SessionId);
 
     private sealed record DesktopCommandResult(
         string Kind,
