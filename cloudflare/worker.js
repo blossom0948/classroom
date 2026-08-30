@@ -9,10 +9,13 @@ const ROOT_EMAIL = "blossom0948@gmail.com";
 const SESSION_LIFETIME_MS = 1000 * 60 * 60 * 12;
 const ONLINE_WINDOW_MS = 75 * 1000;
 const PASSWORD_ITERATIONS = 100_000;
+const PASSWORD_VERIFICATION_LIFETIME_MS = 10 * 60 * 1000;
+const MAX_PASSWORD_VERIFICATION_ATTEMPTS = 5;
 const TERMS_VERSION = "2026-08-30";
 const PRIVACY_VERSION = "2026-08-30";
 const MAX_MESSAGE_BYTES = 64 * 1024;
 const MAX_COMMAND_TARGETS = 30;
+const MAX_ROSTER_ROWS = 100;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export default {
@@ -33,6 +36,16 @@ export class ClassroomState {
   }
 
   async initialize() {
+    this.exec(`CREATE TABLE IF NOT EXISTS Schools (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      education_office_code TEXT,
+      school_code TEXT,
+      address TEXT,
+      school_type TEXT,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    )`);
     this.exec(`CREATE TABLE IF NOT EXISTS Users (
       id TEXT PRIMARY KEY,
       school_id TEXT NOT NULL,
@@ -46,6 +59,7 @@ export class ClassroomState {
       password_iterations INTEGER,
       is_admin INTEGER NOT NULL DEFAULT 0,
       profile_completed INTEGER NOT NULL DEFAULT 0,
+      school_selected INTEGER NOT NULL DEFAULT 0,
       legal_accepted_at_utc TEXT,
       terms_version TEXT,
       privacy_version TEXT,
@@ -57,6 +71,8 @@ export class ClassroomState {
       school_id TEXT NOT NULL,
       name TEXT NOT NULL,
       default_subject TEXT NOT NULL DEFAULT '',
+      grade INTEGER,
+      class_number INTEGER,
       owner_teacher_id TEXT NOT NULL,
       created_at_utc TEXT NOT NULL,
       updated_at_utc TEXT NOT NULL
@@ -86,6 +102,9 @@ export class ClassroomState {
       class_id TEXT NOT NULL,
       student_id TEXT NOT NULL,
       student_display_name TEXT NOT NULL,
+      grade INTEGER,
+      class_number INTEGER,
+      student_number INTEGER,
       join_code TEXT NOT NULL COLLATE NOCASE UNIQUE,
       code_created_at_utc TEXT NOT NULL,
       last_used_at_utc TEXT,
@@ -98,6 +117,9 @@ export class ClassroomState {
       class_id TEXT NOT NULL,
       student_id TEXT NOT NULL,
       student_display_name TEXT NOT NULL,
+      grade INTEGER,
+      class_number INTEGER,
+      student_number INTEGER,
       computer_name TEXT NOT NULL,
       agent_version TEXT NOT NULL,
       device_token_hash TEXT NOT NULL,
@@ -157,22 +179,52 @@ export class ClassroomState {
       attempt_count INTEGER NOT NULL,
       reset_at_utc TEXT NOT NULL
     )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS PasswordVerifications (
+      verification_id TEXT PRIMARY KEY,
+      teacher_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_at_utc TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      verified_at_utc TEXT,
+      consumed_at_utc TEXT,
+      created_at_utc TEXT NOT NULL
+    )`);
     this.exec("CREATE INDEX IF NOT EXISTS idx_devices_class ON Devices(class_id, revoked_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_codes_class ON StudentCodes(class_id, revoked_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_sessions_teacher ON TeacherSessions(teacher_id, expires_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_audit_class ON AuditEvents(class_id, timestamp_utc)");
+
+    // Existing Durable Object databases predate school and roster metadata.
+    // Additive migrations keep already-enrolled devices and accounts intact.
+    this.ensureColumn("Users", "school_selected", "INTEGER NOT NULL DEFAULT 0");
+    this.ensureColumn("Classes", "grade", "INTEGER");
+    this.ensureColumn("Classes", "class_number", "INTEGER");
+    this.ensureColumn("StudentCodes", "grade", "INTEGER");
+    this.ensureColumn("StudentCodes", "class_number", "INTEGER");
+    this.ensureColumn("StudentCodes", "student_number", "INTEGER");
+    this.ensureColumn("Devices", "grade", "INTEGER");
+    this.ensureColumn("Devices", "class_number", "INTEGER");
+    this.ensureColumn("Devices", "student_number", "INTEGER");
+
+    const rootSchool = this.one("SELECT id FROM Schools WHERE id = ?", ROOT_SCHOOL_ID);
+    if (!rootSchool) {
+      const now = isoNow();
+      this.exec(`INSERT INTO Schools (id, name, school_type, created_at_utc, updated_at_utc)
+        VALUES (?, ?, ?, ?, ?)`, ROOT_SCHOOL_ID, "Classroom 학교", "미설정", now, now);
+    }
 
     const existingRoot = this.one("SELECT id FROM Users WHERE id = ?", ROOT_TEACHER_ID);
     if (!existingRoot) {
       const now = isoNow();
       this.exec(`INSERT INTO Users (
         id, school_id, login_name, display_name, subject, firebase_email,
-        is_admin, profile_completed, created_at_utc, updated_at_utc
-      ) VALUES (?, ?, ?, ?, '', ?, 1, 0, ?, ?)`,
+        is_admin, profile_completed, school_selected, created_at_utc, updated_at_utc
+      ) VALUES (?, ?, ?, ?, '', ?, 1, 0, 0, ?, ?)`,
       ROOT_TEACHER_ID, ROOT_SCHOOL_ID, ROOT_LOGIN, "선생님", ROOT_EMAIL, now, now);
       this.exec(`INSERT INTO Classes (
-        id, school_id, name, default_subject, owner_teacher_id, created_at_utc, updated_at_utc
-      ) VALUES (?, ?, ?, '', ?, ?, ?)`,
+        id, school_id, name, default_subject, grade, class_number, owner_teacher_id, created_at_utc, updated_at_utc
+      ) VALUES (?, ?, ?, '', NULL, NULL, ?, ?, ?)`,
       ROOT_CLASS_ID, ROOT_SCHOOL_ID, "나의 첫 수업", ROOT_TEACHER_ID, now, now);
       this.exec("INSERT OR IGNORE INTO ClassTeachers (class_id, teacher_id) VALUES (?, ?)", ROOT_CLASS_ID, ROOT_TEACHER_ID);
     }
@@ -201,9 +253,14 @@ export class ClassroomState {
       if (path === "/auth/me" && request.method === "GET") return this.getMe(request, cors);
       if (path === "/auth/logout" && request.method === "POST") return this.logout(request, cors);
       if (path === "/auth/profile" && request.method === "PUT") return this.updateProfile(request, cors);
+      if (path === "/auth/password-verification/start" && request.method === "POST") return this.startPasswordVerification(request, cors);
+      if (path === "/auth/password-verification/verify" && request.method === "POST") return this.verifyPasswordVerification(request, cors);
       if (path === "/auth/change-password" && request.method === "POST") return this.changePassword(request, cors);
+      if (path === "/api/schools/search" && request.method === "GET") return this.searchSchools(request, url, cors);
       if (path === "/api/classes" && request.method === "GET") return this.getClasses(request, cors);
       if (path === "/api/student-codes" && request.method === "GET") return this.getStudentCodes(request, cors);
+      if (path === "/api/admin/classes" && request.method === "POST") return this.createClass(request, cors);
+      if (path === "/api/admin/student-codes/import" && request.method === "POST") return this.importStudentCodes(request, cors);
       if (path === "/api/admin/teachers" && request.method === "GET") return this.getAdministrators(request, cors);
       if (path === "/api/admin/teachers" && request.method === "POST") return this.setAdministrator(request, cors);
       if (path === "/api/devices/enroll-code" && request.method === "POST") return this.enrollByCode(request, cors);
@@ -274,8 +331,8 @@ export class ClassroomState {
       const displayName = text(identity.displayName, 80) || "새 선생님";
       this.exec(`INSERT INTO Users (
         id, school_id, login_name, display_name, subject, firebase_uid, firebase_email,
-        is_admin, profile_completed, created_at_utc, updated_at_utc
-      ) VALUES (?, ?, ?, ?, '', ?, ?, ?, 0, ?, ?)`,
+        is_admin, profile_completed, school_selected, created_at_utc, updated_at_utc
+      ) VALUES (?, ?, ?, ?, '', ?, ?, ?, 0, 0, ?, ?)`,
       userId, ROOT_SCHOOL_ID, loginName, displayName, identity.localId, email, isRoot ? 1 : 0, now, now);
       this.createStarterClass(userId, ROOT_SCHOOL_ID, "나의 첫 수업", "");
       user = this.one("SELECT * FROM Users WHERE id = ?", userId);
@@ -316,18 +373,35 @@ export class ClassroomState {
     const displayName = text(body?.displayName, 80);
     const subject = text(body?.subject, 128);
     const className = text(body?.className, 80);
+    const requestedSchoolId = text(body?.schoolId, 120);
     if (!displayName || displayName.length < 2) return responseError("INVALID_PROFILE", "선생님 이름을 2자 이상 입력해 주세요.", 400, cors);
+    const schoolId = requestedSchoolId || (user.school_selected ? user.school_id : "");
+    const school = schoolId ? this.one("SELECT * FROM Schools WHERE id = ?", schoolId) : null;
+    if (!school) return responseError("SCHOOL_REQUIRED", "학교 검색 결과에서 학교를 선택해 주세요.", 400, cors);
     if (body?.termsAccepted !== true || body?.privacyAccepted !== true) {
       if (!user.legal_accepted_at_utc) return responseError("LEGAL_CONSENT_REQUIRED", "이용약관과 개인정보처리방침 동의가 필요합니다.", 400, cors);
     }
     const now = isoNow();
-    this.exec(`UPDATE Users SET display_name = ?, subject = ?, profile_completed = 1, updated_at_utc = ? WHERE id = ?`, displayName, subject, now, user.id);
+    if (user.school_id !== school.id) {
+      this.exec("UPDATE Classes SET school_id = ? WHERE owner_teacher_id = ?", school.id, user.id);
+      this.exec("UPDATE StudentCodes SET school_id = ? WHERE class_id IN (SELECT id FROM Classes WHERE owner_teacher_id = ?)", school.id, user.id);
+      this.exec("UPDATE Devices SET school_id = ? WHERE class_id IN (SELECT id FROM Classes WHERE owner_teacher_id = ?)", school.id, user.id);
+    }
+    this.exec(`UPDATE Users SET school_id = ?, school_selected = 1, display_name = ?, subject = ?, profile_completed = 1, updated_at_utc = ? WHERE id = ?`, school.id, displayName, subject, now, user.id);
     if (body?.termsAccepted === true && body?.privacyAccepted === true) this.recordLegalConsent(user.id);
     const ownClass = this.one("SELECT * FROM Classes WHERE owner_teacher_id = ? ORDER BY created_at_utc LIMIT 1", user.id);
-    if (ownClass && className) {
-      this.exec("UPDATE Classes SET name = ?, default_subject = ?, updated_at_utc = ? WHERE id = ?", className, subject, now, ownClass.id);
+    const parsedClass = parseClassLabel(className);
+    const grade = numberInRange(body?.grade, 1, 12) || parsedClass.grade;
+    const classNumber = numberInRange(body?.classNumber, 1, 99) || parsedClass.classNumber;
+    if (ownClass && !className && ownClass.name === "나의 첫 수업"
+      && !this.one("SELECT device_id FROM StudentCodes WHERE class_id = ?", ownClass.id)
+      && !this.one("SELECT device_id FROM Devices WHERE class_id = ?", ownClass.id)) {
+      this.exec("DELETE FROM ClassTeachers WHERE class_id = ?", ownClass.id);
+      this.exec("DELETE FROM Classes WHERE id = ?", ownClass.id);
+    } else if (ownClass && className) {
+      this.exec("UPDATE Classes SET name = ?, default_subject = ?, grade = ?, class_number = ?, updated_at_utc = ? WHERE id = ?", className, subject, grade, classNumber, now, ownClass.id);
     } else if (!ownClass) {
-      this.createStarterClass(user.id, user.school_id, className || "나의 첫 수업", subject);
+      this.createStarterClass(user.id, school.id, className || "나의 첫 수업", subject, grade, classNumber);
     }
     const updated = this.one("SELECT * FROM Users WHERE id = ?", user.id);
     return responseJson(this.serializeTeacherSession(updated), 200, cors);
@@ -337,23 +411,200 @@ export class ClassroomState {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
     const body = await readJson(request);
-    const currentPassword = text(body?.currentPassword, 256);
     const newPassword = text(body?.newPassword, 256);
     if (!newPassword || newPassword.length < 6) {
       return responseError("INVALID_PASSWORD", "비밀번호는 6자 이상으로 설정해 주세요.", 400, cors);
     }
-    if (user.password_hash && !(await verifyPassword(currentPassword, user.password_salt, user.password_hash, user.password_iterations))) {
-      return responseError("INVALID_CREDENTIALS", "현재 비밀번호가 올바르지 않습니다.", 401, cors);
+    const verificationId = text(body?.verificationId, 80);
+    const verification = verificationId
+      ? this.one("SELECT * FROM PasswordVerifications WHERE verification_id = ? AND teacher_id = ? AND consumed_at_utc IS NULL", verificationId, user.id)
+      : null;
+    if (!verification || !verification.verified_at_utc || Date.parse(verification.expires_at_utc) <= Date.now()) {
+      return responseError("PASSWORD_VERIFICATION_REQUIRED", "이메일로 받은 확인 코드를 먼저 확인해 주세요.", 409, cors);
     }
     const encoded = await hashPassword(newPassword);
     this.exec(`UPDATE Users SET password_salt = ?, password_hash = ?, password_iterations = ?, updated_at_utc = ? WHERE id = ?`, encoded.salt, encoded.hash, PASSWORD_ITERATIONS, isoNow(), user.id);
+    this.exec("UPDATE PasswordVerifications SET consumed_at_utc = ? WHERE verification_id = ?", isoNow(), verification.verification_id);
+    const currentToken = bearerToken(request);
+    if (currentToken) this.exec("UPDATE TeacherSessions SET revoked_at_utc = ? WHERE teacher_id = ? AND token_hash <> ? AND revoked_at_utc IS NULL", isoNow(), user.id, await sha256Text(currentToken));
     return new Response(null, { status: 204, headers: cors });
+  }
+
+  async startPasswordVerification(request, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    const email = normalizeEmail(user.firebase_email);
+    if (!email) return responseError("PASSWORD_EMAIL_REQUIRED", "확인 메일을 받을 이메일이 계정에 없습니다.", 400, cors);
+    if (!this.consumeRateLimit(`${clientIp(request)}|password-verification|${user.id}`, 3, 10 * 60_000)) {
+      return responseError("VERIFICATION_RATE_LIMITED", "확인 메일 요청이 많습니다. 잠시 후 다시 시도해 주세요.", 429, cors, { "Retry-After": "600" });
+    }
+    const emailApiKey = String(this.env.RESEND_API_KEY || "").trim();
+    const emailFrom = String(this.env.CLASSROOM_EMAIL_FROM || "").trim();
+    if (!emailApiKey || !emailFrom) {
+      return responseError("VERIFICATION_EMAIL_NOT_CONFIGURED", "확인 메일 서버가 아직 설정되지 않았습니다. 관리자에게 이메일 발송 설정을 요청해 주세요.", 503, cors);
+    }
+    const code = randomVerificationCode();
+    const verificationId = crypto.randomUUID();
+    const now = isoNow();
+    const expiresAtUtc = new Date(Date.now() + PASSWORD_VERIFICATION_LIFETIME_MS).toISOString();
+    this.exec("UPDATE PasswordVerifications SET consumed_at_utc = ? WHERE teacher_id = ? AND consumed_at_utc IS NULL", now, user.id);
+    this.exec(`INSERT INTO PasswordVerifications (verification_id, teacher_id, email, code_hash, expires_at_utc, created_at_utc)
+      VALUES (?, ?, ?, ?, ?, ?)`, verificationId, user.id, email, await sha256Text(code), expiresAtUtc, now);
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${emailApiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: emailFrom,
+          to: [email],
+          subject: "Classroom 비밀번호 확인 코드",
+          text: `Classroom 비밀번호 확인 코드: ${code}\n\n이 코드는 10분 동안 유효합니다. 본인이 요청하지 않았다면 이 메일을 무시하세요.`,
+          html: `<p>Classroom 비밀번호 확인 코드</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>이 코드는 10분 동안 유효합니다. 본인이 요청하지 않았다면 이 메일을 무시하세요.</p>`
+        })
+      });
+      if (!response.ok) throw new Error("Email provider rejected the request.");
+    } catch (_) {
+      this.exec("DELETE FROM PasswordVerifications WHERE verification_id = ?", verificationId);
+      return responseError("VERIFICATION_EMAIL_FAILED", "확인 메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.", 502, cors);
+    }
+    return responseJson({ verificationId, email: maskEmail(email), expiresAtUtc }, 200, cors);
+  }
+
+  async verifyPasswordVerification(request, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    const body = await readJson(request);
+    const verificationId = text(body?.verificationId, 80);
+    const code = text(body?.code, 6);
+    if (!verificationId || !/^\d{6}$/.test(code)) return responseError("INVALID_VERIFICATION_CODE", "6자리 확인 코드를 입력해 주세요.", 400, cors);
+    const verification = this.one("SELECT * FROM PasswordVerifications WHERE verification_id = ? AND teacher_id = ? AND consumed_at_utc IS NULL", verificationId, user.id);
+    if (!verification || Date.parse(verification.expires_at_utc) <= Date.now() || Number(verification.attempts) >= MAX_PASSWORD_VERIFICATION_ATTEMPTS) {
+      return responseError("VERIFICATION_EXPIRED", "확인 코드가 만료되었습니다. 새 코드를 요청해 주세요.", 400, cors);
+    }
+    if (!(await constantTimeEqual(await sha256Text(code), verification.code_hash))) {
+      this.exec("UPDATE PasswordVerifications SET attempts = attempts + 1 WHERE verification_id = ?", verificationId);
+      return responseError("INVALID_VERIFICATION_CODE", "확인 코드가 올바르지 않습니다.", 400, cors);
+    }
+    this.exec("UPDATE PasswordVerifications SET verified_at_utc = ? WHERE verification_id = ?", isoNow(), verificationId);
+    return responseJson({ verificationId, verified: true, expiresAtUtc: verification.expires_at_utc }, 200, cors);
   }
 
   async getClasses(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
     return responseJson(this.classesForTeacher(user), 200, cors);
+  }
+
+  async searchSchools(request, url, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    const query = text(url.searchParams.get("q"), 80);
+    if (query.length < 2) return responseJson([], 200, cors);
+    const apiKey = String(this.env.NEIS_API_KEY || "").trim();
+    if (!apiKey) {
+      return responseError("SCHOOL_SEARCH_NOT_CONFIGURED", "학교 검색을 준비하는 중입니다. 관리자에게 NEIS 인증키 설정을 요청해 주세요.", 503, cors);
+    }
+
+    const endpoint = new URL("https://open.neis.go.kr/hub/schoolInfo");
+    endpoint.searchParams.set("KEY", apiKey);
+    endpoint.searchParams.set("Type", "json");
+    endpoint.searchParams.set("pIndex", "1");
+    endpoint.searchParams.set("pSize", "20");
+    endpoint.searchParams.set("SCHUL_NM", query);
+    let response;
+    try {
+      response = await fetch(endpoint);
+    } catch (_) {
+      return responseError("SCHOOL_SEARCH_UNAVAILABLE", "학교 검색 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.", 502, cors);
+    }
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) return responseError("SCHOOL_SEARCH_UNAVAILABLE", "학교 검색 서버가 응답하지 않았습니다.", 502, cors);
+    const rows = Array.isArray(payload?.schoolInfo)
+      ? payload.schoolInfo.find((item) => Array.isArray(item?.row))?.row || []
+      : [];
+    if (!rows.length) {
+      const message = payload?.RESULT?.MESSAGE || "검색 결과가 없습니다.";
+      return responseJson([], 200, cors, { "X-Classroom-School-Search": message });
+    }
+    const now = isoNow();
+    const schools = rows.map((row) => {
+      const educationOfficeCode = text(row.ATPT_OFCDC_SC_CODE, 32);
+      const schoolCode = text(row.SD_SCHUL_CODE, 32);
+      const school = {
+        id: `neis:${educationOfficeCode}:${schoolCode}`,
+        name: text(row.SCHUL_NM, 160),
+        educationOfficeCode,
+        schoolCode,
+        address: text(row.ORG_RDNMA, 256),
+        schoolType: text(row.SCHUL_KND_SC_NM, 80)
+      };
+      if (school.name && educationOfficeCode && schoolCode) {
+        this.exec(`INSERT INTO Schools (id, name, education_office_code, school_code, address, school_type, created_at_utc, updated_at_utc)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET name = excluded.name, address = excluded.address, school_type = excluded.school_type, updated_at_utc = excluded.updated_at_utc`,
+        school.id, school.name, school.educationOfficeCode, school.schoolCode, school.address, school.schoolType, now, now);
+      }
+      return school;
+    }).filter((school) => school.name && school.id !== "neis::");
+    return responseJson(schools, 200, cors);
+  }
+
+  async createClass(request, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "학급 생성은 관리자만 할 수 있습니다.", 403, cors);
+    const body = await readJson(request);
+    const grade = numberInRange(body?.grade, 1, 12);
+    const classNumber = numberInRange(body?.classNumber, 1, 99);
+    if (!grade || !classNumber) return responseError("INVALID_CLASS", "학년과 반을 올바르게 입력해 주세요.", 400, cors);
+    const subject = text(body?.subject, 128);
+    const name = `${grade}학년 ${classNumber}반`;
+    const existing = this.one("SELECT * FROM Classes WHERE school_id = ? AND grade = ? AND class_number = ?", user.school_id, grade, classNumber);
+    const now = isoNow();
+    let classItem;
+    if (existing) {
+      this.exec("UPDATE Classes SET name = ?, default_subject = ?, updated_at_utc = ? WHERE id = ?", name, subject, now, existing.id);
+      classItem = this.one("SELECT * FROM Classes WHERE id = ?", existing.id);
+    } else {
+      const classId = crypto.randomUUID();
+      this.exec(`INSERT INTO Classes (id, school_id, name, default_subject, grade, class_number, owner_teacher_id, created_at_utc, updated_at_utc)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, classId, user.school_id, name, subject, grade, classNumber, user.id, now, now);
+      // A school admin-created class is visible to every teacher in that school;
+      // every API request remains school-scoped and audited.
+      const teachers = this.all("SELECT id FROM Users WHERE school_id = ?", user.school_id);
+      for (const teacher of teachers) this.exec("INSERT OR IGNORE INTO ClassTeachers (class_id, teacher_id) VALUES (?, ?)", classId, teacher.id);
+      classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
+    }
+    this.audit({ schoolId: user.school_id, classId: classItem.id, teacherId: user.id, action: "CLASS", result: existing ? "UPDATED" : "CREATED", reason: name });
+    return responseJson(serializeClass(classItem), 200, cors);
+  }
+
+  async importStudentCodes(request, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "학생 코드 발급은 관리자만 할 수 있습니다.", 403, cors);
+    const body = await readJson(request);
+    const classId = text(body?.classId, 80);
+    const classItem = classId ? this.one("SELECT * FROM Classes WHERE id = ?", classId) : null;
+    if (!classItem || !this.canAccessClass(user, classId)) return responseError("CLASS_NOT_FOUND", "학생 코드를 만들 학급을 선택해 주세요.", 400, cors);
+    if (!Array.isArray(body?.students)) return responseError("INVALID_ROSTER", "학생 명단을 확인해 주세요.", 400, cors);
+    const rows = body.students.slice(0, MAX_ROSTER_ROWS);
+    const seenNumbers = new Set();
+    const codes = [];
+    let skipped = 0;
+    for (const row of rows) {
+      const studentName = text(row?.studentDisplayName || row?.name, 128);
+      const studentNumber = numberInRange(row?.studentNumber || row?.number, 1, 99);
+      if (!studentName || !studentNumber || seenNumbers.has(studentNumber)) {
+        skipped += 1;
+        continue;
+      }
+      seenNumbers.add(studentNumber);
+      codes.push(await this.upsertStudentCode(user, classItem, studentName, `${classId}:number:${studentNumber}`, studentNumber, false));
+    }
+    if (!codes.length) return responseError("EMPTY_ROSTER", "번호와 이름이 포함된 학생 명단을 찾지 못했습니다.", 400, cors);
+    this.audit({ schoolId: classItem.school_id, classId, teacherId: user.id, action: "STUDENT_ROSTER", result: "IMPORTED", reason: `${codes.length}명` });
+    return responseJson({ imported: codes.length, skipped, codes }, 200, cors);
   }
 
   async getActiveSession(request, classId, cors) {
@@ -402,7 +653,7 @@ export class ClassroomState {
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const active = this.one("SELECT session_id FROM ClassSessions WHERE class_id = ? AND ended_at_utc IS NULL ORDER BY started_at_utc DESC LIMIT 1", classId);
     const now = Date.now();
-    const devices = this.all("SELECT * FROM Devices WHERE class_id = ? AND revoked_at_utc IS NULL ORDER BY student_display_name COLLATE NOCASE, computer_name COLLATE NOCASE", classId);
+    const devices = this.all("SELECT * FROM Devices WHERE class_id = ? AND revoked_at_utc IS NULL ORDER BY COALESCE(student_number, 999), student_display_name COLLATE NOCASE, computer_name COLLATE NOCASE", classId);
     return responseJson(devices.map((device) => serializeDevice(device, active?.session_id || null, now)), 200, cors);
   }
 
@@ -426,54 +677,90 @@ export class ClassroomState {
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const body = await readJson(request);
     const studentName = text(body?.studentDisplayName, 128);
-    const requestedStudentId = text(body?.studentId, 80);
     if (!studentName) return responseError("INVALID_REQUEST", "학생 이름을 입력해 주세요.", 400, cors);
     const classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
-    const studentId = requestedStudentId || crypto.randomUUID();
+    const studentNumber = numberInRange(body?.studentNumber, 1, 99);
+    const requestedStudentId = text(body?.studentId, 80);
+    const studentId = requestedStudentId || (studentNumber ? `${classId}:number:${studentNumber}` : crypto.randomUUID());
+    const result = await this.upsertStudentCode(user, classItem, studentName, studentId, studentNumber, true);
+    return responseJson(result, 200, cors);
+  }
+
+  async upsertStudentCode(user, classItem, studentName, studentId, studentNumber, reissueCode) {
+    const classId = classItem.id;
     const existing = this.one("SELECT * FROM StudentCodes WHERE class_id = ? AND student_id = ? AND revoked_at_utc IS NULL", classId, studentId);
+    if (existing && !reissueCode) {
+      this.exec("UPDATE StudentCodes SET student_display_name = ?, grade = ?, class_number = ?, student_number = ? WHERE device_id = ?", studentName, classItem.grade, classItem.class_number, studentNumber, existing.device_id);
+      this.exec("UPDATE Devices SET student_display_name = ?, grade = ?, class_number = ?, student_number = ? WHERE class_id = ? AND student_id = ? AND revoked_at_utc IS NULL", studentName, classItem.grade, classItem.class_number, studentNumber, classId, studentId);
+      return this.serializeStudentCode({ ...existing, student_display_name: studentName, grade: classItem.grade, class_number: classItem.class_number, student_number: studentNumber });
+    }
     const code = await this.createUniqueJoinCode();
     const now = isoNow();
     const deviceId = existing?.device_id || crypto.randomUUID();
     if (existing) {
-      this.exec(`UPDATE StudentCodes SET student_display_name = ?, join_code = ?, code_created_at_utc = ?, last_used_at_utc = NULL, created_by_teacher_id = ?, revoked_at_utc = NULL WHERE device_id = ?`, studentName, code, now, user.id, deviceId);
+      this.exec(`UPDATE StudentCodes SET student_display_name = ?, grade = ?, class_number = ?, student_number = ?, join_code = ?, code_created_at_utc = ?, last_used_at_utc = NULL, created_by_teacher_id = ?, revoked_at_utc = NULL WHERE device_id = ?`, studentName, classItem.grade, classItem.class_number, studentNumber, code, now, user.id, deviceId);
       const enrolledDevices = this.all("SELECT device_id FROM Devices WHERE class_id = ? AND student_id = ? AND revoked_at_utc IS NULL", classId, studentId);
       this.exec("UPDATE Devices SET revoked_at_utc = ? WHERE class_id = ? AND student_id = ? AND revoked_at_utc IS NULL", now, classId, studentId);
       for (const enrolledDevice of enrolledDevices) {
         this.closeDeviceSockets(enrolledDevice.device_id, 1008, "Student code reissued");
       }
     } else {
-      this.exec(`INSERT INTO StudentCodes (device_id, school_id, class_id, student_id, student_display_name, join_code, code_created_at_utc, created_by_teacher_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, deviceId, classItem.school_id, classId, studentId, studentName, code, now, user.id);
+      this.exec(`INSERT INTO StudentCodes (device_id, school_id, class_id, student_id, student_display_name, grade, class_number, student_number, join_code, code_created_at_utc, created_by_teacher_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, deviceId, classItem.school_id, classId, studentId, studentName, classItem.grade, classItem.class_number, studentNumber, code, now, user.id);
     }
     this.audit({ schoolId: classItem.school_id, classId, teacherId: user.id, studentId, deviceId, action: "STUDENT_CODE", result: existing ? "REISSUED" : "CREATED", reason: studentName });
-    return responseJson({
+    return {
       deviceId,
       schoolId: classItem.school_id,
       classId,
       studentId,
       studentDisplayName: studentName,
+      grade: classItem.grade ?? null,
+      classNumber: classItem.class_number ?? null,
+      studentNumber: studentNumber ?? null,
       expiresAtUtc: null,
       enrollmentToken: "",
       joinCode: code
-    }, 200, cors);
+    };
+  }
+
+  serializeStudentCode(row) {
+    return {
+      deviceId: row.device_id,
+      schoolId: row.school_id,
+      classId: row.class_id,
+      studentId: row.student_id,
+      studentDisplayName: row.student_display_name,
+      grade: row.grade ?? null,
+      classNumber: row.class_number ?? null,
+      studentNumber: row.student_number ?? null,
+      expiresAtUtc: null,
+      enrollmentToken: "",
+      joinCode: row.join_code,
+      createdAtUtc: row.code_created_at_utc || null,
+      lastUsedAtUtc: row.last_used_at_utc || null
+    };
   }
 
   async getStudentCodes(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    const rows = this.all(`SELECT c.*, sc.*, u.display_name AS created_by_display_name
+    const rows = this.all(`SELECT sc.*, c.name AS class_name, c.default_subject AS class_subject, c.grade AS class_grade, c.class_number AS class_class_number, u.display_name AS created_by_display_name
       FROM StudentCodes sc
       JOIN Classes c ON c.id = sc.class_id
       JOIN Users u ON u.id = sc.created_by_teacher_id
       WHERE sc.school_id = ? AND sc.revoked_at_utc IS NULL
-      ORDER BY c.name COLLATE NOCASE, sc.student_display_name COLLATE NOCASE`, user.school_id);
+      ORDER BY COALESCE(c.grade, 999), COALESCE(c.class_number, 999), COALESCE(sc.student_number, 999), sc.student_display_name COLLATE NOCASE`, user.school_id);
     return responseJson(rows.map((row) => ({
       deviceId: row.device_id,
       schoolId: row.school_id,
       classId: row.class_id,
-      className: row.name,
-      subject: row.default_subject,
+      className: row.class_name,
+      subject: row.class_subject,
       studentId: row.student_id,
       studentDisplayName: row.student_display_name,
+      grade: row.grade ?? row.class_grade ?? null,
+      classNumber: row.class_number ?? row.class_class_number ?? null,
+      studentNumber: row.student_number ?? null,
       joinCode: row.join_code,
       createdAtUtc: row.code_created_at_utc,
       lastUsedAtUtc: row.last_used_at_utc,
@@ -496,9 +783,9 @@ export class ClassroomState {
     const token = await randomToken();
     const now = isoNow();
     this.exec(`INSERT INTO Devices (
-      device_id, school_id, class_id, student_id, student_display_name, computer_name,
+      device_id, school_id, class_id, student_id, student_display_name, grade, class_number, student_number, computer_name,
       agent_version, device_token_hash, issued_at_utc
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, deviceId, code.school_id, code.class_id, code.student_id, code.student_display_name, deviceName, agentVersion, await sha256Text(token), now);
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, deviceId, code.school_id, code.class_id, code.student_id, code.student_display_name, code.grade, code.class_number, code.student_number, deviceName, agentVersion, await sha256Text(token), now);
     this.exec("UPDATE StudentCodes SET last_used_at_utc = ? WHERE device_id = ?", now, code.device_id);
     this.audit({ schoolId: code.school_id, classId: code.class_id, studentId: code.student_id, deviceId, action: "DEVICE_ENROLLMENT", result: "SUCCESS", reason: deviceName });
     return responseJson({
@@ -772,16 +1059,21 @@ export class ClassroomState {
     const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS).toISOString();
     this.exec("INSERT INTO TeacherSessions (token_hash, teacher_id, expires_at_utc, created_at_utc) VALUES (?, ?, ?, ?)", await sha256Text(token), user.id, expiresAt, isoNow());
     const session = this.serializeTeacherSession(user);
-    return { accessToken: token, expiresAtUtc: expiresAt, teacherId: user.id, displayName: user.display_name, classes: session.classes, isAdmin: Boolean(user.is_admin), profileCompleted: Boolean(user.profile_completed), subject: user.subject || "", hasPassword: Boolean(user.password_hash), legalAccepted: Boolean(user.legal_accepted_at_utc) };
+    return { accessToken: token, expiresAtUtc: expiresAt, teacherId: user.id, displayName: user.display_name, loginName: user.login_name, email: user.firebase_email || "", classes: session.classes, isAdmin: Boolean(user.is_admin), profileCompleted: Boolean(user.profile_completed), schoolSelected: session.schoolSelected, school: session.school, subject: user.subject || "", hasPassword: Boolean(user.password_hash), legalAccepted: Boolean(user.legal_accepted_at_utc) };
   }
 
   serializeTeacherSession(user) {
+    const school = this.one("SELECT * FROM Schools WHERE id = ?", user.school_id);
     return {
       teacherId: user.id,
       displayName: user.display_name,
+      loginName: user.login_name,
+      email: user.firebase_email || "",
       classes: this.classesForTeacher(user),
       isAdmin: Boolean(user.is_admin),
       profileCompleted: Boolean(user.profile_completed),
+      schoolSelected: Boolean(user.school_selected && school),
+      school: school ? { id: school.id, name: school.name, address: school.address || "", schoolType: school.school_type || "" } : null,
       subject: user.subject || "",
       hasPassword: Boolean(user.password_hash),
       legalAccepted: Boolean(user.legal_accepted_at_utc)
@@ -789,24 +1081,24 @@ export class ClassroomState {
   }
 
   classesForTeacher(user) {
-    const rows = user.is_admin
-      ? this.all("SELECT * FROM Classes WHERE school_id = ? ORDER BY name COLLATE NOCASE", user.school_id)
-      : this.all(`SELECT c.* FROM Classes c JOIN ClassTeachers ct ON ct.class_id = c.id
-        WHERE ct.teacher_id = ? ORDER BY c.name COLLATE NOCASE`, user.id);
-    return rows.map((row) => ({ id: row.id, schoolId: row.school_id, name: row.name, defaultSubject: row.default_subject }));
+    const rows = this.all("SELECT * FROM Classes WHERE school_id = ? ORDER BY COALESCE(grade, 999), COALESCE(class_number, 999), name COLLATE NOCASE", user.school_id);
+    return rows.map(serializeClass);
   }
 
   canAccessClass(user, classId) {
     const classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
     if (!classItem || classItem.school_id !== user.school_id) return false;
     if (user.is_admin) return true;
-    return Boolean(this.one("SELECT class_id FROM ClassTeachers WHERE class_id = ? AND teacher_id = ?", classId, user.id));
+    // Teachers can switch between classes registered in their selected school.
+    // The school boundary is still enforced server-side for every read/write.
+    return Boolean(this.one("SELECT class_id FROM ClassTeachers WHERE class_id = ? AND teacher_id = ?", classId, user.id))
+      || Boolean(user.school_selected);
   }
 
-  createStarterClass(teacherId, schoolId, className, subject) {
+  createStarterClass(teacherId, schoolId, className, subject, grade = null, classNumber = null) {
     const now = isoNow();
     const classId = crypto.randomUUID();
-    this.exec(`INSERT INTO Classes (id, school_id, name, default_subject, owner_teacher_id, created_at_utc, updated_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?)`, classId, schoolId, className, subject, teacherId, now, now);
+    this.exec(`INSERT INTO Classes (id, school_id, name, default_subject, grade, class_number, owner_teacher_id, created_at_utc, updated_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, classId, schoolId, className, subject, grade, classNumber, teacherId, now, now);
     this.exec("INSERT INTO ClassTeachers (class_id, teacher_id) VALUES (?, ?)", classId, teacherId);
     return classId;
   }
@@ -868,6 +1160,13 @@ export class ClassroomState {
 
   exec(statement, ...parameters) {
     this.sql.exec(statement, ...parameters);
+  }
+
+  ensureColumn(tableName, columnName, definition) {
+    const columns = this.all(`PRAGMA table_info(${tableName})`);
+    if (!columns.some((column) => column.name === columnName)) {
+      this.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+    }
   }
 }
 
@@ -936,6 +1235,34 @@ function numberInRange(value, min, max) { const number = Number(value); return N
 function placeholders(count) { return Array.from({ length: count }, () => "?").join(", "); }
 function isSafeHttpsUrl(value) { try { return new URL(value).protocol === "https:"; } catch (_) { return false; } }
 
+function serializeClass(row) {
+  return {
+    id: row.id,
+    schoolId: row.school_id,
+    name: row.name,
+    grade: row.grade ?? null,
+    classNumber: row.class_number ?? null,
+    defaultSubject: row.default_subject
+  };
+}
+
+function parseClassLabel(value) {
+  const match = String(value || "").match(/(\d{1,2})\s*학년\s*(\d{1,2})\s*반/);
+  return match ? { grade: Number(match[1]), classNumber: Number(match[2]) } : { grade: null, classNumber: null };
+}
+
+function classifyActivity(activity) {
+  if (!activity) return { level: "unknown", label: "확인 필요", reason: "활동 정보 없음" };
+  const app = `${activity.ApplicationDisplayName || activity.applicationDisplayName || ""} ${activity.ProcessName || activity.processName || ""}`.toLowerCase();
+  const domain = String(activity.BrowserDomain || activity.browserDomain || "").toLowerCase();
+  if (domain.includes("youtube.com") || domain.includes("youtu.be")) return { level: "excluded", label: "웹 도메인 제외", reason: "YouTube는 위험 신호에서 제외" };
+  const gamingTerms = ["roblox", "minecraft", "fortnite", "steam", "epicgames", "leagueoflegends", "valorant", "game"];
+  if (gamingTerms.some((term) => app.includes(term) || domain.includes(term))) {
+    return { level: "warning", label: "확인 필요", reason: "게임 관련 앱 또는 도메인으로 분류됨" };
+  }
+  return { level: "ok", label: "정상", reason: "허용된 상태 신호" };
+}
+
 function serializeSession(row) {
   return { sessionId: row.session_id, schoolId: row.school_id, classId: row.class_id, subject: row.subject, startedAtUtc: row.started_at_utc, endedAtUtc: row.ended_at_utc || null };
 }
@@ -955,6 +1282,10 @@ function serializeDevice(device, activeSessionId, now) {
     lastHeartbeatUtc: device.last_heartbeat_utc || device.issued_at_utc,
     agentVersion: device.agent_version,
     activity,
+    activityRisk: classifyActivity(activity),
+    grade: device.grade ?? null,
+    classNumber: device.class_number ?? null,
+    studentNumber: device.student_number ?? null,
     batteryPercent: device.battery_percent ?? null,
     networkStatus: device.network_status || null,
     policyApplied: Boolean(device.policy_applied),
@@ -970,6 +1301,19 @@ function randomCode() {
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => CODE_ALPHABET[byte % CODE_ALPHABET.length]).join("");
+}
+
+function randomVerificationCode() {
+  const bytes = new Uint32Array(1);
+  crypto.getRandomValues(bytes);
+  return String(bytes[0] % 1_000_000).padStart(6, "0");
+}
+
+function maskEmail(value) {
+  const [local, domain] = String(value || "").split("@", 2);
+  if (!local || !domain) return "이메일";
+  const visible = local.length <= 2 ? local.slice(0, 1) : local.slice(0, 2);
+  return `${visible}${"*".repeat(Math.max(1, local.length - visible.length))}@${domain}`;
 }
 
 async function randomToken() {

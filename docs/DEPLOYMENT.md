@@ -38,6 +38,23 @@ https://classroom-api.blossom0948.cloud       # 운영용 고정 주소
 https://classroom-api.blossom0948.workers.dev # Cloudflare 기본 주소
 ```
 
+학교 선택은 교육부 NEIS 학교 기본정보 API에서 실제 학교를 검색한다. 배포 후
+Worker secret에 발급받은 NEIS 인증키를 넣어야 초기 설정의 학교 검색이 활성화된다.
+Resend 같은 메일 발송 서비스의 발신 도메인을 준비한 뒤에는 비밀번호 확인 코드용
+`RESEND_API_KEY` secret과 `CLASSROOM_EMAIL_FROM` 변수를 함께 설정한다. 키를 소스나
+브라우저 설정에 넣지 않는다.
+
+```powershell
+npx wrangler secret put NEIS_API_KEY --config cloudflare/wrangler.jsonc
+npx wrangler secret put RESEND_API_KEY --config cloudflare/wrangler.jsonc
+npx wrangler secret put CLASSROOM_EMAIL_FROM --config cloudflare/wrangler.jsonc
+```
+
+`CLASSROOM_EMAIL_FROM`은 메일 공급자에서 인증한 발신 주소(예:
+`Classroom <no-reply@학교의-인증-도메인>`)를 사용한다. 이 설정이 없는 동안에도
+Google·이메일 로그인과 Firebase 비밀번호 재설정은 사용할 수 있지만, 콘솔의
+비밀번호 변경 확인 코드 발송은 안전하게 비활성화된다.
+
 새 코드를 배포한 뒤에는 다음을 확인한다.
 
 ```powershell

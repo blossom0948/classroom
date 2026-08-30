@@ -123,6 +123,15 @@
     }
   }
 
+  async function lookupAccount(email) {
+    try {
+      const methods = await getAuth().fetchSignInMethodsForEmail(email.trim());
+      return Array.isArray(methods) ? methods : [];
+    } catch (error) {
+      throw friendlyError(error);
+    }
+  }
+
   window.ClassroomFirebaseAuth = Object.freeze({
     isConfigured,
     signInEmail,
@@ -130,6 +139,7 @@
     signInGoogle,
     consumeRedirectResult,
     sendPasswordReset,
+    lookupAccount,
     signOut: () => getAuth().signOut()
   });
 })();

@@ -113,6 +113,7 @@ app.Use(async (context, next) =>
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(self)";
     var connectSources = consoleOrigins.Count == 0
         ? "'self'"
         : $"'self' {string.Join(' ', consoleOrigins)}";
@@ -122,7 +123,7 @@ app.Use(async (context, next) =>
         $"connect-src {connectSources} https://identitytoolkit.googleapis.com https://securetoken.googleapis.com " +
         "https://firebaseinstallations.googleapis.com https://www.googleapis.com https://apis.google.com " +
         "https://www.gstatic.com https://www.google.com https://*.firebaseapp.com " +
-        "https://accounts.google.com; frame-src https://*.firebaseapp.com https://accounts.google.com; " +
+        "https://accounts.google.com https://api.open-meteo.com; frame-src https://*.firebaseapp.com https://accounts.google.com; " +
         "frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
     await next();
 });

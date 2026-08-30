@@ -1,6 +1,6 @@
 // Bump this whenever the app shell changes so an already-installed school
 // browser drops the previous Firebase configuration and JavaScript bundle.
-const CACHE_NAME = "classroom-console-v5";
+const CACHE_NAME = "classroom-console-v6";
 const APP_SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/config.js", "/firebase-auth.js", "/manifest.webmanifest", "/icons/classroom.svg"];
 const NETWORK_FIRST_PATHS = new Set(APP_SHELL);
 

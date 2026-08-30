@@ -74,7 +74,7 @@ foreach ($test in $tests) {
 
 1. 교사 콘솔에서 `학생 등록`을 누르고 학생 이름을 입력한다.
 2. 화면에 표시된 8자리 학생 코드를 학생에게 전달한다. 코드는 관리자가 새로 발급하기 전까지 계속 사용할 수 있다.
-3. GitHub Actions의 `Classroom-Windows` 패키지 압축을 학생 PC에서 한 번만 푼다.
+3. 교사 콘솔 관리자 메뉴의 `학생용 설치 앱` 버튼에서 최신 `Classroom-Windows-x64.zip`을 내려받아 학생 PC에서 한 번만 푼다.
 4. 압축 폴더의 `Classroom.Student.Setup.exe`를 실행하고, 학생 코드만 입력한다. 이 코드는 여러 학생 PC에서 사용할 수 있다.
 5. Windows 관리자 권한 확인을 한 번 승인하면 서버 등록·서비스 설치·학생 화면 실행이 자동으로 끝난다.
 
@@ -86,6 +86,8 @@ foreach ($test in $tests) {
 삭제한다. 학생이 JSON 파일을 옮기거나 PowerShell 명령을 입력하지 않는다.
 수업 ID는 서버가 매 heartbeat마다 결정하므로 수업이 바뀌어도 재설치하지 않는다.
 기존 `Install-ClassroomStudent.cmd`와 JSON 흐름은 관리형 배포·복구를 위해 호환용으로 남아 있다.
+
+학생용 패키지는 [최신 Classroom-Windows-x64.zip](https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip)에서도 받을 수 있다.
 
 학생 코드는 학교 관리자만 발급·재발급할 수 있고, 모든 선생님은 왼쪽 `학생 코드`
 탭에서 학년·반별 코드를 확인할 수 있다. 코드가 외부에 노출되었거나 학생 PC를
