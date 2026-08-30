@@ -610,3 +610,39 @@ html[data-theme="dark"] .student-roster-table th { background: #111a2b; }
   body.printing-roster #student-roster-dialog .student-roster-content { max-height: none; overflow: visible; }
   body.printing-roster .student-roster-table { min-width: 0; }
 }
+
+/* Admin access targets are deliberately explicit: the identifier/search field
+   owns the wide area and the action stays beside it for quick classroom use. */
+.admin-grant-form { align-items: stretch; display: grid; gap: 12px; grid-template-columns: 1fr; }
+.admin-grant-heading { display: grid; gap: 0; }
+.admin-grant-heading h3 { margin-bottom: 5px; }
+.admin-grant-tabs { border-bottom: 1px solid var(--line); display: flex; gap: 6px; }
+.admin-grant-tab { background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); font-size: 12px; font-weight: 800; padding: 8px 10px 9px; }
+.admin-grant-tab.active { border-color: var(--blue); color: var(--blue); }
+.admin-grant-panel { align-items: end; display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) auto; }
+.admin-grant-panel label { min-width: 0; }
+.admin-grant-panel input { min-height: 47px; }
+.admin-grant-panel .primary { min-height: 47px; min-width: 154px; }
+.admin-grant-panel[hidden] { display: none; }
+.student-admin-panel { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto; }
+.student-admin-panel .privacy-note { grid-column: 1 / -1; margin: 0; }
+.admin-grant-form > .error { min-height: 0; }
+
+/* Date and weather share one compact header context; the weather label sits
+   below its icon so the board view remains scannable from a distance. */
+.topbar .header-context.today-info { align-items: center; display: flex; gap: 16px; }
+.today-info strong { font-size: 18px; letter-spacing: -.025em; white-space: nowrap; }
+.weather-info { align-items: center; display: inline-flex; flex-direction: column; gap: 1px; min-width: 66px; }
+.weather-icon { font-size: 21px; line-height: 1; }
+.weather-description { color: var(--ink) !important; font-size: 11px !important; font-weight: 750; line-height: 1.2; white-space: nowrap; }
+.weather-temperature { color: var(--muted); font-size: 10px; line-height: 1.2; }
+
+html[data-theme="dark"] .admin-grant-tab { color: #aab6c9; }
+html[data-theme="dark"] .admin-grant-tab.active { color: #9fb1ff; }
+
+@media (max-width: 760px) {
+  .admin-grant-panel, .student-admin-panel { grid-template-columns: 1fr; }
+  .admin-grant-panel .primary { width: 100%; }
+  .topbar .header-context.today-info { gap: 11px; }
+  .today-info strong { font-size: 16px; }
+}

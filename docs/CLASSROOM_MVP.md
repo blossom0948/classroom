@@ -120,9 +120,9 @@ GitHub Actions의 `Classroom-Windows` artifact를 내려받아 압축을 풀거�
 & $dotnet publish src\Classroom.Student.Desktop\Classroom.Student.Desktop.csproj -c Release -r win-x64 --self-contained false -o artifacts\student-desktop
 ```
 
-그 다음 학생 PC에서 압축을 푼 패키지의 `Classroom.Student.Setup.exe`를
-실행하고 교사 화면의 학생 코드를 입력한다. 앱이 관리자 권한 PowerShell을
-자동으로 열고 설치 후 서비스를 시작한다.
+학생 PC에서는 [단일 설치 앱](https://github.com/blossom0948/classroom/releases/latest/download/Classroom.Student.Setup.exe)을
+바로 실행해도 된다. 앱이 필요한 패키지를 자동으로 내려받고, 교사 화면의 학생
+코드를 확인한 뒤 관리자 권한 PowerShell을 열어 서비스 설치와 시작까지 진행한다.
 
 ```text
 학생용 패키지\Classroom.Student.Setup.exe

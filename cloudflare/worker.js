@@ -96,6 +96,16 @@ export class ClassroomState {
       created_at_utc TEXT NOT NULL,
       active INTEGER NOT NULL DEFAULT 1
     )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS StudentAdminGrants (
+      school_id TEXT NOT NULL,
+      class_id TEXT NOT NULL,
+      student_id TEXT NOT NULL,
+      student_display_name TEXT NOT NULL,
+      granted_by_teacher_id TEXT NOT NULL,
+      created_at_utc TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY (school_id, class_id, student_id)
+    )`);
     this.exec(`CREATE TABLE IF NOT EXISTS StudentCodes (
       device_id TEXT PRIMARY KEY,
       school_id TEXT NOT NULL,
@@ -194,6 +204,7 @@ export class ClassroomState {
     this.exec("CREATE INDEX IF NOT EXISTS idx_codes_class ON StudentCodes(class_id, revoked_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_sessions_teacher ON TeacherSessions(teacher_id, expires_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_audit_class ON AuditEvents(class_id, timestamp_utc)");
+    this.exec("CREATE INDEX IF NOT EXISTS idx_student_admin_school ON StudentAdminGrants(school_id, active)");
 
     // Existing Durable Object databases predate school and roster metadata.
     // Additive migrations keep already-enrolled devices and accounts intact.
@@ -928,7 +939,26 @@ export class ClassroomState {
       .map((row) => ({ teacherId: row.id, loginName: row.login_name, displayName: row.display_name, email: row.firebase_email || "", isAdmin: Boolean(row.is_admin) }));
     const grants = this.all("SELECT identifier, created_at_utc FROM AdministratorGrants WHERE school_id = ? AND active = 1 ORDER BY identifier", user.school_id)
       .map((row) => ({ identifier: row.identifier, createdAtUtc: row.created_at_utc }));
-    return responseJson({ teachers, grants }, 200, cors);
+    const students = this.all(`SELECT sc.school_id, sc.class_id, sc.student_id, sc.student_display_name,
+        sc.grade, sc.class_number, sc.student_number, c.name AS class_name,
+        COALESCE(sag.active, 0) AS is_admin
+      FROM StudentCodes sc
+      JOIN Classes c ON c.id = sc.class_id
+      LEFT JOIN StudentAdminGrants sag
+        ON sag.school_id = sc.school_id AND sag.class_id = sc.class_id AND sag.student_id = sc.student_id AND sag.active = 1
+      WHERE sc.school_id = ? AND sc.revoked_at_utc IS NULL
+      ORDER BY COALESCE(sc.grade, 999), COALESCE(sc.class_number, 999), COALESCE(sc.student_number, 999), sc.student_display_name COLLATE NOCASE`, user.school_id)
+      .map((row) => ({
+        studentId: row.student_id,
+        classId: row.class_id,
+        className: row.class_name,
+        studentDisplayName: row.student_display_name,
+        grade: row.grade ?? null,
+        classNumber: row.class_number ?? null,
+        studentNumber: row.student_number ?? null,
+        isAdmin: Boolean(row.is_admin)
+      }));
+    return responseJson({ teachers, grants, students }, 200, cors);
   }
 
   async setAdministrator(request, cors) {
@@ -936,6 +966,9 @@ export class ClassroomState {
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
     if (!user.is_admin) return responseError("ADMIN_REQUIRED", "관리자만 권한을 변경할 수 있습니다.", 403, cors);
     const body = await readJson(request);
+    const kind = text(body?.kind, 32).toLowerCase() || "teacher";
+    if (kind === "student") return this.setStudentAdministrator(user, body, cors);
+    if (kind !== "teacher") return responseError("INVALID_ADMIN_TARGET", "관리자 지정 대상을 확인해 주세요.", 400, cors);
     const identifier = normalizeIdentifier(body?.identifier);
     const isAdmin = body?.isAdmin === true;
     if (!identifier || identifier.length > 254) return responseError("INVALID_IDENTIFIER", "Google 이메일 또는 아이디를 입력해 주세요.", 400, cors);
@@ -955,6 +988,28 @@ export class ClassroomState {
     }
     this.audit({ schoolId: user.school_id, teacherId: user.id, action: "ADMIN_ACCESS", result: isAdmin ? "GRANTED" : "REVOKED", reason: identifier });
     return responseJson({ identifier, isAdmin, accountFound: Boolean(target) }, 200, cors);
+  }
+
+  async setStudentAdministrator(user, body, cors) {
+    const studentId = text(body?.studentId, 128);
+    const classId = text(body?.classId, 128);
+    const isAdmin = body?.isAdmin === true;
+    if (!studentId || !classId) return responseError("INVALID_STUDENT", "관리자 권한을 줄 학생을 선택해 주세요.", 400, cors);
+    const student = this.one(`SELECT * FROM StudentCodes
+      WHERE school_id = ? AND class_id = ? AND student_id = ? AND revoked_at_utc IS NULL`, user.school_id, classId, studentId);
+    if (!student) return responseError("STUDENT_NOT_FOUND", "등록된 학생을 찾지 못했습니다.", 404, cors);
+    const now = isoNow();
+    this.exec(`INSERT INTO StudentAdminGrants
+      (school_id, class_id, student_id, student_display_name, granted_by_teacher_id, created_at_utc, active)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(school_id, class_id, student_id) DO UPDATE SET
+        student_display_name = excluded.student_display_name,
+        granted_by_teacher_id = excluded.granted_by_teacher_id,
+        created_at_utc = excluded.created_at_utc,
+        active = excluded.active`,
+      user.school_id, classId, studentId, student.student_display_name, user.id, now, isAdmin ? 1 : 0);
+    this.audit({ schoolId: user.school_id, classId, teacherId: user.id, studentId, action: "STUDENT_ADMIN_ACCESS", result: isAdmin ? "GRANTED" : "REVOKED", reason: student.student_display_name });
+    return responseJson({ kind: "student", studentId, classId, isAdmin, accountFound: true, permissionScope: "student-account-only" }, 200, cors);
   }
 
   async handleStudentWebSocket(request, url, cors) {

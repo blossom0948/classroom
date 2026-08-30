@@ -147,8 +147,7 @@
       $("class-subject").textContent = "";
       renderHeader();
       renderStudents();
-      renderActivity();
-      return;
+     return;
     }
     const selected = currentClass();
     $("class-subject").textContent = selected?.defaultSubject || "";
@@ -164,7 +163,6 @@
     );
     renderHeader();
     renderStudents();
-    renderActivity();
   }
 
   function renderHeader() {
@@ -221,7 +219,7 @@
       return;
     }
     grid.innerHTML = filtered.map((student) => {
-      const activity = student.activity;
+      const activity = activityForClassroom(student);
       const activityContext = activity?.browserDomain || activity?.windowTitle || "현재 창 정보 없음";
       const statusClass = student.policyApplied ? "focus" : student.online ? "online" : "";
       const statusText = student.policyApplied ? "집중 모드" : student.online ? "온라인" : "오프라인";
@@ -248,24 +246,17 @@
     });
   }
 
-  function renderActivity() {
-    const table = $("activity-table");
-    const online = state.students.filter((student) => student.online).length;
-    const focus = state.students.filter((student) => student.policyApplied).length;
-    const offline = state.students.length - online;
-    const attention = state.students.filter(isNeedsAttention).length;
-    $("activity-summary").innerHTML = `<article class="metric-card metric-online"><span class="metric-label">온라인</span><strong>${online}</strong><small>학생 PC</small></article><article class="metric-card metric-offline"><span class="metric-label">오프라인</span><strong>${offline}</strong><small>연결 끊김</small></article><article class="metric-card metric-attention"><span class="metric-label">확인 필요</span><strong>${attention}</strong><small>상태 점검</small></article>`;
-    const insights = [];
-    if (offline > 0) insights.push(`<span class="insight-dot warning"></span><strong>${offline}명</strong>의 장치가 오프라인입니다.`);
-    if (focus > 0) insights.push(`<span class="insight-dot focus"></span><strong>${focus}명</strong>에게 집중 모드가 적용되어 있습니다.`);
-    if (!insights.length) insights.push('<span class="insight-dot good"></span>현재 확인이 필요한 학생이 없습니다.');
-    $("activity-insights").innerHTML = insights.map((item) => `<div class="insight-item">${item}</div>`).join("");
-    const rows = state.students.map((student) => {
-      const activity = student.activity;
-      const activityContext = activity?.browserDomain || activity?.windowTitle || "창 정보 미연결";
-      return `<div class="activity-row"><div><strong>${escapeHtml(student.studentDisplayName)}</strong><div class="sub">${escapeHtml(student.computerName)}</div></div><div>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div title="${escapeHtml(activityContext)}">${escapeHtml(activityContext)}</div><div><span class="status-dot ${student.online ? "online" : ""}">${student.online ? "온라인" : "오프라인"}</span></div></div>`;
-    }).join("");
-    table.innerHTML = `<div class="activity-row header"><div>학생</div><div>현재 앱</div><div>현재 창 / 웹 도메인</div><div>상태</div></div>${rows || '<div class="empty-state">표시할 학생이 없습니다.</div>'}`;
+  // The class dashboard is designed to be visible on a classroom display.
+  // Keep the raw activity available to the authenticated detail view, but do
+  // not put application names, window titles, or domains on the shared view.
+  function activityForClassroom(student) {
+    if (!student.online) {
+      return { applicationDisplayName: "오프라인", browserDomain: "현재 활동 비공개" };
+    }
+    if (student.activityRisk?.level === "warning") {
+      return { applicationDisplayName: "확인 필요", browserDomain: "세부 활동 비공개" };
+    }
+    return { applicationDisplayName: "학습 활동 중", browserDomain: "세부 활동 비공개" };
   }
 
   function openDetail(deviceId) {
@@ -276,7 +267,7 @@
     const risk = student.activityRisk;
     const riskMarkup = risk?.level === "warning"
       ? `<div class="risk-callout"><strong>확인 필요</strong><span>${escapeHtml(risk.reason || "활동 신호를 확인해 주세요.")}</span></div>`
-      : `<div class="privacy-note">학생에게 표시되는 상태 제공기가 보낸 앱·도메인만 표시합니다. 화면 캡처는 수집하지 않습니다.</div>`;
+      : `<div class="privacy-note">전자칠판·수업 현황에서는 세부 활동을 숨깁니다. 이 교사 전용 상세에서만 앱·도메인을 확인할 수 있으며 화면 캡처는 수집하지 않습니다.</div>`;
     $("detail-content").innerHTML = `<div class="eyebrow">STUDENT DEVICE</div><h2 class="detail-title">${escapeHtml(student.studentDisplayName)}</h2><div class="detail-status"><span class="status-dot ${student.online ? "online" : ""}">${student.online ? "온라인" : "오프라인"}</span></div>${riskMarkup}<div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>학급 / 번호</span><strong>${student.grade ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번` : "학급 정보 없음"}</strong></div><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>현재 창</span><strong>${escapeHtml(activity?.windowTitle || "창 정보 미연결")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "확인 필요" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 연결</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div><div class="detail-section"><h3>장치 식별자</h3><div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div><div class="detail-row"><span>Agent</span><strong>${escapeHtml(student.agentVersion)}</strong></div><div class="detail-row"><span>원격 제어</span><strong>허용 목록 작업만 사용</strong></div></div><div class="detail-section stack"><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>`;
     $("detail-message-button").addEventListener("click", () => openCommandDialog("message", [deviceId]));
     $("detail-revoke-button").addEventListener("click", () => revokeDevice(student).catch((error) => showToast(error.message)));
@@ -307,6 +298,35 @@
     const codes = await api("/api/student-codes");
     state.studentCodes = Array.isArray(codes) ? codes : [];
     renderStudentCodes();
+  }
+
+  function studentAdminKey(student) {
+    return `${student.classId || ""}::${student.studentId || ""}`;
+  }
+
+  function renderStudentAdminOptions() {
+    const select = $("student-admin-select");
+    if (!select) return;
+    const query = $("student-admin-search")?.value.trim().toLocaleLowerCase("ko-KR") || "";
+    const candidates = [];
+    const seen = new Set();
+    [...state.studentCodes]
+      .sort((left, right) => (Number(right.grade || 0) - Number(left.grade || 0))
+        || (Number(left.classNumber || 0) - Number(right.classNumber || 0))
+        || (Number(left.studentNumber || 999) - Number(right.studentNumber || 999))
+        || String(left.studentDisplayName || "").localeCompare(String(right.studentDisplayName || ""), "ko"))
+      .forEach((student) => {
+        const key = studentAdminKey(student);
+        if (!key || seen.has(key)) return;
+        if (query && !String(student.studentDisplayName || "").toLocaleLowerCase("ko-KR").includes(query)) return;
+        seen.add(key);
+        candidates.push(student);
+      });
+    const previous = select.value;
+    select.innerHTML = candidates.length
+      ? `<option value="">학생을 선택하세요</option>${candidates.map((student) => `<option value="${escapeHtml(studentAdminKey(student))}">${escapeHtml(`${student.grade || "—"}학년 ${student.classNumber || "—"}반 · ${student.studentNumber || "—"}번 · ${student.studentDisplayName}`)}</option>`).join("")}`
+      : '<option value="">검색 결과가 없습니다</option>';
+    if (candidates.some((student) => studentAdminKey(student) === previous)) select.value = previous;
   }
 
   function renderAdminClassOptions() {
@@ -457,8 +477,10 @@
     if (!state.teacher?.isAdmin) return;
     const list = $("admin-list");
     if (list) list.innerHTML = '<div class="empty-state">관리자 목록을 불러오는 중입니다…</div>';
+    if (!state.studentCodes.length) await loadStudentCodes();
     const directory = await api("/api/admin/teachers");
     state.adminDirectory = directory;
+    renderStudentAdminOptions();
     renderAdminDirectory();
   }
 
@@ -495,6 +517,7 @@
     if (!list || !state.adminDirectory) return;
     const teachers = Array.isArray(state.adminDirectory.teachers) ? state.adminDirectory.teachers : [];
     const grants = Array.isArray(state.adminDirectory.grants) ? state.adminDirectory.grants : [];
+    const students = Array.isArray(state.adminDirectory.students) ? state.adminDirectory.students : [];
     const known = new Set(teachers.map((teacher) => [teacher.email, teacher.loginName].filter(Boolean).map((value) => value.toLowerCase())) .flat());
     const pending = grants.filter((grant) => !known.has(String(grant.identifier || "").toLowerCase()));
     const teacherRows = teachers.map((teacher) => {
@@ -503,17 +526,33 @@
       return `<div class="admin-row"><div><strong>${escapeHtml(teacher.displayName)}</strong><small>${escapeHtml(teacher.email || teacher.loginName)}</small></div><span class="admin-badge ${teacher.isAdmin ? "active" : ""}">${teacher.isAdmin ? "관리자" : "선생님"}</span>${canRemove ? `<button class="ghost-button admin-remove-button" type="button" data-admin-remove="${escapeHtml(identifier)}">해제</button>` : ""}</div>`;
     }).join("");
     const pendingRows = pending.map((grant) => `<div class="admin-row pending"><div><strong>${escapeHtml(grant.identifier)}</strong><small>아직 가입하지 않은 계정 · ${formatTime(grant.createdAtUtc)}</small></div><span class="admin-badge active">가입 시 관리자</span><button class="ghost-button admin-remove-button" type="button" data-admin-remove="${escapeHtml(grant.identifier)}">해제</button></div>`).join("");
-    list.innerHTML = `<div class="admin-list-heading"><strong>학교 계정</strong><span class="muted small">${teachers.length}명</span></div>${teacherRows || '<div class="empty-state">아직 등록된 선생님이 없습니다.</div>'}${pendingRows ? `<div class="admin-list-heading pending-heading"><strong>가입 대기 권한</strong></div>${pendingRows}` : ""}`;
+    const studentAdminRows = students.filter((student) => student.isAdmin).map((student) => `<div class="admin-row"><div><strong>${escapeHtml(student.studentDisplayName)}</strong><small>${escapeHtml(`${student.grade || "—"}학년 ${student.classNumber || "—"}반 · ${student.studentNumber || "—"}번`)}</small></div><span class="admin-badge active">학생 관리자</span><button class="ghost-button admin-remove-button" type="button" data-student-admin-remove="${escapeHtml(studentAdminKey(student))}">해제</button></div>`).join("");
+    list.innerHTML = `<div class="admin-list-heading"><strong>학교 계정</strong><span class="muted small">${teachers.length}명</span></div>${teacherRows || '<div class="empty-state">아직 등록된 선생님이 없습니다.</div>'}${pendingRows ? `<div class="admin-list-heading pending-heading"><strong>가입 대기 권한</strong></div>${pendingRows}` : ""}<div class="admin-list-heading pending-heading"><strong>학생 관리자</strong><span class="muted small">${students.filter((student) => student.isAdmin).length}명</span></div>${studentAdminRows || '<div class="empty-state">지정된 학생 관리자가 없습니다.</div>'}`;
     list.querySelectorAll("[data-admin-remove]").forEach((button) => {
       button.addEventListener("click", () => updateAdminAccess(button.dataset.adminRemove, false).catch((error) => showToast(error.message)));
+    });
+    list.querySelectorAll("[data-student-admin-remove]").forEach((button) => {
+      const student = students.find((item) => studentAdminKey(item) === button.dataset.studentAdminRemove);
+      if (student) button.addEventListener("click", () => updateStudentAdminAccess(student, false).catch((error) => showToast(error.message)));
     });
   }
 
   async function updateAdminAccess(identifier, isAdmin) {
     if (!identifier) return;
     if (!isAdmin && !confirm(`${identifier} 계정의 관리자 권한을 해제할까요?`)) return;
-    await api("/api/admin/teachers", { method: "POST", body: { identifier, isAdmin } });
+    await api("/api/admin/teachers", { method: "POST", body: { kind: "teacher", identifier, isAdmin } });
     showToast(isAdmin ? "관리자 권한을 부여했습니다." : "관리자 권한을 해제했습니다.");
+    await loadAdminDirectory();
+  }
+
+  async function updateStudentAdminAccess(student, isAdmin) {
+    if (!student?.studentId || !student.classId) return;
+    if (!isAdmin && !confirm(`${student.studentDisplayName} 학생의 학생 관리자 권한을 해제할까요?`)) return;
+    await api("/api/admin/teachers", {
+      method: "POST",
+      body: { kind: "student", studentId: student.studentId, classId: student.classId, isAdmin }
+    });
+    showToast(isAdmin ? `${student.studentDisplayName} 학생에게 학생 관리자 권한을 지정했습니다.` : "학생 관리자 권한을 해제했습니다.");
     await loadAdminDirectory();
   }
 
@@ -686,7 +725,7 @@
   }
 
   function downloadStudentInstaller() {
-    const url = runtimeConfig.studentInstallerUrl || "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip";
+    const url = runtimeConfig.studentInstallerUrl || "https://github.com/blossom0948/classroom/releases/latest/download/Classroom.Student.Setup.exe";
     window.open(url, "_blank", "noopener,noreferrer");
     showToast("학생용 설치 패키지 다운로드를 시작했습니다.");
   }
@@ -815,7 +854,7 @@
 
   async function copyEnrollmentInstructions() {
     if (!state.enrollmentBundle) return;
-    const text = `Classroom 학생 PC 등록\n학생: ${state.enrollmentBundle.studentDisplayName}\n학생 코드: ${state.enrollmentBundle.joinCode}\n1. 학생용 패키지 압축을 풉니다.\n2. Classroom.Student.Setup.exe를 실행합니다.\n3. 학생 코드 ${state.enrollmentBundle.joinCode}를 입력하고 관리자 권한을 승인합니다.`;
+    const text = `Classroom 학생 PC 등록\n학생: ${state.enrollmentBundle.studentDisplayName}\n학생 코드: ${state.enrollmentBundle.joinCode}\n1. 관리자 메뉴에서 Classroom.Student.Setup.exe를 내려받습니다.\n2. 설치 앱을 실행합니다.\n3. 학생 코드 ${state.enrollmentBundle.joinCode}를 입력하고 관리자 권한을 승인합니다.`;
     try {
       await navigator.clipboard.writeText(text);
       showToast("학생 설치 안내를 복사했습니다.");
@@ -865,6 +904,28 @@
     if (date) date.textContent = now.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" });
   }
 
+  function describeWeather(code) {
+    if (code === 0) return { icon: "☀️", label: "맑음" };
+    if (code === 1) return { icon: "🌤️", label: "대체로 맑음" };
+    if (code === 2) return { icon: "⛅", label: "구름 많음" };
+    if (code === 3) return { icon: "☁️", label: "흐림" };
+    if ([45, 48].includes(code)) return { icon: "🌫️", label: "안개" };
+    if ([51, 53, 55, 56, 57].includes(code)) return { icon: "🌦️", label: "이슬비" };
+    if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return { icon: "🌧️", label: "비" };
+    if ([71, 73, 75, 77, 85, 86].includes(code)) return { icon: "🌨️", label: "눈" };
+    if ([95, 96, 99].includes(code)) return { icon: "⛈️", label: "뇌우" };
+    return { icon: "🌤️", label: "날씨 변동" };
+  }
+
+  function setWeatherState(icon, description, temperature = "") {
+    const iconTarget = $("weather-icon");
+    const descriptionTarget = $("weather-description");
+    const temperatureTarget = $("weather-temperature");
+    if (iconTarget) iconTarget.textContent = icon;
+    if (descriptionTarget) descriptionTarget.textContent = description;
+    if (temperatureTarget) temperatureTarget.textContent = temperature;
+  }
+
   async function loadWeather() {
     const target = $("weather-info");
     if (!target || state.weatherLoaded) return;
@@ -875,16 +936,19 @@
       const payload = await response.json();
       const current = payload.current;
       const code = Number(current?.weather_code);
-      const description = code === 0 ? "맑음" : code <= 3 ? "구름" : code <= 67 ? "비" : code <= 77 ? "눈" : "날씨 변동";
-      target.textContent = `현재 위치 · ${description} ${Math.round(Number(current?.temperature_2m))}°C`;
+      const weather = describeWeather(code);
+      const temperature = Number.isFinite(Number(current?.temperature_2m))
+        ? `${Math.round(Number(current.temperature_2m))}°C`
+        : "";
+      setWeatherState(weather.icon, weather.label, temperature);
     };
     if (!navigator.geolocation) {
-      target.textContent = "날씨 · 위치 권한 필요";
+      setWeatherState("—", "위치 권한 필요");
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (position) => load(position.coords.latitude, position.coords.longitude).catch(() => { target.textContent = "날씨를 확인할 수 없습니다"; }),
-      () => { target.textContent = "날씨 · 위치 권한 필요"; },
+      (position) => load(position.coords.latitude, position.coords.longitude).catch(() => { setWeatherState("—", "날씨 확인 불가"); }),
+      () => { setWeatherState("—", "위치 권한 필요"); },
       { enableHighAccuracy: false, maximumAge: 15 * 60 * 1000, timeout: 5000 }
     );
   }
@@ -1373,6 +1437,38 @@
   });
   $("student-code-search").addEventListener("input", renderStudentCodes);
   $("student-code-refresh").addEventListener("click", () => loadStudentCodes().catch((error) => showToast(error.message)));
+  $("student-admin-search").addEventListener("input", renderStudentAdminOptions);
+  $("admin-teacher-tab").addEventListener("click", () => {
+    $("admin-teacher-tab").classList.add("active");
+    $("admin-student-tab").classList.remove("active");
+    $("admin-teacher-tab").setAttribute("aria-selected", "true");
+    $("admin-student-tab").setAttribute("aria-selected", "false");
+    $("teacher-admin-panel").hidden = false;
+    $("student-admin-panel").hidden = true;
+  });
+  $("admin-student-tab").addEventListener("click", () => {
+    $("admin-student-tab").classList.add("active");
+    $("admin-teacher-tab").classList.remove("active");
+    $("admin-student-tab").setAttribute("aria-selected", "true");
+    $("admin-teacher-tab").setAttribute("aria-selected", "false");
+    $("teacher-admin-panel").hidden = true;
+    $("student-admin-panel").hidden = false;
+    renderStudentAdminOptions();
+  });
+  $("student-admin-submit").addEventListener("click", async () => {
+    const key = $("student-admin-select").value;
+    const student = state.studentCodes.find((item) => studentAdminKey(item) === key);
+    const errorTarget = $("admin-error");
+    errorTarget.hidden = true;
+    try {
+      if (!student) throw new Error("관리자 권한을 줄 학생을 선택해 주세요.");
+      await updateStudentAdminAccess(student, true);
+      $("student-admin-select").value = "";
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
+    }
+  });
   $("refresh-audit-button").addEventListener("click", () => loadAudit().catch((error) => showToast(error.message)));
   $("admin-enroll-button").addEventListener("click", openEnrollmentDialog);
   $("student-installer-download").addEventListener("click", downloadStudentInstaller);

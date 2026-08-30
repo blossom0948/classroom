@@ -102,7 +102,6 @@
       <div class="brand-area"><div class="sidebar-console-label">TEACHER CONSOLE</div><div class="brand"><span class="brand-mark">C</span><span>Classroom</span></div><div id="sidebar-school-name" class="sidebar-school-name">학교를 설정해 주세요</div></div>
       <nav class="nav" aria-label="주 메뉴">
         <button class="nav-item active" data-section="class"><span>▦</span> 수업</button>
-        <button class="nav-item" data-section="activity"><span>◌</span> 활동</button>
         <button class="nav-item" data-section="student-codes"><span>⌁</span> 학생 코드</button>
         <button id="admins-nav" class="nav-item" data-section="admins" hidden><span>⚿</span> 관리자</button>
         <button class="nav-item" data-section="history"><span>↺</span> 기록</button>
@@ -125,7 +124,14 @@
               <strong id="class-subject" class="class-subject"></strong>
             </div>
           </div>
-          <div class="today-info header-context"><strong id="current-date">오늘</strong><span id="weather-info">날씨 확인 중…</span></div>
+          <div class="today-info header-context" aria-label="오늘 정보">
+            <strong id="current-date">오늘</strong>
+            <span id="weather-info" class="weather-info">
+              <span id="weather-icon" class="weather-icon" aria-hidden="true">⛅</span>
+              <span id="weather-description" class="weather-description">날씨 확인 중…</span>
+              <small id="weather-temperature" class="weather-temperature"></small>
+            </span>
+          </div>
         </div>
         <div class="top-actions"><button id="theme-toggle" class="icon-button" type="button" title="다크 모드로 전환">◐ <span>다크</span></button></div>
       </header>
@@ -142,13 +148,6 @@
           <div class="bulk-actions"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">집중 해제</button><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL 열기</button><button id="app-button" class="secondary">앱 실행</button></div>
         </div>
         <div id="student-grid" class="student-grid" aria-live="polite"></div>
-      </section>
-
-      <section id="activity-section" class="section-view" hidden>
-        <div class="hero-row"><div><div class="eyebrow">STUDENT ACTIVITY</div><h2>학생 활동</h2><p class="muted">학생에게 표시되는 상태 제공기가 보낸 현재 앱·창 제목과 설정된 웹 도메인입니다.</p></div></div>
-        <div id="activity-summary" class="class-metrics activity-summary"></div>
-        <div id="activity-insights" class="activity-insights"></div>
-        <div id="activity-table" class="table-card"></div>
       </section>
 
       <section id="student-codes-section" class="section-view" hidden>
@@ -172,9 +171,21 @@
         </div>
         <div class="admin-access-grid">
           <form id="admin-form" class="settings-card admin-grant-form">
-            <div><span class="settings-icon">⚿</span><h3>관리자 지정</h3><p>Google 이메일 또는 아이디를 입력해 관리자 권한을 예약합니다.</p></div>
-            <label>Google 이메일 또는 아이디<input id="admin-identifier" maxlength="254" autocomplete="off" placeholder="teacher@school.ac.kr 또는 teacher-id" required></label>
-            <button class="primary" type="submit">관리자로 지정</button>
+            <div class="admin-grant-heading"><span class="settings-icon">⚿</span><h3>관리자 지정</h3><p>학교 구성원에게 필요한 관리자 권한을 부여합니다.</p></div>
+            <div class="admin-grant-tabs" role="tablist" aria-label="관리자 대상">
+              <button id="admin-teacher-tab" class="admin-grant-tab active" type="button" role="tab" aria-selected="true" aria-controls="teacher-admin-panel">선생님</button>
+              <button id="admin-student-tab" class="admin-grant-tab" type="button" role="tab" aria-selected="false" aria-controls="student-admin-panel">학생</button>
+            </div>
+            <div id="teacher-admin-panel" class="admin-grant-panel" role="tabpanel">
+              <label>Google 이메일 또는 아이디<input id="admin-identifier" maxlength="254" autocomplete="off" placeholder="teacher@school.ac.kr 또는 teacher-id"></label>
+              <button id="teacher-admin-submit" class="primary" type="submit">관리자로 지정</button>
+            </div>
+            <div id="student-admin-panel" class="admin-grant-panel" role="tabpanel" hidden>
+              <label>학생 검색<input id="student-admin-search" type="search" autocomplete="off" placeholder="등록된 학생 이름 검색"></label>
+              <label>학생 선택<select id="student-admin-select"><option value="">학생을 선택하세요</option></select></label>
+              <button id="student-admin-submit" class="primary" type="button">학생 관리자 지정</button>
+              <p class="privacy-note">학생용 장치는 교사 관리자 세션으로 승격되지 않습니다. 이 권한은 학생 계정 기능이 연결될 때 적용되는 별도 권한 표식입니다.</p>
+            </div>
             <p id="admin-error" class="error" hidden></p>
           </form>
           <div id="admin-list" class="admin-list"></div>
@@ -195,7 +206,7 @@
           <div id="profile-consent-fields" class="stack consent-stack" hidden><label class="consent-check"><input id="profile-terms" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="terms">이용약관</button>에 동의합니다.</span></label><label class="consent-check"><input id="profile-privacy" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="privacy">개인정보처리방침</button>에 동의합니다.</span></label></div>
           <button class="primary" type="submit">프로필 저장</button><p id="profile-message" class="error" hidden></p>
         </form>
-        <div class="settings-grid"><article class="settings-card"><span class="settings-icon">●</span><h3>연결 보안</h3><p id="security-setting">Teacher session bearer token으로 연결됨</p></article><article class="settings-card"><span class="settings-icon">▣</span><h3>학생 개인정보</h3><p>학생 화면에 공유 상태가 표시됩니다. 현재 앱·창 제목과 설정된 웹 도메인만 사용하며, 화면 캡처·키 입력·원격 셸은 사용하지 않습니다.</p></article><article class="settings-card"><span class="settings-icon">◷</span><h3>상태 갱신</h3><p>학생 상태는 약 10초마다 서버에 전송되고 콘솔은 2초 간격으로 갱신합니다. 학생 순서는 이름 기준으로 고정됩니다.</p></article><article class="settings-card appearance-card"><span class="settings-icon">◐</span><h3>화면 모드</h3><p>교실 조명과 수업 환경에 맞춰 콘솔 화면을 바꿉니다.</p><div class="theme-options" role="group" aria-label="화면 모드"><button type="button" data-theme-choice="light" class="secondary">라이트</button><button type="button" data-theme-choice="dark" class="secondary">다크</button></div></article></div>
+        <div class="settings-grid"><article class="settings-card"><span class="settings-icon">●</span><h3>연결 보안</h3><p id="security-setting">Teacher session bearer token으로 연결됨</p></article><article class="settings-card"><span class="settings-icon">▣</span><h3>학생 개인정보</h3><p>전자칠판과 교실 대시보드에는 원본 앱명·창 제목·웹 도메인을 표시하지 않습니다. 원본 상태는 권한 있는 교사 상세와 감사 기록에서만 확인되며, 화면 캡처·키 입력·원격 셸은 사용하지 않습니다.</p></article><article class="settings-card"><span class="settings-icon">◷</span><h3>상태 갱신</h3><p>학생 상태는 약 10초마다 서버에 전송되고 콘솔은 2초 간격으로 갱신합니다. 학생 순서는 이름 기준으로 고정됩니다.</p></article><article class="settings-card appearance-card"><span class="settings-icon">◐</span><h3>화면 모드</h3><p>교실 조명과 수업 환경에 맞춰 콘솔 화면을 바꿉니다.</p><div class="theme-options" role="group" aria-label="화면 모드"><button type="button" data-theme-choice="light" class="secondary">라이트</button><button type="button" data-theme-choice="dark" class="secondary">다크</button></div></article></div>
         <article class="settings-card password-card compact-setting">
           <div><span class="settings-icon">🔐</span><h3 id="password-card-title">교사 비밀번호</h3><p id="password-card-copy">이메일 확인 후 교사 아이디 로그인용 비밀번호를 관리합니다.</p></div>
           <button id="password-open-button" class="secondary" type="button">비밀번호 설정</button>
@@ -240,7 +251,7 @@
         <div><strong id="enrollment-result-name"></strong><p id="enrollment-expiry" class="muted"></p></div>
         <div class="enrollment-code-box"><span>학생 코드</span><strong id="enrollment-code">--------</strong><button id="enrollment-code-copy" class="secondary" type="button">코드 복사</button></div>
         <div class="enrollment-steps">
-          <span>1</span><p>학생용 패키지의 압축을 풀고 <strong>Classroom.Student.Setup.exe</strong>를 실행합니다.</p>
+          <span>1</span><p>관리자 메뉴의 학생용 설치 앱 버튼에서 <strong>Classroom.Student.Setup.exe</strong>를 내려받습니다.</p>
           <span>2</span><p>학생이 이 화면의 코드를 입력하고 <strong>등록하고 설치하기</strong>를 누릅니다.</p>
           <span>3</span><p>Windows 관리자 권한 확인을 한 번 승인하면 서비스와 학생 화면이 자동으로 시작됩니다.</p>
         </div>

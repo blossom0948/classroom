@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -9,8 +10,9 @@ namespace Blossom.Classroom.Student.Setup;
 
 internal sealed class StudentSetupForm : Form
 {
-    private const string AgentVersion = "0.3.0";
+    private const string AgentVersion = "0.3.1";
     private const int JoinCodeLength = 8;
+    private const string StudentPackageUrl = "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip";
     private readonly Uri serverOrigin;
     private readonly TextBox codeInput;
     private readonly Button enrollButton;
@@ -271,38 +273,115 @@ internal sealed class StudentSetupForm : Form
     private async Task LaunchInstallerAsync(string configPath)
     {
         var packageRoot = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
-        var installerPath = Path.Combine(packageRoot, "Install-ClassroomStudent.ps1");
-        if (!File.Exists(installerPath))
+        string? downloadedPackageRoot = null;
+        if (!HasStudentPayload(packageRoot))
         {
-            throw new FileNotFoundException(
-                "학생용 패키지에서 Install-ClassroomStudent.ps1을 찾지 못했습니다. Classroom-Windows-x64.zip 전체 압축을 풀어 실행하세요.",
-                installerPath);
+            SetStatus("학생용 구성 요소를 내려받는 중입니다. 잠시만 기다려 주세요...", isError: false);
+            downloadedPackageRoot = await DownloadStudentPackageAsync();
+            packageRoot = downloadedPackageRoot;
         }
 
-        using var process = Process.Start(new ProcessStartInfo
+        var installerPath = Path.Combine(packageRoot, "Install-ClassroomStudent.ps1");
+        var logPath = Path.Combine(
+            Path.GetTempPath(),
+            $"classroom-student-install-{Guid.NewGuid():N}.log");
+        try
         {
-            FileName = "powershell.exe",
-            Arguments = string.Join(
-                " ",
-                "-NoProfile",
-                "-ExecutionPolicy Bypass",
-                "-File",
-                Quote(installerPath),
-                "-PackageRoot",
-                Quote(packageRoot),
-                "-DeviceConfigFile",
-                Quote(configPath)),
-            WorkingDirectory = packageRoot,
-            UseShellExecute = true,
-            Verb = "runas",
-            WindowStyle = ProcessWindowStyle.Normal
-        }) ?? throw new InvalidOperationException("Windows 설치 프로세스를 시작하지 못했습니다.");
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = string.Join(
+                    " ",
+                    "-NoProfile",
+                    "-ExecutionPolicy Bypass",
+                    "-File",
+                    Quote(installerPath),
+                    "-PackageRoot",
+                    Quote(packageRoot),
+                    "-DeviceConfigFile",
+                    Quote(configPath),
+                    "-LogPath",
+                    Quote(logPath)),
+                WorkingDirectory = packageRoot,
+                UseShellExecute = true,
+                Verb = "runas",
+                WindowStyle = ProcessWindowStyle.Normal
+            }) ?? throw new InvalidOperationException("Windows 설치 프로세스를 시작하지 못했습니다.");
 
-        await process.WaitForExitAsync();
-        if (process.ExitCode != 0)
+            await process.WaitForExitAsync();
+            if (process.ExitCode != 0)
+            {
+                var detail = ReadInstallLog(logPath);
+                throw new InvalidOperationException(
+                    string.IsNullOrWhiteSpace(detail)
+                        ? $"학생 서비스 설치가 완료되지 않았습니다. (코드 {process.ExitCode})"
+                        : $"학생 서비스 설치가 완료되지 않았습니다.\n{detail}");
+            }
+        }
+        finally
         {
+            TryDelete(logPath);
+            if (downloadedPackageRoot is not null)
+            {
+                TryDeleteDirectory(downloadedPackageRoot);
+            }
+        }
+    }
+
+    private static bool HasStudentPayload(string packageRoot) =>
+        File.Exists(Path.Combine(packageRoot, "Install-ClassroomStudent.ps1"))
+        && (File.Exists(Path.Combine(packageRoot, "student-service", "Classroom.Student.Service.exe"))
+            || File.Exists(Path.Combine(packageRoot, "Classroom.Student.Service.exe")))
+        && (File.Exists(Path.Combine(packageRoot, "student-desktop", "Classroom.Student.Desktop.exe"))
+            || File.Exists(Path.Combine(packageRoot, "Classroom.Student.Desktop.exe")));
+
+    private static async Task<string> DownloadStudentPackageAsync()
+    {
+        var packageRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"classroom-student-package-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(packageRoot);
+        var zipPath = Path.Combine(packageRoot, "Classroom-Windows-x64.zip");
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+            using var response = await client.GetAsync(
+                StudentPackageUrl,
+                HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+            await using (var output = File.Create(zipPath))
+            {
+                await response.Content.CopyToAsync(output);
+            }
+
+            ZipFile.ExtractToDirectory(zipPath, packageRoot);
+            TryDelete(zipPath);
+            if (!HasStudentPayload(packageRoot))
+            {
+                throw new InvalidOperationException("학생용 설치 구성 요소를 내려받았지만 패키지가 올바르지 않습니다.");
+            }
+
+            return packageRoot;
+        }
+        catch
+        {
+            TryDeleteDirectory(packageRoot);
             throw new InvalidOperationException(
-                $"학생 서비스 설치가 완료되지 않았습니다. (코드 {process.ExitCode})");
+                "학생용 구성 요소를 내려받지 못했습니다. 인터넷 연결 또는 학교 네트워크 정책을 확인해 주세요.");
+        }
+    }
+
+    private static string ReadInstallLog(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return string.Empty;
+            var text = File.ReadAllText(path).Trim();
+            return text.Length > 2400 ? text[^2400..] : text;
+        }
+        catch (IOException)
+        {
+            return string.Empty;
         }
     }
 
@@ -375,6 +454,25 @@ internal sealed class StudentSetupForm : Form
         {
             // The temporary config contains a short-lived device token. The installer
             // normally releases it before this point; a locked file is harmless.
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // A failed cleanup does not invalidate an otherwise successful install.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // A failed cleanup does not invalidate an otherwise successful install.
         }
     }
 
