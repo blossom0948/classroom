@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.13";
+  const APP_VERSION = "0.5.14";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const state = {
@@ -1308,18 +1308,72 @@
     });
   }
 
-  async function checkForAppUpdate() {
+  function compareVersions(left, right) {
+    const a = String(left || "").split(".").map((part) => Number.parseInt(part, 10) || 0);
+    const b = String(right || "").split(".").map((part) => Number.parseInt(part, 10) || 0);
+    const length = Math.max(a.length, b.length);
+    for (let index = 0; index < length; index += 1) {
+      if ((a[index] || 0) > (b[index] || 0)) return 1;
+      if ((a[index] || 0) < (b[index] || 0)) return -1;
+    }
+    return 0;
+  }
+
+  function setUpdateStatus(message, stateName = "") {
+    const target = $("update-status");
+    if (!target) return;
+    target.textContent = message;
+    target.dataset.state = stateName;
+  }
+
+  async function refreshStudentAppVersion() {
+    const target = $("student-agent-version");
+    if (!target) return;
     try {
-      const response = await fetch(`/version.json?now=${Date.now()}`, { cache: "no-store" });
-      if (!response.ok) return;
+      const response = await fetch(`/classroom-update.json?now=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("version unavailable");
+      const payload = await response.json();
+      target.textContent = payload?.version ? `v${payload.version}` : "확인 불가";
+    } catch (_) {
+      target.textContent = "오프라인";
+    }
+  }
+
+  async function checkForAppUpdate(showFeedback = false) {
+    const button = $("check-update-button");
+    if ($("console-version")) $("console-version").textContent = `v${APP_VERSION}`;
+    if (showFeedback && button) {
+      button.disabled = true;
+      button.textContent = "확인 중…";
+      setUpdateStatus("교사 콘솔과 학생 앱 버전을 확인하고 있습니다.", "checking");
+    }
+    try {
+      const [response] = await Promise.all([
+        fetch(`/version.json?now=${Date.now()}`, { cache: "no-store" }),
+        refreshStudentAppVersion()
+      ]);
+      if (!response.ok) throw new Error("version unavailable");
       const version = await response.json();
-      if (version?.version && version.version !== APP_VERSION) {
+      if (version?.version && compareVersions(version.version, APP_VERSION) > 0) {
+        setUpdateStatus(`v${version.version} 업데이트를 적용하고 있습니다.`, "available");
         const registration = await navigator.serviceWorker?.getRegistration();
         await registration?.update().catch(() => {});
         registration?.waiting?.postMessage({ type: "SKIP_WAITING" });
         window.setTimeout(() => window.location.reload(), 600);
+        return;
       }
-    } catch (_) { /* offline use keeps the current app shell */ }
+      const checkedAt = new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit" }).format(new Date());
+      setUpdateStatus(`최신 버전입니다 · ${checkedAt} 확인`, "current");
+      if (showFeedback) showToast(`교사 콘솔 v${APP_VERSION}은 최신 버전입니다.`);
+    } catch (_) {
+      setUpdateStatus("오프라인 상태입니다. 연결되면 자동으로 다시 확인합니다.", "offline");
+      if (showFeedback) showToast("업데이트 서버에 연결할 수 없습니다.");
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "업데이트 확인";
+      }
+    }
   }
 
   function firebaseClient() {
@@ -1525,6 +1579,7 @@
   $("back-to-landing").addEventListener("click", (event) => { event.preventDefault(); showLanding(); });
   $("install-app-button").addEventListener("click", installApp);
   $("settings-install-button").addEventListener("click", installApp);
+  $("check-update-button").addEventListener("click", () => checkForAppUpdate(true));
   $("dismiss-install-button").addEventListener("click", () => {
     localStorage.setItem("classroom.dismissInstallPrompt", "1");
     syncInstallUi();
