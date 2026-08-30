@@ -41,7 +41,12 @@ public sealed class DesktopPipeClient(
             {
                 return;
             }
-            catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException)
+            catch (Exception exception) when (
+                exception is IOException
+                or UnauthorizedAccessException
+                or TimeoutException
+                or InvalidDataException
+                or JsonException)
             {
                 log($"Student Service IPC connection ended: {exception.Message}");
             }

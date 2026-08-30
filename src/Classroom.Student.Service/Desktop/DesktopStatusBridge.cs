@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO.Pipes;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using Blossom.Classroom.Core.Desktop;
@@ -170,16 +172,10 @@ public sealed class DesktopStatusBridge(
         var pipeName = StudentDesktopIpc.GetPipeName(options.DeviceId);
         while (!cancellationToken.IsCancellationRequested)
         {
-            using var pipe = new NamedPipeServerStream(
-                pipeName,
-                PipeDirection.InOut,
-                1,
-                PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous,
-                MaxIpcMessageBytes,
-                MaxIpcMessageBytes);
+            NamedPipeServerStream? pipe = null;
             try
             {
+                pipe = CreatePipe(pipeName);
                 await pipe.WaitForConnectionAsync(cancellationToken);
                 lock (gate)
                 {
@@ -196,9 +192,22 @@ public sealed class DesktopStatusBridge(
             {
                 return;
             }
-            catch (Exception exception) when (exception is IOException or InvalidDataException or JsonException or ProtocolValidationException)
+            catch (Exception exception) when (
+                exception is IOException
+                or UnauthorizedAccessException
+                or InvalidDataException
+                or JsonException
+                or ProtocolValidationException)
             {
                 logger.LogWarning("Student Desktop IPC connection ended: {Message}", exception.Message);
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
             }
             finally
             {
@@ -212,8 +221,42 @@ public sealed class DesktopStatusBridge(
                 }
 
                 FailPending(new IOException("Student Desktop IPC connection ended."));
+                pipe?.Dispose();
             }
         }
+    }
+
+    private static NamedPipeServerStream CreatePipe(string pipeName)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return new NamedPipeServerStream(
+                pipeName,
+                PipeDirection.InOut,
+                1,
+                PipeTransmissionMode.Byte,
+                PipeOptions.Asynchronous,
+                MaxIpcMessageBytes,
+                MaxIpcMessageBytes);
+        }
+
+        // The service runs as LocalSystem while the visible student desktop
+        // runs as the logged-in student. Grant the authenticated desktop user
+        // access to this pipe; the IPC token handshake remains mandatory.
+        var security = new PipeSecurity();
+        security.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
+            PipeAccessRights.ReadWrite,
+            AccessControlType.Allow));
+        return NamedPipeServerStreamAcl.Create(
+            pipeName,
+            PipeDirection.InOut,
+            1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous,
+            MaxIpcMessageBytes,
+            MaxIpcMessageBytes,
+            security);
     }
 
     private async Task RunConnectionAsync(

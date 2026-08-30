@@ -369,7 +369,7 @@ if ($SkipDesktopStartup) {
 }
 else {
     New-Item -Path $desktopRunKey -Force | Out-Null
-    New-ItemProperty -Path $desktopRunKey -Name "BlossomClassroomStudent" -PropertyType String -Value ('"{0}"' -f $installedDesktopExecutable) -Force | Out-Null
+    New-ItemProperty -Path $desktopRunKey -Name "BlossomClassroomStudent" -PropertyType String -Value ('"{0}" --classroom-watchdog' -f $installedDesktopExecutable) -Force | Out-Null
 }
 
 try {
@@ -391,7 +391,7 @@ catch {
 Write-ClassroomInstallLog "서비스 실행 상태 확인 완료"
 
 if (-not $SkipDesktopLaunch) {
-    Start-Process -FilePath $installedDesktopExecutable
+    Start-Process -FilePath $installedDesktopExecutable -ArgumentList '--classroom-watchdog'
 }
 
 Write-Host ""

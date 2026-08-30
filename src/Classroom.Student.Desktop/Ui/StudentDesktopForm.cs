@@ -18,7 +18,6 @@ public sealed class StudentDesktopForm : Form
     private readonly NotifyIcon trayIcon = new();
     private readonly System.Windows.Forms.Timer disconnectFailsafeTimer = new() { Interval = 60_000 };
     private FocusOverlayForm? focusOverlay;
-    private bool explicitExit;
 
     public StudentDesktopForm(
         StudentDesktopOptions options,
@@ -29,6 +28,9 @@ public sealed class StudentDesktopForm : Form
         deviceLabel = CreateLabel($"장치: {options.DeviceId:D}", 9, Color.DimGray);
         Text = "Classroom Student";
         StartPosition = FormStartPosition.CenterScreen;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = true;
         ClientSize = new Size(520, 335);
         MinimumSize = new Size(520, 335);
         BackColor = Color.White;
@@ -60,11 +62,8 @@ public sealed class StudentDesktopForm : Form
 
         var trayMenu = new ContextMenuStrip();
         trayMenu.Items.Add("상태 열기", null, (_, _) => ShowMainWindow());
-        trayMenu.Items.Add("종료", null, (_, _) =>
-        {
-            explicitExit = true;
-            Close();
-        });
+        var managedNotice = trayMenu.Items.Add("학교 관리 중에는 학생 앱을 종료할 수 없습니다.");
+        managedNotice.Enabled = false;
         trayIcon.Icon = SystemIcons.Information;
         trayIcon.Text = "Classroom Student · 학교 관리 활성화";
         trayIcon.ContextMenuStrip = trayMenu;
@@ -78,7 +77,7 @@ public sealed class StudentDesktopForm : Form
         };
         FormClosing += (_, eventArgs) =>
         {
-            if (!explicitExit && eventArgs.CloseReason == CloseReason.UserClosing)
+            if (eventArgs.CloseReason == CloseReason.UserClosing)
             {
                 eventArgs.Cancel = true;
                 Hide();
@@ -244,7 +243,7 @@ public sealed class StudentDesktopForm : Form
     private void ClearFocusMode()
     {
         disconnectFailsafeTimer.Stop();
-        focusOverlay?.Close();
+        focusOverlay?.Dismiss();
         focusOverlay = null;
         statusProvider.SetPolicyApplied(false);
     }
@@ -330,6 +329,7 @@ public sealed class StudentDesktopForm : Form
 
     private sealed class FocusOverlayForm : Form
     {
+        private bool allowClose;
         private readonly Label label = new()
         {
             Dock = DockStyle.Fill,
@@ -346,8 +346,22 @@ public sealed class StudentDesktopForm : Form
             TopMost = true;
             ShowInTaskbar = false;
             Controls.Add(label);
+            FormClosing += (_, eventArgs) =>
+            {
+                if (!allowClose && eventArgs.CloseReason == CloseReason.UserClosing)
+                {
+                    eventArgs.Cancel = true;
+                    BringToFront();
+                }
+            };
         }
 
         public void SetMessage(string message) => label.Text = $"집중 모드\n\n{message}";
+
+        public void Dismiss()
+        {
+            allowClose = true;
+            Close();
+        }
     }
 }

@@ -12,7 +12,7 @@ namespace Blossom.Classroom.Student.Setup;
 
 internal sealed class StudentSetupForm : Form
 {
-    private const string AgentVersion = "0.3.7";
+    private const string AgentVersion = "0.3.8";
     private const int JoinCodeLength = 8;
     private const string StudentPackageUrl = "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip";
     private const string InstallRootName = "Blossom Classroom Student";
@@ -383,7 +383,10 @@ internal sealed class StudentSetupForm : Form
         using var runKey = Registry.CurrentUser.CreateSubKey(
             @"Software\Microsoft\Windows\CurrentVersion\Run",
             writable: true);
-        runKey?.SetValue("BlossomClassroomStudent", Quote(desktopPath), RegistryValueKind.String);
+        runKey?.SetValue(
+            "BlossomClassroomStudent",
+            $"{Quote(desktopPath)} --classroom-watchdog",
+            RegistryValueKind.String);
     }
 
     private static bool TryStartInstalledDesktop(string installRoot)
@@ -399,6 +402,7 @@ internal sealed class StudentSetupForm : Form
             Process.Start(new ProcessStartInfo
             {
                 FileName = desktopPath,
+                Arguments = "--classroom-watchdog",
                 UseShellExecute = true,
                 WorkingDirectory = Path.GetDirectoryName(desktopPath)!
             });

@@ -39,6 +39,12 @@ GitHub Actions의 `Classroom-Windows` 패키지에는 아래 설치 앱이 포�
 다시 설치를 시도할 수 있습니다. 코드가 외부에 노출된 경우에만 교사 콘솔에서 새
 코드를 발급해 이전 코드를 폐기합니다.
 
+설치가 끝나면 학생 화면은 작업 표시줄 알림 영역에 표시되며, 창의 닫기 버튼은
+종료가 아니라 상태 창 숨기기로 동작합니다. 학생 화면 프로세스가 강제로 종료되어도
+로그인 세션의 Classroom 감시 프로세스가 최대 약 2초 안에 다시 실행합니다. 감시
+프로세스와 학생 화면은 모두 작업 관리자에서 확인할 수 있고, 학생 화면에는 학교
+관리 상태가 계속 표시됩니다.
+
 `Install-ClassroomStudent.cmd`와 JSON 파일 방식은 기존 파일럿과 관리형 배포를
 위한 호환 경로입니다. 새 설치에서는 학생에게 이 수동 경로를 안내하지 않습니다.
 
@@ -51,7 +57,9 @@ GitHub Actions의 `Classroom-Windows` 패키지에는 아래 설치 앱이 포�
 ```
 
 이 스크립트는 `ClassroomStudentService`를 Automatic 서비스로 등록하고,
-현재 사용자 로그인 시 `Classroom.Student.Desktop.exe`를 시작한다. 서비스
+현재 사용자 로그인 시 `Classroom.Student.Desktop.exe --classroom-watchdog`를
+시작한다. 감시 프로세스는 학생 화면을 표시하고 화면 프로세스가 종료되면 다시
+실행한다. 서비스
 토큰은 서비스 환경에만 넣고 Desktop에는 IPC 토큰만 넣는다. 처음 설치한 뒤
 사용자 로그오프/로그온을 한 번 수행해야 Desktop이 사용자 환경 변수를 읽는다.
 
