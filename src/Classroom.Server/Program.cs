@@ -120,7 +120,7 @@ app.Use(async (context, next) =>
     context.Response.Headers["Content-Security-Policy"] =
         "default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com; style-src 'self'; " +
         "img-src 'self' data: https://lh3.googleusercontent.com; " +
-        $"connect-src {connectSources} https://identitytoolkit.googleapis.com https://securetoken.googleapis.com " +
+        $"connect-src {connectSources} https://classroom-api.blossom0948.cloud https://identitytoolkit.googleapis.com https://securetoken.googleapis.com " +
         "https://firebaseinstallations.googleapis.com https://www.googleapis.com https://apis.google.com " +
         "https://www.gstatic.com https://www.google.com https://*.firebaseapp.com " +
         "https://accounts.google.com https://api.open-meteo.com; frame-src https://*.firebaseapp.com https://accounts.google.com; " +

@@ -1,5 +1,5 @@
 window.CLASSROOM_CONFIG = Object.freeze({
-  apiOrigin: "",
+  apiOrigin: "https://classroom-api.blossom0948.cloud",
   studentInstallerUrl: "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip",
   firebase: {
     apiKey: "AIzaSyAYjzmqcVVIgBFgpzji7MOn2NVfl-B2N3c",

@@ -488,8 +488,12 @@
       nameIndex = headers.findIndex((value) => /이름|성명|학생명/.test(value));
     }
     return rows.slice(dataStart).map((row) => {
-      const numeric = numberIndex >= 0 ? row[numberIndex] : row.find((value) => /^\d{1,3}$/.test(value));
-      const name = nameIndex >= 0 ? row[nameIndex] : row.filter((value) => value && value !== numeric && !/^\d{1,3}$/.test(value)).pop();
+      const numeric = numberIndex >= 0
+        ? row[numberIndex]
+        : [...row].reverse().find((value) => /^\d{1,3}$/.test(value));
+      const name = nameIndex >= 0
+        ? row[nameIndex]
+        : row.filter((value) => value && value !== numeric && !/^\d{1,3}$/.test(value)).pop();
       const studentNumber = Number(String(numeric || "").replace(/[^0-9]/g, ""));
       return { studentNumber, studentDisplayName: name || "" };
     }).filter((row) => row.studentNumber >= 1 && row.studentNumber <= 99 && row.studentDisplayName);
