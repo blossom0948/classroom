@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title>Classroom</title>
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7b91ff"/><stop offset="1" stop-color="#425bd4"/></linearGradient></defs>
+  <rect width="512" height="512" rx="120" fill="url(#g)"/>
+  <path d="M378 157c-35-27-75-41-122-41-86 0-156 63-156 140s70 140 156 140c47 0 87-14 122-41l-31-50c-25 19-53 28-88 28-55 0-96-36-96-77s41-77 96-77c35 0 63 9 88 28l31-50z" fill="#fff"/>
+  <circle cx="371" cy="256" r="19" fill="#dce5ff"/>
+</svg>

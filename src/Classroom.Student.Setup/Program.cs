@@ -4,6 +4,8 @@ namespace Blossom.Classroom.Student.Setup;
 
 internal static class Program
 {
+    // Cloudflare Worker endpoint: unlike the former local Tunnel, this remains
+    // available when the teacher's computer is turned off.
     private const string DefaultServerOrigin = "https://classroom-api.blossom0948.cloud";
 
     [STAThread]

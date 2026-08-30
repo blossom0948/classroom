@@ -71,10 +71,10 @@ public static class PasswordSecurity
     private static void ValidatePassword(string password)
     {
         if (string.IsNullOrWhiteSpace(password)
-            || password.Length is < 12 or > 256
+            || password.Length is < 6 or > 256
             || password.Any(char.IsControl))
         {
-            throw new ArgumentException("Password must be 12 to 256 printable characters.", nameof(password));
+            throw new ArgumentException("Password must be 6 to 256 printable characters.", nameof(password));
         }
     }
 }

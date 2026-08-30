@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Classroom 교사 콘솔",
+  "short_name": "Classroom",
+  "description": "학교 수업 운영을 위한 Classroom 교사 콘솔",
+  "lang": "ko-KR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f9fd",
+  "theme_color": "#526ee5",
+  "icons": [
+    {
+      "src": "/icons/classroom.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

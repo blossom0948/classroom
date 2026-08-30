@@ -28,7 +28,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     throw "Classroom 서버 설치는 관리자 권한 PowerShell에서 실행해야 합니다."
 }
 if ($BootstrapTeacherPassword.Length -lt 12) {
-    throw "초기 교사 비밀번호는 12자 이상이어야 합니다."
+    throw "초기 교사 비밀번호는 6자 이상이어야 합니다."
 }
 if ($ListenUrl.Scheme -ne "http" -or $ListenUrl.Host -notin @("127.0.0.1", "localhost", "::1")) {
     throw "Classroom Tunnel 원본 서버는 로컬 HTTP 주소에만 바인딩해야 합니다."

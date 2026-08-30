@@ -4,10 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Classroom — 안전한 교실 운영</title>
+  <meta name="theme-color" content="#526ee5">
+  <meta name="description" content="학교 수업 운영을 위한 Classroom 교사 콘솔">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/classroom.svg">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="install-app-prompt" class="install-app-prompt" hidden>
+    <span class="install-app-icon">C</span>
+    <div><strong>Classroom을 앱으로 설치</strong><small>작업 표시줄과 홈 화면에서 바로 열 수 있습니다.</small></div>
+    <button id="install-app-button" class="primary" type="button">설치</button>
+    <button id="dismiss-install-button" class="close-button" type="button" aria-label="설치 안내 닫기">×</button>
+  </div>
 
   <section id="landing-view" class="landing-page">
     <header class="landing-nav">
@@ -16,7 +27,7 @@
         <a href="#how-it-works">사용 방법</a>
         <a href="#principles">운영 원칙</a>
       </nav>
-      <button id="landing-login-button" class="secondary">로그인</button>
+      <div class="landing-nav-actions"><button id="landing-install-button" class="secondary" type="button" hidden>앱 설치</button><button id="landing-login-button" class="secondary">로그인</button></div>
     </header>
     <main id="top">
       <section class="landing-hero">
@@ -48,7 +59,7 @@
 
       <section class="landing-cta"><div><span class="eyebrow">READY WHEN YOU ARE</span><h2>다음 수업을 더 가볍게 시작하세요.</h2></div><button id="landing-cta-button" class="primary">Classroom 시작하기 <span>→</span></button></section>
     </main>
-    <footer class="landing-footer"><span>© Blossom Classroom</span><span>수업을 위한 투명한 장치 관리</span></footer>
+    <footer class="landing-footer"><span>© Blossom Classroom</span><span class="legal-links"><button type="button" data-legal-document="terms">이용약관</button><button type="button" data-legal-document="privacy">개인정보처리방침</button></span><span>수업을 위한 투명한 장치 관리</span></footer>
   </section>
 
   <section id="login-view" class="auth-shell" hidden>
@@ -60,28 +71,28 @@
         <div class="auth-tabs" role="tablist"><button type="button" class="auth-tab active" data-auth-mode="login" role="tab" aria-selected="true">로그인</button><button type="button" class="auth-tab" data-auth-mode="signup" role="tab" aria-selected="false">회원가입</button></div>
         <div id="login-panel" class="auth-panel">
           <form id="login-form" class="stack">
-            <label>이메일 또는 기존 교사 계정<input id="login-name" autocomplete="username" required placeholder="name@example.com 또는 blossom0948"></label>
+            <label>이메일 또는 교사 아이디<input id="login-name" autocomplete="username" required placeholder="이메일 또는 교사 아이디"></label>
             <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" required></label>
             <div class="form-row"><button id="forgot-password-button" class="inline-link" type="button">비밀번호를 잊으셨나요?</button></div>
             <button class="primary wide" type="submit">로그인 <span>→</span></button>
             <p id="login-error" class="error" hidden></p>
           </form>
-          <p id="dev-login-hint" class="login-hint" hidden>기존 운영 계정: <code>blossom0948</code> · 비밀번호는 서버 설치 시 설정한 값을 사용하세요.</p>
+          <p id="dev-login-hint" class="login-hint" hidden></p>
         </div>
         <div id="signup-panel" class="auth-panel" hidden>
           <form id="signup-form" class="stack">
-            <label>이름<input id="signup-display-name" autocomplete="name" required maxlength="80" placeholder="홍길동 선생님"></label>
-            <label>담당 과목 <span class="optional-label">선택</span><input id="signup-subject" maxlength="128" placeholder="예: 정보, 영어"></label>
             <label>이메일<input id="signup-email" type="email" autocomplete="email" required placeholder="teacher@school.ac.kr"></label>
-            <label>비밀번호<input id="signup-password" type="password" autocomplete="new-password" minlength="12" required placeholder="12자 이상"></label>
-            <label>비밀번호 확인<input id="signup-password-confirm" type="password" autocomplete="new-password" minlength="12" required></label>
+            <label>비밀번호<input id="signup-password" type="password" autocomplete="new-password" minlength="6" required placeholder="6자 이상"></label>
+            <label>비밀번호 확인<input id="signup-password-confirm" type="password" autocomplete="new-password" minlength="6" required></label>
+            <label class="consent-check"><input id="signup-terms" type="checkbox" required><span><button type="button" class="inline-link" data-legal-document="terms">이용약관</button>에 동의합니다.</span></label>
+            <label class="consent-check"><input id="signup-privacy" type="checkbox" required><span><button type="button" class="inline-link" data-legal-document="privacy">개인정보처리방침</button>에 동의합니다.</span></label>
             <button class="primary wide" type="submit">계정 만들기 <span>→</span></button>
             <p id="signup-error" class="error" hidden></p>
           </form>
         </div>
         <div class="auth-divider"><span>또는</span></div>
         <button id="google-login-button" type="button" class="google-button"><span class="google-g">G</span> Google 계정으로 계속</button>
-        <p id="firebase-status" class="auth-footnote">Google 로그인과 이메일 회원가입은 Firebase Authentication을 사용합니다.</p>
+        <p id="firebase-status" class="auth-footnote">Google 로그인과 이메일 회원가입은 안전한 Firebase Authentication으로 처리됩니다.</p>
       </div>
     </div>
   </section>
@@ -159,16 +170,23 @@
       </section>
 
       <section id="settings-section" class="section-view" hidden>
-        <div class="hero-row"><div><h2>설정</h2><p class="muted">현재 서버 연결과 개인정보 경계를 확인합니다.</p></div></div>
+        <div class="hero-row"><div><h2>설정</h2><p class="muted">프로필, 보안, 앱 설치와 개인정보 경계를 관리합니다.</p></div></div>
+        <form id="profile-form" class="settings-card profile-card stack">
+          <div><span class="settings-icon">◉</span><h3>교사 프로필</h3><p>이름과 담당 과목은 홈 화면의 인사와 수업 정보에 사용됩니다. 처음에는 간단히 설정하고, 언제든 여기서 바꿀 수 있습니다.</p></div>
+          <div class="profile-fields"><label>선생님 이름<input id="profile-display-name" maxlength="80" autocomplete="name" required placeholder="홍길동"></label><label>담당 과목 <span class="optional-label">선택</span><input id="profile-subject" maxlength="128" placeholder="예: 정보, 영어"></label><label>대표 반 이름 <span class="optional-label">선택</span><input id="profile-class-name" maxlength="80" placeholder="예: 2학년 3반"></label></div>
+          <div id="profile-consent-fields" class="stack consent-stack" hidden><label class="consent-check"><input id="profile-terms" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="terms">이용약관</button>에 동의합니다.</span></label><label class="consent-check"><input id="profile-privacy" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="privacy">개인정보처리방침</button>에 동의합니다.</span></label></div>
+          <button class="primary" type="submit">프로필 저장</button><p id="profile-message" class="error" hidden></p>
+        </form>
         <div class="settings-grid"><article class="settings-card"><span class="settings-icon">●</span><h3>연결 보안</h3><p id="security-setting">Teacher session bearer token으로 연결됨</p></article><article class="settings-card"><span class="settings-icon">▣</span><h3>학생 개인정보</h3><p>화면 캡처와 원격 셸을 사용하지 않습니다. 브라우저 도메인은 학생용 상태 제공기가 보낸 범위에서만 표시됩니다.</p></article><article class="settings-card"><span class="settings-icon">◷</span><h3>상태 갱신</h3><p>학생 상태는 2초 간격으로 갱신됩니다. 학생 순서는 이름 기준으로 고정됩니다.</p></article><article class="settings-card appearance-card"><span class="settings-icon">◐</span><h3>화면 모드</h3><p>교실 조명과 수업 환경에 맞춰 콘솔 화면을 바꿉니다.</p><div class="theme-options" role="group" aria-label="화면 모드"><button type="button" data-theme-choice="light" class="secondary">라이트</button><button type="button" data-theme-choice="dark" class="secondary">다크</button></div></article></div>
         <form id="password-form" class="settings-card password-card stack">
-          <div><span class="settings-icon">🔐</span><h3>교사 비밀번호 변경</h3><p>현재 비밀번호를 확인한 뒤 새 비밀번호를 저장합니다. 새 비밀번호는 12자 이상이어야 합니다.</p></div>
-          <label>현재 비밀번호<input id="current-password" type="password" autocomplete="current-password" required></label>
-          <label>새 비밀번호<input id="new-password" type="password" autocomplete="new-password" minlength="12" required></label>
-          <label>새 비밀번호 확인<input id="new-password-confirm" type="password" autocomplete="new-password" minlength="12" required></label>
+          <div><span class="settings-icon">🔐</span><h3 id="password-card-title">교사 비밀번호 변경</h3><p id="password-card-copy">비밀번호는 6자 이상으로 설정할 수 있습니다. 더 긴 비밀번호를 권장합니다.</p></div>
+          <label id="current-password-field">현재 비밀번호<input id="current-password" type="password" autocomplete="current-password"></label>
+          <label>새 비밀번호<input id="new-password" type="password" autocomplete="new-password" minlength="6" required></label>
+          <label>새 비밀번호 확인<input id="new-password-confirm" type="password" autocomplete="new-password" minlength="6" required></label>
           <button class="primary" type="submit">비밀번호 변경</button>
           <p id="password-message" class="error" hidden></p>
         </form>
+        <article class="settings-card legal-card"><span class="settings-icon">⚖</span><h3>약관과 개인정보</h3><p>서비스 이용 중 수집하는 정보와 처리 기준을 언제든 확인할 수 있습니다.</p><div class="theme-options"><button type="button" class="secondary" data-legal-document="terms">이용약관</button><button type="button" class="secondary" data-legal-document="privacy">개인정보처리방침</button><button id="settings-install-button" type="button" class="secondary" hidden>앱 설치</button></div></article>
       </section>
     </main>
 
@@ -227,6 +245,21 @@
       </div>
       <p id="enrollment-error" class="error" hidden></p>
     </form>
+  </dialog>
+  <dialog id="onboarding-dialog" class="command-dialog onboarding-dialog">
+    <form method="dialog" id="onboarding-form" class="stack">
+      <div class="dialog-heading"><span class="eyebrow">WELCOME</span><h2>수업 프로필을 설정해 주세요</h2></div>
+      <p class="muted dialog-copy">이 정보는 홈 화면의 인사와 수업 표시를 위해서만 사용됩니다. 지금 설정하지 않아도 나중에 설정에서 언제든 변경할 수 있습니다.</p>
+      <label>선생님 이름<input id="onboarding-display-name" maxlength="80" autocomplete="name" required placeholder="홍길동"></label>
+      <label>담당 과목 <span class="optional-label">선택</span><input id="onboarding-subject" maxlength="128" placeholder="예: 정보, 영어"></label>
+      <label>대표 반 이름 <span class="optional-label">선택</span><input id="onboarding-class-name" maxlength="80" placeholder="예: 2학년 3반"></label>
+      <div id="onboarding-consent" class="stack consent-stack"><label class="consent-check"><input id="onboarding-terms" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="terms">이용약관</button>에 동의합니다.</span></label><label class="consent-check"><input id="onboarding-privacy" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="privacy">개인정보처리방침</button>에 동의합니다.</span></label></div>
+      <div class="dialog-actions"><button id="onboarding-later" class="secondary" type="button">나중에 설정</button><button class="primary" type="submit" value="default">저장하고 시작</button></div>
+      <p id="onboarding-error" class="error" hidden></p>
+    </form>
+  </dialog>
+  <dialog id="legal-dialog" class="command-dialog legal-dialog">
+    <form method="dialog" class="stack"><div class="dialog-heading"><span id="legal-kicker" class="eyebrow">CLASSROOM</span><h2 id="legal-title">이용약관</h2></div><div id="legal-content" class="legal-content"></div><div class="dialog-actions"><button class="primary" type="submit" value="default">확인</button></div></form>
   </dialog>
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>

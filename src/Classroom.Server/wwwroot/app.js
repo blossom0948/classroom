@@ -19,7 +19,8 @@
     toastTimer: null,
     enrollmentBundle: null,
     theme: localStorage.getItem("classroom.theme") || "light",
-    activeSection: "class"
+    activeSection: "class",
+    deferredInstallPrompt: null
   };
 
   const $ = (id) => document.getElementById(id);
@@ -69,6 +70,7 @@
     state.adminDirectory = null;
     state.selectedDeviceIds.clear();
     sessionStorage.removeItem("classroom.teacherToken");
+    sessionStorage.removeItem("classroom.onboardingDismissed");
     if (state.pollTimer) clearInterval(state.pollTimer);
     state.pollTimer = null;
     landingView.hidden = false;
@@ -110,9 +112,11 @@
     loginView.hidden = true;
     appView.hidden = false;
     applyTheme(state.theme);
+    syncProfileControls(session);
     await refreshClass();
     if (state.pollTimer) clearInterval(state.pollTimer);
     state.pollTimer = setInterval(() => refreshClass().catch((error) => showToast(error.message)), 2000);
+    window.setTimeout(() => maybeOpenOnboarding(session), 150);
   }
 
   async function refreshClass() {
@@ -564,6 +568,98 @@
     $("signup-panel").hidden = !signup;
   }
 
+  const legalDocuments = {
+    terms: {
+      kicker: "TERMS OF SERVICE",
+      title: "Classroom 이용약관",
+      html: `<p>시행일: 2026년 8월 30일</p><h3>1. 서비스 목적</h3><p>Classroom은 학교 수업에서 학생 PC의 연결 상태를 확인하고, 수업 안내·집중 모드·승인된 링크 및 앱 실행을 전달하기 위한 교사용 운영 도구입니다.</p><h3>2. 계정과 권한</h3><p>교사 계정은 본인만 사용해야 하며, 관리자는 학교 운영에 필요한 범위에서 다른 교사의 관리자 권한을 지정하거나 해제할 수 있습니다. 학생 코드는 학생 PC 등록 목적으로만 사용해야 하며, 노출된 코드는 즉시 재발급해야 합니다.</p><h3>3. 허용되는 기능 범위</h3><p>서비스는 수업 운영에 필요한 상태 확인과 명령 전달만 제공합니다. 화면 캡처, 임의 원격 셸 실행, 개인 파일 열람 기능은 제공하지 않습니다.</p><h3>4. 학교의 책임</h3><p>학교·교육기관은 학생과 보호자에게 서비스 사용 사실, 관리 범위, 자체 운영 기준을 알리고 필요한 동의 절차를 갖추어야 합니다.</p><h3>5. 이용 제한</h3><p>타인의 계정을 사용하거나, 학생의 교육 목적과 무관한 감시·통제에 서비스를 이용해서는 안 됩니다. 보안상 우려가 있는 이용은 제한될 수 있습니다.</p>`
+    },
+    privacy: {
+      kicker: "PRIVACY NOTICE",
+      title: "개인정보처리방침",
+      html: `<p>시행일: 2026년 8월 30일</p><h3>1. 수집하는 정보</h3><p>교사 계정의 이메일·이름·담당 과목, 학급명, 학생 표시 이름, 학생 PC 이름·연결 시각·앱 이름·제한된 웹 도메인·배터리·네트워크 상태, 수업 명령 및 감사 기록을 처리합니다.</p><h3>2. 이용 목적</h3><p>교사 인증, 학급 운영, 학생 PC 등록, 수업 안내 전달, 연결 상태 확인, 보안 감사 및 장애 대응에만 사용합니다.</p><h3>3. 보관 기간</h3><p>교사·학생·수업 데이터는 학교 관리자가 삭제하거나 서비스 운영 목적이 종료될 때까지 보관합니다. 세부 보관 기간은 학교의 정보보호·기록 관리 규정에 맞춰 운영해야 합니다.</p><h3>4. 안전성</h3><p>인증 토큰은 서버에 해시 형태로 보관하며, 전송은 HTTPS/WSS로 보호합니다. 서비스는 화면 캡처와 개인 파일을 수집하지 않습니다.</p><h3>5. 이용자 권리와 문의</h3><p>정보 주체는 학교 관리자에게 열람·정정·삭제 요청을 할 수 있습니다. 실제 학교 도입 전에는 해당 학교의 개인정보 보호책임자와 연락처를 별도로 고지해야 합니다.</p>`
+    }
+  };
+
+  function openLegalDocument(kind) {
+    const documentInfo = legalDocuments[kind] || legalDocuments.terms;
+    $("legal-kicker").textContent = documentInfo.kicker;
+    $("legal-title").textContent = documentInfo.title;
+    $("legal-content").innerHTML = documentInfo.html;
+    const dialog = $("legal-dialog");
+    if (!dialog.open) dialog.showModal();
+  }
+
+  function syncProfileControls(session) {
+    $("profile-display-name").value = session.displayName || "";
+    $("profile-subject").value = session.subject || "";
+    $("profile-class-name").value = session.classes?.[0]?.name || "";
+    const consentRequired = !session.legalAccepted;
+    $("profile-consent-fields").hidden = !consentRequired;
+    $("profile-terms").checked = false;
+    $("profile-privacy").checked = false;
+    const hasPassword = session.hasPassword === true;
+    $("current-password-field").hidden = !hasPassword;
+    $("current-password").required = hasPassword;
+    $("password-card-title").textContent = hasPassword ? "교사 비밀번호 변경" : "아이디 로그인 사용 설정";
+    $("password-card-copy").textContent = hasPassword
+      ? "현재 비밀번호를 확인한 뒤 새 비밀번호를 저장합니다. 비밀번호는 6자 이상으로 설정할 수 있습니다."
+      : "Google 로그인 계정에 교사 아이디용 비밀번호를 연결합니다. 이후 이메일 대신 교사 아이디로도 로그인할 수 있습니다.";
+  }
+
+  function maybeOpenOnboarding(session) {
+    if (session.profileCompleted || sessionStorage.getItem("classroom.onboardingDismissed") === "1" || !appView || appView.hidden) return;
+    $("onboarding-display-name").value = session.displayName === "새 선생님" || session.displayName === "선생님" ? "" : session.displayName || "";
+    $("onboarding-subject").value = session.subject || "";
+    $("onboarding-class-name").value = session.classes?.[0]?.name === "나의 첫 수업" ? "" : session.classes?.[0]?.name || "";
+    const consentRequired = !session.legalAccepted;
+    $("onboarding-consent").hidden = !consentRequired;
+    $("onboarding-terms").checked = false;
+    $("onboarding-privacy").checked = false;
+    const dialog = $("onboarding-dialog");
+    if (!dialog.open) dialog.showModal();
+  }
+
+  async function saveProfile(values) {
+    const result = await api("/auth/profile", { method: "PUT", body: values });
+    state.teacher = result;
+    state.classes = result.classes || [];
+    sessionStorage.removeItem("classroom.onboardingDismissed");
+    await loadTeacher();
+  }
+
+  function syncInstallUi() {
+    const available = Boolean(state.deferredInstallPrompt);
+    $("landing-install-button").hidden = !available;
+    $("settings-install-button").hidden = !available;
+    $("install-app-prompt").hidden = !available || localStorage.getItem("classroom.dismissInstallPrompt") === "1";
+  }
+
+  async function installApp() {
+    const deferred = state.deferredInstallPrompt;
+    if (!deferred) return;
+    deferred.prompt();
+    const choice = await deferred.userChoice.catch(() => ({ outcome: "dismissed" }));
+    state.deferredInstallPrompt = null;
+    syncInstallUi();
+    if (choice.outcome === "accepted") showToast("Classroom 앱 설치를 시작했습니다.");
+  }
+
+  function registerPwa() {
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+    window.addEventListener("beforeinstallprompt", (event) => {
+      event.preventDefault();
+      state.deferredInstallPrompt = event;
+      syncInstallUi();
+    });
+    window.addEventListener("appinstalled", () => {
+      state.deferredInstallPrompt = null;
+      localStorage.removeItem("classroom.dismissInstallPrompt");
+      syncInstallUi();
+      showToast("Classroom 앱이 설치되었습니다.");
+    });
+  }
+
   function firebaseClient() {
     if (!window.ClassroomFirebaseAuth) {
       throw new Error("Firebase 인증 모듈을 불러오지 못했습니다. 페이지를 새로고침해 주세요.");
@@ -580,7 +676,9 @@
       body: {
         idToken: credentials.idToken,
         displayName: String(profile.displayName || "").trim(),
-        subject: String(profile.subject || "").trim()
+        subject: String(profile.subject || "").trim(),
+        termsAccepted: profile.termsAccepted === true,
+        privacyAccepted: profile.privacyAccepted === true
       }
     });
     sessionStorage.removeItem("classroom.pendingFirebaseProfile");
@@ -636,8 +734,13 @@
       errorTarget.hidden = false;
       return;
     }
-    if (password.length < 12) {
-      errorTarget.textContent = "비밀번호는 12자 이상이어야 합니다.";
+    if (password.length < 6) {
+      errorTarget.textContent = "비밀번호는 6자 이상이어야 합니다.";
+      errorTarget.hidden = false;
+      return;
+    }
+    if (!$("signup-terms").checked || !$("signup-privacy").checked) {
+      errorTarget.textContent = "이용약관과 개인정보처리방침 동의가 필요합니다.";
       errorTarget.hidden = false;
       return;
     }
@@ -646,10 +749,10 @@
       const credentials = await firebaseClient().signUpEmail(
         $("signup-email").value,
         password,
-        $("signup-display-name").value);
+        "");
       await finishFirebaseLogin(credentials, {
-        displayName: $("signup-display-name").value,
-        subject: $("signup-subject").value
+        termsAccepted: true,
+        privacyAccepted: true
       });
     } catch (error) {
       errorTarget.textContent = error.message;
@@ -665,13 +768,13 @@
     errorTarget.hidden = true;
     button.disabled = true;
     try {
-      const signupProfile = !$('signup-panel').hidden
-        ? {
-          displayName: $("signup-display-name").value.trim(),
-          subject: $("signup-subject").value.trim()
-        }
+      const signupProfile = !$("signup-panel").hidden
+        ? { termsAccepted: $("signup-terms").checked, privacyAccepted: $("signup-privacy").checked }
         : {};
-      if (signupProfile.displayName || signupProfile.subject) {
+      if (!$("signup-panel").hidden && (!signupProfile.termsAccepted || !signupProfile.privacyAccepted)) {
+        throw new Error("이용약관과 개인정보처리방침 동의가 필요합니다.");
+      }
+      if (signupProfile.termsAccepted || signupProfile.privacyAccepted) {
         sessionStorage.setItem("classroom.pendingFirebaseProfile", JSON.stringify(signupProfile));
       } else {
         sessionStorage.removeItem("classroom.pendingFirebaseProfile");
@@ -711,10 +814,20 @@
     button.addEventListener("click", () => setAuthMode(button.dataset.authMode));
   });
   $("landing-login-button").addEventListener("click", () => showAuth("login"));
+  $("landing-install-button").addEventListener("click", installApp);
   $("landing-start-button").addEventListener("click", () => showAuth("signup"));
   $("principles-login-button").addEventListener("click", () => showAuth("login"));
   $("landing-cta-button").addEventListener("click", () => showAuth("signup"));
   $("back-to-landing").addEventListener("click", (event) => { event.preventDefault(); showLanding(); });
+  $("install-app-button").addEventListener("click", installApp);
+  $("settings-install-button").addEventListener("click", installApp);
+  $("dismiss-install-button").addEventListener("click", () => {
+    localStorage.setItem("classroom.dismissInstallPrompt", "1");
+    syncInstallUi();
+  });
+  document.querySelectorAll("[data-legal-document]").forEach((button) => {
+    button.addEventListener("click", () => openLegalDocument(button.dataset.legalDocument));
+  });
   $("theme-toggle").addEventListener("click", toggleTheme);
   document.querySelectorAll("[data-theme-choice]").forEach((button) => {
     button.addEventListener("click", () => applyTheme(button.dataset.themeChoice));
@@ -784,6 +897,51 @@
     } catch (error) {
       message.textContent = error.message;
       message.hidden = false;
+    }
+  });
+  $("profile-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const message = $("profile-message");
+    message.hidden = true;
+    try {
+      await saveProfile({
+        displayName: $("profile-display-name").value.trim(),
+        subject: $("profile-subject").value.trim(),
+        className: $("profile-class-name").value.trim(),
+        termsAccepted: $("profile-terms").checked || state.teacher?.legalAccepted === true,
+        privacyAccepted: $("profile-privacy").checked || state.teacher?.legalAccepted === true
+      });
+      showToast("교사 프로필을 저장했습니다.");
+    } catch (error) {
+      message.textContent = error.message;
+      message.hidden = false;
+    }
+  });
+  $("onboarding-later").addEventListener("click", () => {
+    sessionStorage.setItem("classroom.onboardingDismissed", "1");
+    $("onboarding-dialog").close("later");
+    showToast("프로필은 설정 메뉴에서 나중에 설정할 수 있습니다.");
+  });
+  $("onboarding-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const errorTarget = $("onboarding-error");
+    errorTarget.hidden = true;
+    try {
+      if (!state.teacher?.legalAccepted && (!$("onboarding-terms").checked || !$("onboarding-privacy").checked)) {
+        throw new Error("이용약관과 개인정보처리방침 동의가 필요합니다.");
+      }
+      await saveProfile({
+        displayName: $("onboarding-display-name").value.trim(),
+        subject: $("onboarding-subject").value.trim(),
+        className: $("onboarding-class-name").value.trim(),
+        termsAccepted: $("onboarding-terms").checked || state.teacher?.legalAccepted === true,
+        privacyAccepted: $("onboarding-privacy").checked || state.teacher?.legalAccepted === true
+      });
+      $("onboarding-dialog").close("saved");
+      showToast("프로필 설정을 저장했습니다.");
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
     }
   });
   document.querySelectorAll(".filter").forEach((button) => button.addEventListener("click", () => {
@@ -866,10 +1024,12 @@
   fetch(apiUrl("/health"), { headers: { Accept: "application/json" } })
     .then((response) => response.ok ? response.json() : null)
     .then((health) => {
-      $("dev-login-hint").hidden = !health?.devSchoolId;
+      $("dev-login-hint").hidden = true;
       $("security-setting").textContent = apiOrigin
         ? `암호화된 외부 API ${apiOrigin}에 연결됨`
-        : "Teacher session bearer token으로 같은 서버에 연결됨";
+        : health?.storage === "durable-object"
+          ? "Cloudflare의 암호화된 영속 API에 연결됨"
+          : "Teacher session bearer token으로 같은 서버에 연결됨";
     })
     .catch(() => { $("dev-login-hint").hidden = true; });
 
@@ -883,6 +1043,8 @@
   }
 
   applyTheme(state.theme);
+  registerPwa();
+  syncInstallUi();
 
   if (!refreshFirebaseAvailability()) {
     let firebaseChecks = 0;

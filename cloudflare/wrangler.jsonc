@@ -1,0 +1,34 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "classroom-api",
+  "main": "worker.js",
+  "compatibility_date": "2026-08-30",
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "classroom-api.blossom0948.cloud",
+      "custom_domain": true
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CLASSROOM_STATE",
+        "class_name": "ClassroomState"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ClassroomState"]
+    }
+  ],
+  "vars": {
+    "CONSOLE_ORIGIN": "https://classroom-2en.pages.dev",
+    "FIREBASE_WEB_API_KEY": "AIzaSyA0y-8IrlODAIBnaMw266LP5mJ0acHoQ2k"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

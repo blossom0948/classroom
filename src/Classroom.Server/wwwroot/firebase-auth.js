@@ -21,7 +21,7 @@
     const messages = {
       "auth/invalid-email": "이메일 주소 형식을 확인해 주세요.",
       "auth/missing-password": "비밀번호를 입력해 주세요.",
-      "auth/weak-password": "비밀번호는 12자 이상으로 설정해 주세요.",
+      "auth/weak-password": "비밀번호는 6자 이상으로 설정해 주세요.",
       "auth/email-already-in-use": "이미 가입된 이메일입니다. 로그인해 주세요.",
       "auth/user-not-found": "가입된 계정을 찾지 못했습니다.",
       "auth/wrong-password": "이메일 또는 비밀번호가 올바르지 않습니다.",
@@ -36,7 +36,8 @@
       "auth/network-request-failed": "Firebase에 연결하지 못했습니다. 네트워크를 확인해 주세요.",
       "auth/invalid-api-key": "Firebase 웹 설정이 올바르지 않습니다. 관리자에게 설정을 확인해 주세요.",
       "auth/app-not-authorized": "이 사이트가 Firebase에 승인되지 않았습니다. 관리자에게 승인 도메인을 확인해 주세요.",
-      "auth/internal-error": "Google 인증을 시작하지 못했습니다. 현재 창에서 다시 시도해 주세요."
+      "auth/redirect-cancelled-by-user": "Google 로그인을 취소했습니다.",
+      "auth/internal-error": "Google 로그인 연결을 시작하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요."
     };
     const friendly = new Error(messages[error?.code] || error?.message || "Firebase 인증에 실패했습니다.");
     friendly.code = error?.code;

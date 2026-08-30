@@ -16,6 +16,10 @@ keystore.properties
 artifacts/
 dist/
 data/
+.npm-cache/
+.wrangler-config/
+cloudflare/.wrangler/
+node_modules/
 *.user
 *.suo
 Thumbs.db

@@ -7,6 +7,12 @@
     "build": "node scripts/deploy/build-pages.mjs",
     "build:pages": "node scripts/deploy/build-pages.mjs",
     "check:pages": "node --check functions/_middleware.js && node --check scripts/deploy/build-pages.mjs",
+    "check:worker": "node --check cloudflare/worker.js",
+    "dev:worker": "wrangler dev --config cloudflare/wrangler.jsonc",
+    "deploy:worker": "wrangler deploy --config cloudflare/wrangler.jsonc",
     "test:pages": "node tests/pages-proxy.test.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.127.1"
   }
 }
