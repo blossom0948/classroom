@@ -10,7 +10,7 @@ namespace Blossom.Classroom.Student.Setup;
 
 internal sealed class StudentSetupForm : Form
 {
-    private const string AgentVersion = "0.3.2";
+    private const string AgentVersion = "0.3.3";
     private const int JoinCodeLength = 8;
     private const string StudentPackageUrl = "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip";
     private readonly Uri serverOrigin;
@@ -286,12 +286,14 @@ internal sealed class StudentSetupForm : Form
 
         var installerPath = Path.Combine(packageRoot, "Install-ClassroomStudent.ps1");
         var logPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "Blossom Classroom Student",
+            Path.GetTempPath(),
             $"install-{Guid.NewGuid():N}.log");
         var installSucceeded = false;
         try
         {
+            // Create the file before UAC elevation so the original user can still
+            // read it when a different local administrator approves the prompt.
+            await File.WriteAllTextAsync(logPath, string.Empty);
             using var process = Process.Start(new ProcessStartInfo
             {
                 FileName = "powershell.exe",
