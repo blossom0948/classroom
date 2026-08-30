@@ -24,7 +24,8 @@
     deferredInstallPrompt: null,
     schoolSearchTimers: new Map(),
     weatherLoaded: false,
-    passwordVerificationId: null
+    passwordVerificationId: null,
+    studentRosterClassId: null
   };
 
   const $ = (id) => document.getElementById(id);
@@ -126,7 +127,6 @@
     $("sidebar-school-name").textContent = session.school?.name || "학교를 설정해 주세요";
     $("sidebar-school-name").classList.toggle("unconfigured", !session.school?.name);
     renderAdminClassOptions();
-    renderStudentCodeFilters();
     landingView.hidden = true;
     loginView.hidden = true;
     appView.hidden = false;
@@ -306,29 +306,7 @@
     list.innerHTML = '<div class="empty-state">학생 코드를 불러오는 중입니다…</div>';
     const codes = await api("/api/student-codes");
     state.studentCodes = Array.isArray(codes) ? codes : [];
-    renderStudentCodeFilters();
     renderStudentCodes();
-  }
-
-  function renderStudentCodeFilters() {
-    const gradeSelect = $("student-code-grade");
-    const classSelect = $("student-code-class");
-    if (!gradeSelect || !classSelect) return;
-    const previousGrade = gradeSelect.value;
-    const previousClass = classSelect.value;
-    const grades = [...new Set([
-      ...state.classes.map((item) => Number(item.grade || 0)),
-      ...state.studentCodes.map((code) => Number(code.grade || 0))
-    ].filter(Boolean))].sort((a, b) => a - b);
-    gradeSelect.innerHTML = '<option value="">학년 선택</option>' + grades.map((grade) => `<option value="${grade}">${grade}학년</option>`).join("");
-    gradeSelect.value = grades.includes(Number(previousGrade)) ? previousGrade : "";
-    const selectedGrade = Number(gradeSelect.value || 0);
-    const classes = [...new Set([
-      ...state.classes.filter((item) => !selectedGrade || Number(item.grade) === selectedGrade).map((item) => Number(item.classNumber || 0)),
-      ...state.studentCodes.filter((code) => !selectedGrade || Number(code.grade) === selectedGrade).map((code) => Number(code.classNumber || 0))
-    ].filter(Boolean))].sort((a, b) => a - b);
-    classSelect.innerHTML = '<option value="">반 선택</option>' + classes.map((classNumber) => `<option value="${classNumber}">${classNumber}반</option>`).join("");
-    classSelect.value = classes.includes(Number(previousClass)) ? previousClass : "";
   }
 
   function renderAdminClassOptions() {
@@ -345,51 +323,117 @@
     const list = $("student-codes-list");
     if (!list) return;
     const query = $("student-code-search")?.value.trim().toLocaleLowerCase("ko-KR") || "";
-    const selectedGrade = Number($("student-code-grade")?.value || 0);
-    const selectedClass = Number($("student-code-class")?.value || 0);
-    if (!selectedGrade || !selectedClass) {
-      list.innerHTML = '<div class="empty-state"><strong>학년과 반을 선택해 주세요.</strong><p>선택한 반의 학생 코드만 표시됩니다.</p></div>';
-      return;
-    }
-    const filtered = state.studentCodes.filter((code) =>
-      Number(code.grade || 0) === selectedGrade
-      && Number(code.classNumber || 0) === selectedClass
-      && (!query || String(code.studentDisplayName || "").toLocaleLowerCase("ko-KR").includes(query)));
-    if (!filtered.length) {
-      list.innerHTML = state.studentCodes.length
-        ? '<div class="empty-state">검색 조건에 맞는 학생 코드가 없습니다.</div>'
-        : '<div class="empty-state"><strong>아직 발급된 학생 코드가 없습니다.</strong><p>관리자가 수업 화면에서 학생을 등록하면 이곳에 표시됩니다.</p></div>';
+    const models = collectRosterClasses().filter((item) => !query || item.codes.some((code) => String(code.studentDisplayName || "").toLocaleLowerCase("ko-KR").includes(query)));
+    if (!models.length) {
+      list.innerHTML = query
+        ? '<div class="empty-state">검색 조건에 맞는 학생이 없습니다.</div>'
+        : '<div class="empty-state"><strong>아직 만들어진 학급이 없습니다.</strong><p>관리자가 관리자 메뉴에서 학급과 학생 코드를 준비하면 여기에 표시됩니다.</p></div>';
       return;
     }
 
-    const groups = new Map();
-    filtered.forEach((code) => {
-      const key = code.classId;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(code);
+    const grades = new Map();
+    models.forEach((item) => {
+      if (!grades.has(item.grade)) grades.set(item.grade, []);
+      grades.get(item.grade).push(item);
     });
-    list.innerHTML = [...groups.values()].map((group) => {
-      const first = group[0];
-      group.sort((left, right) => (Number(left.studentNumber || 999) - Number(right.studentNumber || 999)) || String(left.studentDisplayName).localeCompare(String(right.studentDisplayName), "ko"));
-      return `<section class="student-code-group"><div class="student-code-group-heading"><div><span class="eyebrow">CLASS</span><h3>${escapeHtml(first.className)}</h3></div><span class="class-subject-small">${escapeHtml(first.subject || "정보")} · ${group.length}명</span></div><div class="student-code-grid">${group.map((code) => `<article class="student-code-card"><div class="student-code-student"><span class="student-number">${code.studentNumber || "—"}</span><span class="avatar">${escapeHtml(code.studentDisplayName.slice(0, 1))}</span><div><strong>${escapeHtml(code.studentDisplayName)}</strong><small>${escapeHtml(code.createdByDisplayName || "관리자")} 발급 · ${formatTime(code.createdAtUtc)}</small></div></div><div class="student-code-value"><code>${escapeHtml(code.joinCode)}</code><button class="secondary code-copy-button" type="button" data-code-copy="${escapeHtml(code.joinCode)}">복사</button></div><div class="student-code-meta"><span>${code.lastUsedAtUtc ? `최근 사용 ${formatTime(code.lastUsedAtUtc)}` : "아직 사용하지 않음"}</span>${state.teacher?.isAdmin ? `<button class="ghost-button code-reissue-button" type="button" data-code-reissue="${escapeHtml(code.studentId)}">새 코드 발급</button>` : ""}</div></article>`).join("")}</div></section>`;
+    list.innerHTML = [...grades.entries()].sort(([left], [right]) => right - left).map(([grade, classes]) => {
+      classes.sort((left, right) => left.classNumber - right.classNumber || left.className.localeCompare(right.className, "ko"));
+      return `<section class="grade-roster-group"><div class="grade-roster-heading"><div><span class="eyebrow">GRADE</span><h3>${grade}학년</h3></div><span class="muted small">${classes.length}개 반</span></div><div class="roster-class-grid">${classes.map((item) => `<button class="roster-class-card" type="button" data-roster-class="${escapeHtml(item.classId)}"><span class="roster-class-number">${item.classNumber}반</span><span class="roster-class-meta">${item.codes.length}명${item.subject ? ` · ${escapeHtml(item.subject)}` : ""}</span><span class="roster-class-action">명단 보기 <span aria-hidden="true">→</span></span></button>`).join("")}</div></section>`;
     }).join("");
 
-    list.querySelectorAll("[data-code-copy]").forEach((button) => {
+    list.querySelectorAll("[data-roster-class]").forEach((button) => {
+      button.addEventListener("click", () => openStudentRoster(button.dataset.rosterClass));
+    });
+  }
+
+  function collectRosterClasses() {
+    const models = new Map();
+    state.classes.forEach((item) => {
+      const grade = Number(item.grade || 0);
+      const classNumber = Number(item.classNumber || 0);
+      if (!grade || !classNumber) return;
+      models.set(item.id, {
+        classId: item.id,
+        className: item.name || `${grade}학년 ${classNumber}반`,
+        subject: item.defaultSubject || "",
+        grade,
+        classNumber,
+        codes: []
+      });
+    });
+    state.studentCodes.forEach((code) => {
+      const grade = Number(code.grade || 0);
+      const classNumber = Number(code.classNumber || 0);
+      if (!grade || !classNumber) return;
+      const classId = code.classId || `roster:${grade}:${classNumber}`;
+      if (!models.has(classId)) {
+        models.set(classId, {
+          classId,
+          className: code.className || `${grade}학년 ${classNumber}반`,
+          subject: code.subject || "",
+          grade,
+          classNumber,
+          codes: []
+        });
+      }
+      models.get(classId).codes.push(code);
+    });
+    return [...models.values()];
+  }
+
+  function openStudentRoster(classId) {
+    const model = collectRosterClasses().find((item) => item.classId === classId);
+    const dialog = $("student-roster-dialog");
+    const content = $("student-roster-content");
+    if (!model || !dialog || !content) return;
+    state.studentRosterClassId = classId;
+    const codes = [...model.codes].sort((left, right) => (Number(left.studentNumber || 999) - Number(right.studentNumber || 999)) || String(left.studentDisplayName || "").localeCompare(String(right.studentDisplayName || ""), "ko"));
+    $("student-roster-title").textContent = model.className;
+    $("student-roster-subtitle").textContent = `${codes.length}명${model.subject ? ` · ${model.subject}` : ""} · 학생 이름, 번호, 코드를 확인할 수 있습니다.`;
+    content.innerHTML = codes.length
+      ? `<div class="student-roster-table-wrap"><table class="student-roster-table"><thead><tr><th>번호</th><th>학생</th><th>학생 코드</th><th></th></tr></thead><tbody>${codes.map((code) => `<tr><td>${escapeHtml(code.studentNumber || "—")}</td><td><strong>${escapeHtml(code.studentDisplayName)}</strong></td><td><code>${escapeHtml(code.joinCode)}</code></td><td class="roster-row-actions"><button class="secondary roster-code-copy" type="button" data-roster-code-copy="${escapeHtml(code.joinCode)}">복사</button>${state.teacher?.isAdmin ? `<button class="ghost-button code-reissue-button" type="button" data-roster-code-reissue="${escapeHtml(code.studentId)}">새 코드</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+      : '<div class="empty-state">이 반에는 아직 등록된 학생 코드가 없습니다.</div>';
+    content.querySelectorAll("[data-roster-code-copy]").forEach((button) => {
       button.addEventListener("click", async () => {
         try {
-          await navigator.clipboard.writeText(button.dataset.codeCopy || "");
+          await navigator.clipboard.writeText(button.dataset.rosterCodeCopy || "");
           showToast("학생 코드를 복사했습니다.");
         } catch (_) {
           showToast("브라우저가 복사를 허용하지 않았습니다.");
         }
       });
     });
-    list.querySelectorAll("[data-code-reissue]").forEach((button) => {
+    content.querySelectorAll("[data-roster-code-reissue]").forEach((button) => {
       button.addEventListener("click", () => {
-        const code = state.studentCodes.find((item) => item.studentId === button.dataset.codeReissue);
+        const code = state.studentCodes.find((item) => item.studentId === button.dataset.rosterCodeReissue);
         if (code) reissueStudentCode(code).catch((error) => showToast(error.message));
       });
     });
+    dialog.showModal();
+  }
+
+  async function toggleStudentRosterFullscreen() {
+    const dialog = $("student-roster-dialog");
+    if (!dialog) return;
+    try {
+      if (document.fullscreenElement === dialog) {
+        await document.exitFullscreen();
+      } else if (dialog.requestFullscreen) {
+        await dialog.requestFullscreen();
+      } else {
+        dialog.classList.toggle("fullscreen-mode");
+      }
+    } catch (_) {
+      dialog.classList.toggle("fullscreen-mode");
+    }
+  }
+
+  function printStudentRoster() {
+    const dialog = $("student-roster-dialog");
+    if (!dialog) return;
+    document.body.classList.add("printing-roster");
+    window.setTimeout(() => window.print(), 0);
+    window.setTimeout(() => document.body.classList.remove("printing-roster"), 1000);
   }
 
   async function reissueStudentCode(code) {
@@ -402,21 +446,20 @@
       body: { studentId: code.studentId, studentDisplayName: code.studentDisplayName, studentNumber: code.studentNumber }
     });
     showToast(`${code.studentDisplayName} 학생의 새 코드를 발급했습니다: ${ticket.joinCode}`);
+    const rosterClassId = state.studentRosterClassId;
+    const rosterDialog = $("student-roster-dialog");
+    if (rosterDialog?.open) rosterDialog.close();
     await loadStudentCodes();
+    if (rosterClassId) openStudentRoster(rosterClassId);
   }
 
   async function loadAdminDirectory() {
     if (!state.teacher?.isAdmin) return;
     const list = $("admin-list");
     if (list) list.innerHTML = '<div class="empty-state">관리자 목록을 불러오는 중입니다…</div>';
-    const [directory, operations] = await Promise.all([
-      api("/api/admin/teachers"),
-      api("/api/admin/operations-status").catch((error) => ({ error: error.message }))
-    ]);
+    const directory = await api("/api/admin/teachers");
     state.adminDirectory = directory;
-    state.operationsStatus = operations?.error ? null : operations;
     renderAdminDirectory();
-    renderOperationsStatus(operations);
   }
 
   async function loadOperationsStatus() {
@@ -1329,16 +1372,12 @@
     renderStudents();
   });
   $("student-code-search").addEventListener("input", renderStudentCodes);
-  $("student-code-grade").addEventListener("change", () => {
-    renderStudentCodeFilters();
-    renderStudentCodes();
-  });
-  $("student-code-class").addEventListener("change", renderStudentCodes);
   $("student-code-refresh").addEventListener("click", () => loadStudentCodes().catch((error) => showToast(error.message)));
   $("refresh-audit-button").addEventListener("click", () => loadAudit().catch((error) => showToast(error.message)));
   $("admin-enroll-button").addEventListener("click", openEnrollmentDialog);
   $("student-installer-download").addEventListener("click", downloadStudentInstaller);
-  $("operations-refresh").addEventListener("click", () => loadOperationsStatus().catch((error) => showToast(error.message)));
+  $("student-roster-fullscreen").addEventListener("click", () => toggleStudentRosterFullscreen().catch(() => showToast("전체화면을 사용할 수 없습니다.")));
+  $("student-roster-print").addEventListener("click", printStudentRoster);
   $("class-form").addEventListener("submit", (event) => {
     event.preventDefault();
     createClassFromAdmin();

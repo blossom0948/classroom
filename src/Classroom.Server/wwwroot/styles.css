@@ -539,3 +539,74 @@ html[data-theme="dark"] label { color: #c5cfdf; }
   .password-card.compact-setting { align-items: stretch; flex-direction: column; }
   .password-card.compact-setting > span { flex-basis: auto; text-align: left; }
 }
+
+/* Header context and compact teacher identity */
+.teacher-heading { align-items: flex-start; display: flex; flex: 1 1 auto; gap: 34px; justify-content: space-between; }
+.teacher-heading-main { min-width: 0; }
+.topbar .header-context { flex: 0 0 auto; margin: 30px 0 0 auto; }
+.teacher-name-line { align-items: center; display: flex; gap: 6px; min-width: 0; }
+.teacher-chip .admin-badge { display: inline-flex; font-size: 9px; margin: 0; padding: 3px 7px; }
+.logout-button { color: #ed8585; font-size: 10px; padding: 6px 0 0; }
+.logout-button:hover { color: #ffb0b0; }
+.class-status-actions .primary, .class-status-actions .secondary, .class-status-actions .danger-outline { font-size: 14px; min-height: 45px; padding: 12px 19px; }
+
+/* Student code directory */
+.code-toolbar { align-items: center; }
+.code-toolbar .student-code-permission { margin-right: auto; }
+.grade-roster-group { background: white; border: 1px solid var(--line); border-radius: 15px; overflow: hidden; }
+.grade-roster-group + .grade-roster-group { margin-top: 14px; }
+.grade-roster-heading { align-items: center; background: var(--soft); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; padding: 15px 18px; }
+.grade-roster-heading h3 { font-size: 18px; letter-spacing: -.03em; margin: 5px 0 0; }
+.roster-class-grid { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 13px; }
+.roster-class-card { appearance: none; background: white; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); display: grid; gap: 5px; padding: 15px; text-align: left; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.roster-class-card:hover { border-color: #aabbf3; box-shadow: 0 8px 20px rgba(31, 49, 83, .08); transform: translateY(-1px); }
+.roster-class-number { font-size: 19px; font-weight: 850; letter-spacing: -.04em; }
+.roster-class-meta { color: var(--muted); font-size: 11px; }
+.roster-class-action { color: var(--blue); font-size: 11px; font-weight: 800; margin-top: 7px; }
+.admin-access-grid { align-items: start; display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 18px; }
+.admin-access-grid .admin-grant-form { margin-bottom: 0; min-height: 100%; }
+
+/* Printable roster dialog */
+.student-roster-dialog { max-height: min(760px, calc(100vh - 28px)); width: min(780px, calc(100vw - 28px)); }
+.student-roster-dialog:fullscreen, .student-roster-dialog.fullscreen-mode { border-radius: 0; height: 100vh; max-height: none; max-width: none; width: 100vw; }
+.student-roster-dialog:fullscreen .student-roster-content, .student-roster-dialog.fullscreen-mode .student-roster-content { max-height: calc(100vh - 190px); }
+.student-roster-content { min-height: 80px; overflow: auto; }
+.student-roster-table-wrap { border: 1px solid var(--line); border-radius: 10px; overflow: auto; }
+.student-roster-table { border-collapse: collapse; min-width: 590px; width: 100%; }
+.student-roster-table th, .student-roster-table td { border-bottom: 1px solid var(--line); padding: 11px 13px; text-align: left; }
+.student-roster-table th { background: var(--soft); color: var(--muted); font-size: 10px; font-weight: 800; }
+.student-roster-table td { font-size: 12px; }
+.student-roster-table tbody tr:last-child td { border-bottom: 0; }
+.student-roster-table td:first-child { color: var(--blue); font-weight: 850; width: 66px; }
+.student-roster-table td:nth-child(3) code { color: var(--blue); font-size: 15px; font-weight: 850; letter-spacing: .12em; }
+.roster-row-actions { align-items: center; display: flex; gap: 8px; justify-content: flex-end; white-space: nowrap; }
+.roster-code-copy { font-size: 10px; padding: 6px 8px; }
+html[data-theme="dark"] .grade-roster-group,
+html[data-theme="dark"] .roster-class-card { background: #182235; border-color: #2d3a50; }
+html[data-theme="dark"] .grade-roster-heading { background: #111a2b; border-color: #2d3a50; }
+html[data-theme="dark"] .roster-class-card:hover { border-color: #627ce2; }
+html[data-theme="dark"] .student-roster-table-wrap { border-color: #2d3a50; }
+html[data-theme="dark"] .student-roster-table th, html[data-theme="dark"] .student-roster-table td { border-color: #2d3a50; }
+html[data-theme="dark"] .student-roster-table th { background: #111a2b; }
+
+@media (max-width: 1000px) {
+  .teacher-heading { gap: 18px; width: 100%; }
+  .admin-access-grid { grid-template-columns: 1fr; }
+  .roster-class-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  .teacher-heading { flex-wrap: wrap; }
+  .topbar .header-context { margin: 8px 0 0 auto; }
+  .roster-class-grid { grid-template-columns: 1fr; }
+  .class-status-actions .primary, .class-status-actions .secondary, .class-status-actions .danger-outline { flex: 1 1 auto; padding-left: 12px; padding-right: 12px; }
+}
+
+@media print {
+  body.printing-roster > * { display: none !important; }
+  body.printing-roster > #student-roster-dialog { background: white; box-shadow: none; display: block !important; height: auto; left: 0; margin: 0; max-height: none; max-width: none; position: static; top: 0; width: 100%; }
+  body.printing-roster #student-roster-dialog form { display: block; }
+  body.printing-roster #student-roster-dialog .dialog-actions { display: none; }
+  body.printing-roster #student-roster-dialog .student-roster-content { max-height: none; overflow: visible; }
+  body.printing-roster .student-roster-table { min-width: 0; }
+}

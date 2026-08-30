@@ -245,7 +245,15 @@ export class ClassroomState {
         return responseJson({ service: "Classroom.Cloud", version: 2, status: "running", storage: "durable-object" }, 200, cors);
       }
       if (path === "/health/ready" && request.method === "GET") {
-        return responseJson({ service: "Classroom.Cloud", status: "ready", database: "durable-object-sqlite" }, 200, cors);
+        return responseJson({
+          service: "Classroom.Cloud",
+          status: "ready",
+          database: "durable-object-sqlite",
+          integrations: {
+            schoolSearch: Boolean(String(this.env.NEIS_API_KEY || "").trim()),
+            emailVerification: Boolean(String(this.env.RESEND_API_KEY || "").trim() && String(this.env.CLASSROOM_EMAIL_FROM || "").trim())
+          }
+        }, 200, cors);
       }
       if (path === "/ws/student") return this.handleStudentWebSocket(request, url, cors);
       if (path === "/auth/login" && request.method === "POST") return this.login(request, cors);
@@ -550,6 +558,10 @@ export class ClassroomState {
     }
     const payload = await response.json().catch(() => null);
     if (!response.ok) return responseError("SCHOOL_SEARCH_UNAVAILABLE", "학교 검색 서버가 응답하지 않았습니다.", 502, cors);
+    const neisResultCode = String(payload?.RESULT?.CODE || "").trim();
+    if (neisResultCode.startsWith("ERROR")) {
+      return responseError("SCHOOL_SEARCH_AUTH_FAILED", "NEIS 인증키가 유효하지 않거나 아직 활성화되지 않았습니다. NEIS에서 발급 상태를 확인해 주세요.", 503, cors);
+    }
     const rows = Array.isArray(payload?.schoolInfo)
       ? payload.schoolInfo.find((item) => Array.isArray(item?.row))?.row || []
       : [];
