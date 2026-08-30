@@ -51,20 +51,27 @@ function Write-ClassroomInstallLog {
 function Invoke-ClassroomServiceControl {
     param(
         [Parameter(Mandatory = $true)]
-        [string[]]$Arguments
+        [string[]]$Arguments,
+
+        [switch]$AllowFailure
     )
 
-    $output = (& sc.exe @Arguments 2>&1 | Out-String).Trim()
+    $scExecutable = Join-Path $env:WINDIR "System32\sc.exe"
+    $output = (& $scExecutable @Arguments 2>&1 | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) {
         $operation = if ($Arguments.Count -gt 0) { $Arguments[0] } else { "unknown" }
         $detail = if ($output) { " $output" } else { "" }
+        if ($AllowFailure) {
+            Write-ClassroomInstallLog "선택적 Windows 서비스 작업($operation)을 건너뜀: 종료 코드 $LASTEXITCODE.$detail"
+            return $output
+        }
         throw "Windows 서비스 작업($operation)에 실패했습니다.$detail"
     }
     return $output
 }
 
 trap {
-    Write-ClassroomInstallLog "설치 실패: $($_.Exception.Message)"
+    Write-ClassroomInstallLog "설치 실패: $($_.Exception.Message) 위치: $($_.InvocationInfo.PositionMessage)"
     exit 1
 }
 
@@ -147,12 +154,13 @@ function Copy-ClassroomPayload {
 }
 
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+Write-ClassroomInstallLog "설치 스크립트 시작: 관리자 권한 확인 중"
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw "학생용 Classroom 설치는 관리자 권한 PowerShell에서 실행해야 합니다."
 }
 
 $resolvedPackageRoot = (Resolve-Path -LiteralPath $PackageRoot).Path
-Write-ClassroomInstallLog "설치 시작: 패키지 확인 완료"
+Write-ClassroomInstallLog "설치 시작: 패키지 확인 완료 ($resolvedPackageRoot)"
 if ($EnrollmentFile -and $DeviceConfigFile) {
     throw "-EnrollmentFile과 -DeviceConfigFile은 함께 사용할 수 없습니다."
 }
@@ -187,6 +195,10 @@ if (-not $serviceExecutable) {
 if (-not $desktopExecutable) {
     throw "패키지에서 Classroom.Student.Desktop.exe를 찾지 못했습니다: $resolvedPackageRoot"
 }
+
+Get-ChildItem -LiteralPath $resolvedPackageRoot -Recurse -File -ErrorAction SilentlyContinue |
+    Unblock-File -ErrorAction SilentlyContinue
+Write-ClassroomInstallLog "다운로드 차단 표시 확인 완료"
 
 $serviceName = "ClassroomStudentService"
 if ($UpgradeOnly) {
@@ -293,7 +305,7 @@ $existingService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 if ($existingService) {
     if ($existingService.Status -ne "Stopped") {
         Stop-Service -Name $serviceName -Force
-        $existingService.WaitForStatus("Stopped", [TimeSpan]::FromSeconds(20))
+        $existingService.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(20))
     }
 }
 
@@ -333,8 +345,8 @@ else {
     Invoke-ClassroomServiceControl @("create", $serviceName, "binPath=", $serviceBinaryArgument, "start=", "auto", "DisplayName=", $serviceDisplayNameArgument) | Out-Null
 }
 
-Invoke-ClassroomServiceControl @("description", $serviceName, "Blossom Classroom 학생 기기 연결 및 상태 제공 서비스") | Out-Null
-Invoke-ClassroomServiceControl @("failure", $serviceName, "reset=", "86400", "actions=", "restart/5000/restart/15000/restart/60000") | Out-Null
+Invoke-ClassroomServiceControl @("description", $serviceName, "Blossom Classroom 학생 기기 연결 및 상태 제공 서비스") -AllowFailure | Out-Null
+Invoke-ClassroomServiceControl @("failure", $serviceName, "reset=", "86400", "actions=", "restart/5000/restart/15000/restart/60000") -AllowFailure | Out-Null
 Write-ClassroomInstallLog "Windows 서비스 등록 완료"
 
 $serviceRegistryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$serviceName"
@@ -362,7 +374,7 @@ else {
 try {
     Start-Service -Name $serviceName
     $installedService = Get-Service -Name $serviceName
-    $installedService.WaitForStatus("Running", [TimeSpan]::FromSeconds(20))
+    $installedService.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(20))
 }
 catch {
     $serviceDiagnostics = Get-CimInstance Win32_Service -Filter "Name='$serviceName'" -ErrorAction SilentlyContinue

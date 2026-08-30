@@ -10,7 +10,7 @@ namespace Blossom.Classroom.Student.Setup;
 
 internal sealed class StudentSetupForm : Form
 {
-    private const string AgentVersion = "0.3.1";
+    private const string AgentVersion = "0.3.2";
     private const int JoinCodeLength = 8;
     private const string StudentPackageUrl = "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip";
     private readonly Uri serverOrigin;
@@ -223,9 +223,12 @@ internal sealed class StudentSetupForm : Form
         }
         catch (Exception exception)
         {
-            SetStatus(
-                $"설치에 실패했습니다. {exception.Message}\n같은 코드를 다시 입력해 재시도하거나, 코드가 노출된 경우 관리자에게 재발급을 요청하세요.",
-                isError: true);
+            var message = $"설치에 실패했습니다. {exception.Message}\n같은 코드를 다시 입력해 재시도하거나, 코드가 노출된 경우 관리자에게 재발급을 요청하세요.";
+            SetStatus(message, isError: true);
+            if (exception.Message.StartsWith("학생 서비스 설치가 완료되지 않았습니다.", StringComparison.Ordinal))
+            {
+                MessageBox.Show(this, exception.Message, "Classroom 설치 실패", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
         finally
         {
@@ -283,8 +286,10 @@ internal sealed class StudentSetupForm : Form
 
         var installerPath = Path.Combine(packageRoot, "Install-ClassroomStudent.ps1");
         var logPath = Path.Combine(
-            Path.GetTempPath(),
-            $"classroom-student-install-{Guid.NewGuid():N}.log");
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "Blossom Classroom Student",
+            $"install-{Guid.NewGuid():N}.log");
+        var installSucceeded = false;
         try
         {
             using var process = Process.Start(new ProcessStartInfo
@@ -300,6 +305,8 @@ internal sealed class StudentSetupForm : Form
                     Quote(packageRoot),
                     "-DeviceConfigFile",
                     Quote(configPath),
+                    "-AgentVersion",
+                    Quote(AgentVersion),
                     "-LogPath",
                     Quote(logPath)),
                 WorkingDirectory = packageRoot,
@@ -314,13 +321,18 @@ internal sealed class StudentSetupForm : Form
                 var detail = ReadInstallLog(logPath);
                 throw new InvalidOperationException(
                     string.IsNullOrWhiteSpace(detail)
-                        ? $"학생 서비스 설치가 완료되지 않았습니다. (코드 {process.ExitCode})"
-                        : $"학생 서비스 설치가 완료되지 않았습니다.\n{detail}");
+                        ? $"학생 서비스 설치가 완료되지 않았습니다. (코드 {process.ExitCode})\n설치 로그를 읽지 못했습니다: {logPath}"
+                        : $"학생 서비스 설치가 완료되지 않았습니다.\n{detail}\n로그: {logPath}");
             }
+
+            installSucceeded = true;
         }
         finally
         {
-            TryDelete(logPath);
+            if (installSucceeded)
+            {
+                TryDelete(logPath);
+            }
             if (downloadedPackageRoot is not null)
             {
                 TryDeleteDirectory(downloadedPackageRoot);
@@ -380,6 +392,10 @@ internal sealed class StudentSetupForm : Form
             return text.Length > 2400 ? text[^2400..] : text;
         }
         catch (IOException)
+        {
+            return string.Empty;
+        }
+        catch (UnauthorizedAccessException)
         {
             return string.Empty;
         }

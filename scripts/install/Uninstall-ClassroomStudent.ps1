@@ -28,7 +28,7 @@ $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 if ($service) {
     if ($service.Status -ne "Stopped") {
         Stop-Service -Name $serviceName -Force
-        $service.WaitForStatus("Stopped", [TimeSpan]::FromSeconds(20))
+        $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(20))
     }
 
     & sc.exe delete $serviceName | Out-Null
