@@ -78,11 +78,20 @@
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
     try {
-      // Redirect is deliberate: school browsers and embedded browsers commonly
-      // block Firebase's popup flow before Google can even show the account picker.
-      await auth.signInWithRedirect(provider);
-      return null;
+      // A popup keeps the Firebase credential in the same JavaScript context,
+      // so the app can exchange it with Classroom immediately. Some managed
+      // school browsers block popups; only those cases fall back to redirect.
+      const result = await auth.signInWithPopup(provider);
+      return toSessionPayload(result.user);
     } catch (error) {
+      if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
+        try {
+          await auth.signInWithRedirect(provider);
+          return null;
+        } catch (redirectError) {
+          throw friendlyError(redirectError);
+        }
+      }
       throw friendlyError(error);
     }
   }
