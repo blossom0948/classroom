@@ -17,7 +17,8 @@ classroom-api.blossom0948.cloud
 
 공개 서비스의 API와 영속 데이터는 Cloudflare에서 실행된다. 따라서 선생님 PC,
 로컬 Windows 서비스, Cloudflare Tunnel이 꺼져 있어도 `classroom-2en.pages.dev`의
-로그인·수업·학생 코드·장치 상태 API는 중단되지 않는다.
+로그인·수업·학생 코드·장치 상태 API는 중단되지 않는다. 콘솔의 운영 설정은
+`config.js`에서 `classroom-api.blossom0948.cloud`로 직접 연결한다.
 
 ## 1. Cloudflare Worker 운영
 
@@ -93,8 +94,10 @@ Google 로그인은 학교 환경에서 popup 차단을 피하기 위해 redirec
 | Production environment variable | `CLASSROOM_BACKEND_ORIGIN=https://classroom-api.blossom0948.cloud` |
 
 이 변수는 Pages Function이 `/auth`, `/api`, `/health`, `/ws/student` 요청을
-Cloudflare Worker로 보낼 때 사용한다. 값이 없으면 proxy는 의도적으로 503을
-반환한다. `main`에 push하면 Pages가 정적 콘솔·PWA를 다시 빌드하여 자동 배포한다.
+Cloudflare Worker로 보낼 때 사용하는 선택적 프록시 설정이다. 운영 콘솔은
+고정 API 주소로 직접 연결하므로 Git 연동이나 직접 Pages 배포에서 이 변수 누락이
+로그인 자체를 막지 않는다. Pages Function 프록시를 사용할 경우에는 값을 반드시
+설정한다. `main`에 push하면 Pages가 정적 콘솔·PWA를 다시 빌드하여 자동 배포한다.
 
 ## 4. 배포 검증
 

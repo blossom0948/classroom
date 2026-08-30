@@ -92,7 +92,13 @@
       return toSessionPayload(result.user);
     } catch (error) {
       logAuthFailure("google-sign-in", error);
-      if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
+      const shouldUseRedirect = [
+        "auth/popup-blocked",
+        "auth/cancelled-popup-request",
+        "auth/network-request-failed",
+        "auth/internal-error"
+      ].includes(error?.code);
+      if (shouldUseRedirect) {
         try {
           await auth.signInWithRedirect(provider);
           return null;
