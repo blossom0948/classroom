@@ -70,11 +70,20 @@ jobs:
             -c Release -r win-x64 --self-contained true `
             -p:PublishSingleFile=true -o $package
 
+          $setupExe = Join-Path $package 'Classroom.Student.Setup.exe'
+          if (-not (Test-Path -LiteralPath $setupExe)) {
+            throw "Student setup executable was not produced: $setupExe"
+          }
+          Copy-Item $setupExe (Join-Path $root 'Classroom.Student.Setup.exe') -Force
+
           Copy-Item scripts/install/* $package -Force
           Copy-Item docs/CLASSROOM_MVP.md $package -Force
           Copy-Item docs/DEPLOYMENT.md $package -Force
           Compress-Archive -Path (Join-Path $package '*') `
             -DestinationPath (Join-Path $root 'Classroom-Windows-x64.zip') -Force
+          if (-not (Test-Path -LiteralPath (Join-Path $root 'Classroom-Windows-x64.zip'))) {
+            throw 'Classroom Windows archive was not produced.'
+          }
 
       - name: Upload Classroom package
         uses: actions/upload-artifact@v4
