@@ -11,6 +11,12 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (ElevatedStudentInstaller.IsInstallInvocation(args))
+        {
+            Environment.ExitCode = ElevatedStudentInstaller.Run(args);
+            return;
+        }
+
         ApplicationConfiguration.Initialize();
         Application.Run(new StudentSetupForm(ResolveServerOrigin(args)));
     }

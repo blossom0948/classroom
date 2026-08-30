@@ -2,17 +2,20 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace Blossom.Classroom.Student.Setup;
 
 internal sealed class StudentSetupForm : Form
 {
-    private const string AgentVersion = "0.3.3";
+    private const string AgentVersion = "0.3.4";
     private const int JoinCodeLength = 8;
     private const string StudentPackageUrl = "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip";
+    private const string InstallRootName = "Blossom Classroom Student";
     private readonly Uri serverOrigin;
     private readonly TextBox codeInput;
     private readonly Button enrollButton;
@@ -188,20 +191,23 @@ internal sealed class StudentSetupForm : Form
                 $"classroom-device-{Guid.NewGuid():N}.json");
             try
             {
+                var deviceConfig = new DeviceConfig(
+                    "BLOSSOM-CLASSROOM-DEVICE-V1",
+                    ToWebSocketOrigin(serverOrigin).AbsoluteUri,
+                    enrollment.DeviceId,
+                    enrollment.DeviceToken,
+                    CreateIpcToken());
                 await File.WriteAllTextAsync(
                     configPath,
-                    JsonSerializer.Serialize(new DeviceConfig(
-                        "BLOSSOM-CLASSROOM-DEVICE-V1",
-                        ToWebSocketOrigin(serverOrigin).AbsoluteUri,
-                        enrollment.DeviceId,
-                        enrollment.DeviceToken),
+                    JsonSerializer.Serialize(
+                        deviceConfig,
                         new JsonSerializerOptions(JsonSerializerDefaults.Web)
                         {
                             WriteIndented = true
                         }));
 
                 SetStatus("등록 완료. 관리자 권한으로 Classroom을 설치하는 중...", isError: false);
-                await LaunchInstallerAsync(configPath);
+                await LaunchInstallerAsync(configPath, deviceConfig);
             }
             finally
             {
@@ -273,7 +279,7 @@ internal sealed class StudentSetupForm : Form
         return enrollment;
     }
 
-    private async Task LaunchInstallerAsync(string configPath)
+    private async Task LaunchInstallerAsync(string configPath, DeviceConfig deviceConfig)
     {
         var packageRoot = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
         string? downloadedPackageRoot = null;
@@ -284,7 +290,6 @@ internal sealed class StudentSetupForm : Form
             packageRoot = downloadedPackageRoot;
         }
 
-        var installerPath = Path.Combine(packageRoot, "Install-ClassroomStudent.ps1");
         var logPath = Path.Combine(
             Path.GetTempPath(),
             $"install-{Guid.NewGuid():N}.log");
@@ -294,27 +299,32 @@ internal sealed class StudentSetupForm : Form
             // Create the file before UAC elevation so the original user can still
             // read it when a different local administrator approves the prompt.
             await File.WriteAllTextAsync(logPath, string.Empty);
+            var executablePath = Environment.ProcessPath
+                ?? Process.GetCurrentProcess().MainModule?.FileName
+                ?? throw new InvalidOperationException("학생용 설치 도우미 경로를 확인하지 못했습니다.");
+            var installRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                InstallRootName);
             using var process = Process.Start(new ProcessStartInfo
             {
-                FileName = "powershell.exe",
+                FileName = executablePath,
                 Arguments = string.Join(
                     " ",
-                    "-NoProfile",
-                    "-ExecutionPolicy Bypass",
-                    "-File",
-                    Quote(installerPath),
-                    "-PackageRoot",
+                    "--install-package",
+                    "--package-root",
                     Quote(packageRoot),
-                    "-DeviceConfigFile",
+                    "--device-config-file",
                     Quote(configPath),
-                    "-AgentVersion",
+                    "--agent-version",
                     Quote(AgentVersion),
-                    "-LogPath",
+                    "--install-root",
+                    Quote(installRoot),
+                    "--log-path",
                     Quote(logPath)),
                 WorkingDirectory = packageRoot,
                 UseShellExecute = true,
                 Verb = "runas",
-                WindowStyle = ProcessWindowStyle.Normal
+                WindowStyle = ProcessWindowStyle.Hidden
             }) ?? throw new InvalidOperationException("Windows 설치 프로세스를 시작하지 못했습니다.");
 
             await process.WaitForExitAsync();
@@ -323,11 +333,18 @@ internal sealed class StudentSetupForm : Form
                 var detail = ReadInstallLog(logPath);
                 throw new InvalidOperationException(
                     string.IsNullOrWhiteSpace(detail)
-                        ? $"학생 서비스 설치가 완료되지 않았습니다. (코드 {process.ExitCode})\n설치 로그를 읽지 못했습니다: {logPath}"
+                        ? $"학생 서비스 설치가 완료되지 않았습니다. (코드 {process.ExitCode})\n설치 도우미가 로그를 남기기 전에 종료되었습니다. Windows 보안 정책 또는 관리자 권한을 확인해 주세요.\n로그: {logPath}"
                         : $"학생 서비스 설치가 완료되지 않았습니다.\n{detail}\n로그: {logPath}");
             }
 
+            ConfigureUserSession(deviceConfig, installRoot);
+            var desktopStarted = TryStartInstalledDesktop(installRoot);
             installSucceeded = true;
+            SetStatus(
+                desktopStarted
+                    ? "설치가 완료되었습니다. Classroom이 실행됩니다."
+                    : "설치가 완료되었습니다. 바탕화면의 Classroom을 실행해 주세요.",
+                isError: false);
         }
         finally
         {
@@ -342,9 +359,59 @@ internal sealed class StudentSetupForm : Form
         }
     }
 
+    private static void ConfigureUserSession(DeviceConfig config, string installRoot)
+    {
+        // Keep the values in this process too, because the desktop app is
+        // started immediately after installation and inherits this environment.
+        Environment.SetEnvironmentVariable("CLASSROOM_DEVICE_ID", config.DeviceId.ToString());
+        Environment.SetEnvironmentVariable("CLASSROOM_IPC_TOKEN", config.IpcToken);
+        Environment.SetEnvironmentVariable("CLASSROOM_AGENT_VERSION", AgentVersion);
+        Environment.SetEnvironmentVariable(
+            "CLASSROOM_DEVICE_ID",
+            config.DeviceId.ToString(),
+            EnvironmentVariableTarget.User);
+        Environment.SetEnvironmentVariable(
+            "CLASSROOM_IPC_TOKEN",
+            config.IpcToken,
+            EnvironmentVariableTarget.User);
+        Environment.SetEnvironmentVariable(
+            "CLASSROOM_AGENT_VERSION",
+            AgentVersion,
+            EnvironmentVariableTarget.User);
+
+        var desktopPath = Path.Combine(installRoot, "desktop", "Classroom.Student.Desktop.exe");
+        using var runKey = Registry.CurrentUser.CreateSubKey(
+            @"Software\Microsoft\Windows\CurrentVersion\Run",
+            writable: true);
+        runKey?.SetValue("BlossomClassroomStudent", Quote(desktopPath), RegistryValueKind.String);
+    }
+
+    private static bool TryStartInstalledDesktop(string installRoot)
+    {
+        var desktopPath = Path.Combine(installRoot, "desktop", "Classroom.Student.Desktop.exe");
+        if (!File.Exists(desktopPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = desktopPath,
+                UseShellExecute = true,
+                WorkingDirectory = Path.GetDirectoryName(desktopPath)!
+            });
+            return true;
+        }
+        catch (Win32Exception)
+        {
+            return false;
+        }
+    }
+
     private static bool HasStudentPayload(string packageRoot) =>
-        File.Exists(Path.Combine(packageRoot, "Install-ClassroomStudent.ps1"))
-        && (File.Exists(Path.Combine(packageRoot, "student-service", "Classroom.Student.Service.exe"))
+        (File.Exists(Path.Combine(packageRoot, "student-service", "Classroom.Student.Service.exe"))
             || File.Exists(Path.Combine(packageRoot, "Classroom.Student.Service.exe")))
         && (File.Exists(Path.Combine(packageRoot, "student-desktop", "Classroom.Student.Desktop.exe"))
             || File.Exists(Path.Combine(packageRoot, "Classroom.Student.Desktop.exe")));
@@ -430,6 +497,15 @@ internal sealed class StudentSetupForm : Form
         return builder.Uri;
     }
 
+    private static string CreateIpcToken()
+    {
+        var bytes = RandomNumberGenerator.GetBytes(32);
+        return Convert.ToBase64String(bytes)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
+
     private static string Quote(string value) =>
         $"\"{value.Replace("\"", "\\\"")}\"";
 
@@ -498,7 +574,8 @@ internal sealed class StudentSetupForm : Form
         string Format,
         string ServerUrl,
         Guid DeviceId,
-        string DeviceToken);
+        string DeviceToken,
+        string IpcToken);
 
     private sealed record DeviceEnrollmentResponse(
         [property: JsonPropertyName("deviceId")] Guid DeviceId,

@@ -153,8 +153,8 @@ function Copy-ClassroomPayload {
     Copy-Item -Path (Join-Path $SourceDirectory '*') -Destination $DestinationDirectory -Recurse -Force
 }
 
-$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 Write-ClassroomInstallLog "설치 스크립트 시작: 관리자 권한 확인 중"
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw "학생용 Classroom 설치는 관리자 권한 PowerShell에서 실행해야 합니다."
 }
@@ -235,6 +235,7 @@ if ($DeviceConfigFile) {
     $ServerUrl = [uri][string]$deviceConfig.serverUrl
     $DeviceId = [guid][string]$deviceConfig.deviceId
     $DeviceToken = [string]$deviceConfig.deviceToken
+    $IpcToken = [string]$deviceConfig.ipcToken
 }
 elseif ($EnrollmentFile) {
     $resolvedEnrollmentFile = (Resolve-Path -LiteralPath $EnrollmentFile).Path
