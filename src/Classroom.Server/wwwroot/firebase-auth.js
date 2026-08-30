@@ -81,7 +81,8 @@
       return toSessionPayload(credential.user);
     } catch (error) {
       if (error?.code === "auth/popup-blocked"
-        || error?.code === "auth/operation-not-supported-in-this-environment") {
+        || error?.code === "auth/operation-not-supported-in-this-environment"
+        || error?.code === "auth/internal-error") {
         await auth.signInWithRedirect(provider);
         return null;
       }
