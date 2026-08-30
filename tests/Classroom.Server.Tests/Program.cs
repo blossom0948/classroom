@@ -8,7 +8,7 @@ using Blossom.Classroom.Server.Storage;
 var tests = new (string Name, Action Run)[]
 {
     ("enrollment binds a server-issued device to a student", EnrollmentBindsIdentity),
-    ("student join code remains valid until regenerated", StudentJoinCodeRemainsValidUntilRegenerated),
+    ("student join code reuses one device until regenerated", StudentJoinCodeRemainsValidUntilRegenerated),
     ("device token authentication rejects wrong tokens", DeviceAuthenticationIsBound),
     ("devices follow the server session without reinstalling", HeartbeatUpdatesStatus),
     ("commands are queued and ACK/result are audited", CommandsAreTracked),
@@ -106,15 +106,17 @@ static void StudentJoinCodeRemainsValidUntilRegenerated()
         "0.3.0"));
 
     Assert(result.Succeeded && result.Value is not null, "Join code enrollment did not succeed.");
-    Assert(result.Value!.DeviceId != ticket.DeviceId, "Join code enrollment should issue a device identity for the computer.");
+    Assert(result.Value!.DeviceId != Guid.Empty, "Join code enrollment did not issue a device identity.");
     Assert(result.Value.StudentId == fixture.StudentId, "Join code enrollment changed the student identity.");
 
     var reused = fixture.Store.EnrollByJoinCode(new JoinCodeEnrollmentRequest(
         ticket.JoinCode,
         "STUDENT-CODE-02",
         "0.3.0"));
-    Assert(reused.Succeeded && reused.Value is not null, "Persistent join code could not enroll another computer.");
-    Assert(reused.Value!.DeviceId != result.Value.DeviceId, "Persistent join code reused a device identity.");
+    Assert(reused.Succeeded && reused.Value is not null, "Persistent join code could not renew the installed device.");
+    Assert(reused.Value!.DeviceId == result.Value.DeviceId, "Persistent join code created a duplicate device identity.");
+    Assert(fixture.Store.GetClassStatuses(fixture.TeacherId, fixture.ClassId).Count == 1, "The same student appeared more than once after re-enrollment.");
+    Assert(!fixture.Store.TryAuthenticateDevice(result.Value!.DeviceId, result.Value.DeviceToken, out _), "The previous device token remained active after renewal.");
 
     var regenerated = fixture.Store.CreateEnrollmentTicket(
         fixture.TeacherId,

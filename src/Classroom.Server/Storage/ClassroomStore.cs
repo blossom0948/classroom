@@ -30,6 +30,7 @@ public sealed class ClassroomStore
         {
             database.Initialize(options);
             LoadPersistedState();
+            DeduplicateActiveDevices();
         }
     }
 
@@ -210,9 +211,18 @@ public sealed class ClassroomStore
                     "학생 코드가 올바르지 않거나 재발급되어 사용할 수 없습니다. 선생님에게 코드를 확인하세요.");
             }
 
+            var existingDeviceId = devices.Values
+                .Where(device => device.ClassId == ticket.ClassId
+                    && device.StudentId == ticket.StudentId
+                    && !device.Revoked)
+                .OrderByDescending(device => device.LastHeartbeatUtc ?? DateTimeOffset.MinValue)
+                .ThenByDescending(device => device.EnrolledAtUtc)
+                .Select(device => device.DeviceId)
+                .FirstOrDefault();
+
             return CompleteEnrollmentLocked(
                 ticket,
-                Guid.NewGuid(),
+                existingDeviceId == Guid.Empty ? Guid.NewGuid() : existingDeviceId,
                 request.DeviceName,
                 request.AgentVersion,
                 consumeTicket: false);
@@ -1008,7 +1018,6 @@ public sealed class ClassroomStore
         foreach (var existingDevice in devices.Values.Where(device =>
                      device.ClassId == ticket.ClassId
                      && device.StudentId == ticket.StudentId
-                     && string.Equals(device.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase)
                      && !device.Revoked
                      && device.DeviceId != deviceId))
         {
@@ -1050,6 +1059,26 @@ public sealed class ClassroomStore
                 ticket.StudentId,
                 deviceToken,
                 issuedAt));
+    }
+
+    private void DeduplicateActiveDevices()
+    {
+        foreach (var group in devices.Values
+                     .Where(device => !device.Revoked)
+                     .GroupBy(device => (device.ClassId, device.StudentId)))
+        {
+            var keep = group
+                .OrderByDescending(device => device.LastHeartbeatUtc ?? DateTimeOffset.MinValue)
+                .ThenByDescending(device => device.EnrolledAtUtc)
+                .First();
+            foreach (var duplicate in group.Where(device => device.DeviceId != keep.DeviceId))
+            {
+                duplicate.Revoked = true;
+                duplicate.ConnectionActive = false;
+                duplicate.SessionId = null;
+                database?.SaveDevice(duplicate.ToPersisted());
+            }
+        }
     }
 
     private static string CreateJoinCode()

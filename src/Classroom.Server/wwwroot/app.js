@@ -1181,7 +1181,15 @@
 
   function registerPwa() {
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch(() => {});
+      let reloadedForUpdate = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (reloadedForUpdate) return;
+        reloadedForUpdate = true;
+        window.location.reload();
+      });
+      navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" })
+        .then((registration) => registration.update())
+        .catch(() => {});
     }
     window.addEventListener("beforeinstallprompt", (event) => {
       event.preventDefault();

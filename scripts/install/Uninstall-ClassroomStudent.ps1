@@ -64,6 +64,9 @@ foreach ($runValueName in @("BlossomClassroomStudent", "ClassroomStudentDesktop"
     Remove-ItemProperty -LiteralPath $runKey -Name $runValueName -ErrorAction SilentlyContinue
 }
 
+$startMenuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Classroom Student.lnk"
+Remove-Item -LiteralPath $startMenuShortcut -Force -ErrorAction SilentlyContinue
+
 if (-not $KeepFiles -and (Test-Path -LiteralPath $resolvedInstallRoot -PathType Container)) {
     Remove-Item -LiteralPath $resolvedInstallRoot -Recurse -Force
 }

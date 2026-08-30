@@ -217,6 +217,11 @@ export class ClassroomState {
     this.ensureColumn("Devices", "grade", "INTEGER");
     this.ensureColumn("Devices", "class_number", "INTEGER");
     this.ensureColumn("Devices", "student_number", "INTEGER");
+    // Older releases created a new device row every time a persistent
+    // student code was entered again. Reconcile those rows before adding the
+    // invariant that one student has one active device per class.
+    this.deduplicateActiveDevices();
+    this.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_active_student ON Devices(class_id, student_id) WHERE revoked_at_utc IS NULL");
 
     const rootSchool = this.one("SELECT id FROM Schools WHERE id = ?", ROOT_SCHOOL_ID);
     if (!rootSchool) {
@@ -705,6 +710,7 @@ export class ClassroomState {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    this.deduplicateActiveDevices();
     const active = this.one("SELECT session_id FROM ClassSessions WHERE class_id = ? AND ended_at_utc IS NULL ORDER BY started_at_utc DESC LIMIT 1", classId);
     const now = Date.now();
     const devices = this.all("SELECT * FROM Devices WHERE class_id = ? AND revoked_at_utc IS NULL ORDER BY COALESCE(student_number, 999), student_display_name COLLATE NOCASE, computer_name COLLATE NOCASE", classId);
@@ -833,22 +839,44 @@ export class ClassroomState {
     }
     const code = this.one("SELECT * FROM StudentCodes WHERE join_code = ? AND revoked_at_utc IS NULL", joinCode);
     if (!code) return responseError("ENROLLMENT_NOT_FOUND", "학생 코드를 찾지 못했습니다. 코드를 다시 확인해 주세요.", 401, cors);
-    const deviceId = crypto.randomUUID();
+    // A persistent student code identifies a roster entry, not a one-time
+    // installation. Reinstalling the agent must renew the same device record
+    // instead of creating another card for the same student.
+    const existingDevices = this.all(`SELECT * FROM Devices
+      WHERE class_id = ? AND student_id = ? AND revoked_at_utc IS NULL
+      ORDER BY CASE WHEN last_heartbeat_utc IS NULL THEN 1 ELSE 0 END,
+        last_heartbeat_utc DESC, issued_at_utc DESC, device_id ASC`, code.class_id, code.student_id);
+    const existingDevice = existingDevices[0] || null;
+    const deviceId = existingDevice?.device_id || crypto.randomUUID();
     const token = await randomToken();
     const now = isoNow();
-    this.exec(`INSERT INTO Devices (
-      device_id, school_id, class_id, student_id, student_display_name, grade, class_number, student_number, computer_name,
-      agent_version, device_token_hash, issued_at_utc
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, deviceId, code.school_id, code.class_id, code.student_id, code.student_display_name, code.grade, code.class_number, code.student_number, deviceName, agentVersion, await sha256Text(token), now);
+    for (const duplicate of existingDevices.slice(1)) {
+      this.exec("UPDATE Devices SET revoked_at_utc = ?, active_session_id = NULL, policy_applied = 0 WHERE device_id = ?", now, duplicate.device_id);
+      this.closeDeviceSockets(duplicate.device_id, 1008, "Duplicate student device replaced");
+    }
+    if (existingDevice) {
+      this.closeDeviceSockets(existingDevice.device_id, 1008, "Student device re-enrolled");
+      this.exec(`UPDATE Devices SET
+        school_id = ?, class_id = ?, student_id = ?, student_display_name = ?, grade = ?, class_number = ?, student_number = ?, computer_name = ?,
+        agent_version = ?, device_token_hash = ?, issued_at_utc = ?, last_heartbeat_utc = NULL, activity_json = NULL,
+        battery_percent = NULL, network_status = NULL, policy_applied = 0, active_session_id = NULL, revoked_at_utc = NULL
+        WHERE device_id = ?`, code.school_id, code.class_id, code.student_id, code.student_display_name, code.grade, code.class_number, code.student_number, deviceName, agentVersion, await sha256Text(token), now, deviceId);
+    } else {
+      this.exec(`INSERT INTO Devices (
+        device_id, school_id, class_id, student_id, student_display_name, grade, class_number, student_number, computer_name,
+        agent_version, device_token_hash, issued_at_utc
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, deviceId, code.school_id, code.class_id, code.student_id, code.student_display_name, code.grade, code.class_number, code.student_number, deviceName, agentVersion, await sha256Text(token), now);
+    }
     this.exec("UPDATE StudentCodes SET last_used_at_utc = ? WHERE device_id = ?", now, code.device_id);
-    this.audit({ schoolId: code.school_id, classId: code.class_id, studentId: code.student_id, deviceId, action: "DEVICE_ENROLLMENT", result: "SUCCESS", reason: deviceName });
+    this.audit({ schoolId: code.school_id, classId: code.class_id, studentId: code.student_id, deviceId, action: "DEVICE_ENROLLMENT", result: existingDevice ? "REUSED" : "SUCCESS", reason: deviceName });
     return responseJson({
       deviceId,
       schoolId: code.school_id,
       classId: code.class_id,
       studentId: code.student_id,
       deviceToken: token,
-      issuedAtUtc: now
+      issuedAtUtc: now,
+      reused: Boolean(existingDevice)
     }, 200, cors);
   }
 
@@ -1137,6 +1165,26 @@ export class ClassroomState {
   closeDeviceSockets(deviceId, code, reason) {
     for (const socket of this.ctx.getWebSockets()) {
       if (socket.deserializeAttachment()?.deviceId === deviceId) socket.close(code, reason);
+    }
+  }
+
+  deduplicateActiveDevices() {
+    const groups = this.all(`SELECT class_id, student_id
+      FROM Devices
+      WHERE revoked_at_utc IS NULL
+      GROUP BY class_id, student_id
+      HAVING COUNT(*) > 1`);
+    for (const group of groups) {
+      const devices = this.all(`SELECT device_id
+        FROM Devices
+        WHERE class_id = ? AND student_id = ? AND revoked_at_utc IS NULL
+        ORDER BY CASE WHEN last_heartbeat_utc IS NULL THEN 1 ELSE 0 END,
+          last_heartbeat_utc DESC, issued_at_utc DESC, device_id ASC`, group.class_id, group.student_id);
+      const now = isoNow();
+      for (const duplicate of devices.slice(1)) {
+        this.exec("UPDATE Devices SET revoked_at_utc = ?, active_session_id = NULL, policy_applied = 0 WHERE device_id = ?", now, duplicate.device_id);
+        this.closeDeviceSockets(duplicate.device_id, 1008, "Duplicate student device removed");
+      }
     }
   }
 

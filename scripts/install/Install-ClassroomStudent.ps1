@@ -14,7 +14,7 @@ param(
 
     [string]$IpcToken,
 
-    [string]$AgentVersion = "0.2.0",
+    [string]$AgentVersion = "0.3.9",
 
     [string]$LogPath,
 
@@ -370,6 +370,23 @@ if ($SkipDesktopStartup) {
 else {
     New-Item -Path $desktopRunKey -Force | Out-Null
     New-ItemProperty -Path $desktopRunKey -Name "BlossomClassroomStudent" -PropertyType String -Value ('"{0}" --classroom-watchdog' -f $installedDesktopExecutable) -Force | Out-Null
+}
+
+# Keep a visible way to reopen the installed app after the setup window closes.
+$startMenuDirectory = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
+$startMenuShortcut = Join-Path $startMenuDirectory "Classroom Student.lnk"
+try {
+    New-Item -ItemType Directory -Path $startMenuDirectory -Force | Out-Null
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($startMenuShortcut)
+    $shortcut.TargetPath = $installedDesktopExecutable
+    $shortcut.Arguments = "--classroom-watchdog"
+    $shortcut.WorkingDirectory = Split-Path -Parent $installedDesktopExecutable
+    $shortcut.Description = "Classroom 학교 학생 상태 앱"
+    $shortcut.IconLocation = "$installedDesktopExecutable,0"
+    $shortcut.Save()
+} catch {
+    Write-ClassroomInstallLog "시작 메뉴 바로가기를 만들지 못했지만 자동 시작은 유지됩니다: $($_.Exception.Message)"
 }
 
 try {

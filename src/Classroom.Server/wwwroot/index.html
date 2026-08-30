@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/styles.css?v=0.5.12">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -180,7 +180,7 @@
               <label>Google 이메일 또는 아이디<input id="admin-identifier" maxlength="254" autocomplete="off" placeholder="teacher@school.ac.kr 또는 teacher-id"></label>
               <button id="teacher-admin-submit" class="primary" type="submit">관리자로 지정</button>
             </div>
-            <div id="student-admin-panel" class="admin-grant-panel" role="tabpanel" hidden>
+            <div id="student-admin-panel" class="admin-grant-panel student-admin-panel" role="tabpanel" hidden>
               <label>학생 검색<input id="student-admin-search" type="search" autocomplete="off" placeholder="등록된 학생 이름 검색"></label>
               <label>학생 선택<select id="student-admin-select"><option value="">학생을 선택하세요</option></select></label>
               <button id="student-admin-submit" class="primary" type="button">학생 관리자 지정</button>
@@ -206,7 +206,7 @@
           <div id="profile-consent-fields" class="stack consent-stack" hidden><label class="consent-check"><input id="profile-terms" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="terms">이용약관</button>에 동의합니다.</span></label><label class="consent-check"><input id="profile-privacy" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="privacy">개인정보처리방침</button>에 동의합니다.</span></label></div>
           <button class="primary" type="submit">프로필 저장</button><p id="profile-message" class="error" hidden></p>
         </form>
-        <div class="settings-grid"><article class="settings-card"><span class="settings-icon">●</span><h3>연결 보안</h3><p id="security-setting">Teacher session bearer token으로 연결됨</p></article><article class="settings-card"><span class="settings-icon">▣</span><h3>학생 개인정보</h3><p>전자칠판과 교실 대시보드에는 원본 앱명·창 제목·웹 도메인을 표시하지 않습니다. 원본 상태는 권한 있는 교사 상세와 감사 기록에서만 확인되며, 화면 캡처·키 입력·원격 셸은 사용하지 않습니다.</p></article><article class="settings-card"><span class="settings-icon">◷</span><h3>상태 갱신</h3><p>학생 상태는 약 10초마다 서버에 전송되고 콘솔은 2초 간격으로 갱신합니다. 학생 순서는 이름 기준으로 고정됩니다.</p></article><article class="settings-card appearance-card"><span class="settings-icon">◐</span><h3>화면 모드</h3><p>교실 조명과 수업 환경에 맞춰 콘솔 화면을 바꿉니다.</p><div class="theme-options" role="group" aria-label="화면 모드"><button type="button" data-theme-choice="light" class="secondary">라이트</button><button type="button" data-theme-choice="dark" class="secondary">다크</button></div></article></div>
+         <div class="settings-grid"><article class="settings-card"><span class="settings-icon">●</span><h3>연결 보안</h3><p id="security-setting">Teacher session bearer token으로 연결됨</p></article><article class="settings-card"><span class="settings-icon">▣</span><h3>학생 개인정보</h3><p>교실 대시보드에는 현재 앱과 창 제목을 상태 요약으로 표시합니다. 화면 캡처·키 입력·원격 셸은 사용하지 않습니다.</p></article><article class="settings-card"><span class="settings-icon">◷</span><h3>상태 갱신</h3><p>학생 상태는 약 10초마다 서버에 전송되고 콘솔은 2초 간격으로 갱신합니다. 학생 순서는 이름 기준으로 고정됩니다.</p></article><article class="settings-card appearance-card"><span class="settings-icon">◐</span><h3>화면 모드</h3><p>교실 조명과 수업 환경에 맞춰 콘솔 화면을 바꿉니다.</p><div class="theme-options" role="group" aria-label="화면 모드"><button type="button" data-theme-choice="light" class="secondary">라이트</button><button type="button" data-theme-choice="dark" class="secondary">다크</button></div></article></div>
         <article class="settings-card password-card compact-setting">
           <div><span class="settings-icon">🔐</span><h3 id="password-card-title">교사 비밀번호</h3><p id="password-card-copy">이메일 확인 후 교사 아이디 로그인용 비밀번호를 관리합니다.</p></div>
           <button id="password-open-button" class="secondary" type="button">비밀번호 설정</button>
@@ -319,6 +319,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js" defer></script>
+  <script src="/app.js?v=0.5.12" defer></script>
 </body>
 </html>

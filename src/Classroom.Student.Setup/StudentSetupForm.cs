@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net.Http.Json;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -12,7 +14,7 @@ namespace Blossom.Classroom.Student.Setup;
 
 internal sealed class StudentSetupForm : Form
 {
-    private const string AgentVersion = "0.3.8";
+    private const string AgentVersion = "0.3.9";
     private const int JoinCodeLength = 8;
     private const string StudentPackageUrl = "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip";
     private const string InstallRootName = "Blossom Classroom Student";
@@ -387,6 +389,77 @@ internal sealed class StudentSetupForm : Form
             "BlossomClassroomStudent",
             $"{Quote(desktopPath)} --classroom-watchdog",
             RegistryValueKind.String);
+        CreateStartMenuShortcut(desktopPath);
+    }
+
+    private static void CreateStartMenuShortcut(string desktopPath)
+    {
+        try
+        {
+            var programsDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
+                "Programs");
+            Directory.CreateDirectory(programsDirectory);
+            var shortcutPath = Path.Combine(programsDirectory, "Classroom Student.lnk");
+            var shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType is null)
+            {
+                return;
+            }
+
+            object? shell = null;
+            object? shortcut = null;
+            try
+            {
+                shell = Activator.CreateInstance(shellType);
+                if (shell is null)
+                {
+                    return;
+                }
+
+                shortcut = shellType.InvokeMember(
+                    "CreateShortcut",
+                    BindingFlags.InvokeMethod,
+                    binder: null,
+                    target: shell,
+                    args: [shortcutPath]);
+                if (shortcut is null)
+                {
+                    return;
+                }
+
+                var shortcutType = shortcut.GetType();
+                shortcutType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut, [desktopPath]);
+                shortcutType.InvokeMember("Arguments", BindingFlags.SetProperty, null, shortcut, ["--classroom-watchdog"]);
+                shortcutType.InvokeMember(
+                    "WorkingDirectory",
+                    BindingFlags.SetProperty,
+                    null,
+                    shortcut,
+                    [Path.GetDirectoryName(desktopPath) ?? string.Empty]);
+                shortcutType.InvokeMember("Description", BindingFlags.SetProperty, null, shortcut, ["Classroom 학교 학생 상태 앱"]);
+                shortcutType.InvokeMember("IconLocation", BindingFlags.SetProperty, null, shortcut, [$"{desktopPath},0"]);
+                shortcutType.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
+            }
+            finally
+            {
+                if (shortcut is not null && Marshal.IsComObject(shortcut))
+                {
+                    Marshal.FinalReleaseComObject(shortcut);
+                }
+
+                if (shell is not null && Marshal.IsComObject(shell))
+                {
+                    Marshal.FinalReleaseComObject(shell);
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // The Run key remains the authoritative startup mechanism. A
+            // managed Windows image may disable the WScript shortcut COM
+            // object, so a shortcut failure must not make enrollment fail.
+        }
     }
 
     private static bool TryStartInstalledDesktop(string installRoot)
