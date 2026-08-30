@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
@@ -19,6 +21,10 @@ internal static class ElevatedStudentInstaller
     private const string ServiceRegistryPath =
         @"SYSTEM\CurrentControlSet\Services\ClassroomStudentService";
     private const string ConfigFormat = "BLOSSOM-CLASSROOM-DEVICE-V1";
+    private const uint ScManagerConnect = 0x0001;
+    private const uint ServiceQueryStatus = 0x0004;
+    private const int ScStatusProcessInfo = 0;
+    private const int ServiceDoesNotExist = 1060;
 
     public static bool IsInstallInvocation(string[] args) =>
         args.Any(argument => string.Equals(argument, "--install-package", StringComparison.OrdinalIgnoreCase));
@@ -296,37 +302,63 @@ internal static class ElevatedStudentInstaller
 
     private static ServiceQuery QueryService()
     {
-        var result = RunSc(new[] { "query", ServiceName });
-        if (result.ExitCode == 1060)
+        var manager = OpenScManager(null, null, ScManagerConnect);
+        if (manager == IntPtr.Zero)
         {
-            return new ServiceQuery(false, 0, result.Output);
+            throw new Win32Exception(
+                Marshal.GetLastWin32Error(),
+                "Windows 서비스 관리자에 연결하지 못했습니다.");
         }
 
-        if (result.ExitCode != 0)
+        try
         {
-            throw new InvalidOperationException($"Windows 서비스 상태를 읽지 못했습니다: {FormatScResult(result)}");
-        }
-
-        var code = 0;
-        foreach (var line in result.Output.Split('\n'))
-        {
-            var trimmed = line.Trim();
-            var separator = trimmed.IndexOf(':');
-            if (!trimmed.StartsWith("STATE", StringComparison.OrdinalIgnoreCase) || separator < 0)
+            var service = OpenService(manager, ServiceName, ServiceQueryStatus);
+            if (service == IntPtr.Zero)
             {
-                continue;
+                var error = Marshal.GetLastWin32Error();
+                if (error == ServiceDoesNotExist)
+                {
+                    return new ServiceQuery(false, 0);
+                }
+
+                throw new Win32Exception(error, "Windows Classroom 서비스에 연결하지 못했습니다.");
             }
 
-            var value = trimmed[(separator + 1)..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (value.Length > 0)
+            try
             {
-                int.TryParse(value[0], out code);
+                var size = Marshal.SizeOf<ServiceStatusProcess>();
+                var buffer = Marshal.AllocHGlobal(size);
+                try
+                {
+                    if (!QueryServiceStatusEx(
+                            service,
+                            ScStatusProcessInfo,
+                            buffer,
+                            size,
+                            out _))
+                    {
+                        throw new Win32Exception(
+                            Marshal.GetLastWin32Error(),
+                            "Windows Classroom 서비스 상태를 읽지 못했습니다.");
+                    }
+
+                    var status = Marshal.PtrToStructure<ServiceStatusProcess>(buffer);
+                    return new ServiceQuery(true, checked((int)status.CurrentState));
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(buffer);
+                }
             }
-
-            break;
+            finally
+            {
+                CloseServiceHandle(service);
+            }
         }
-
-        return new ServiceQuery(true, code, result.Output);
+        finally
+        {
+            CloseServiceHandle(manager);
+        }
     }
 
     private static ScResult RunSc(IReadOnlyList<string> arguments)
@@ -533,5 +565,42 @@ internal static class ElevatedStudentInstaller
 
     private sealed record ScResult(int ExitCode, string Output);
 
-    private sealed record ServiceQuery(bool Exists, int Code, string Output);
+    private sealed record ServiceQuery(bool Exists, int Code);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr OpenScManager(
+        string? machineName,
+        string? databaseName,
+        uint desiredAccess);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr OpenService(
+        IntPtr serviceControlManager,
+        string serviceName,
+        uint desiredAccess);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool QueryServiceStatusEx(
+        IntPtr service,
+        int infoLevel,
+        IntPtr buffer,
+        int bufferSize,
+        out int bytesNeeded);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool CloseServiceHandle(IntPtr handle);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ServiceStatusProcess
+    {
+        public uint ServiceType;
+        public uint CurrentState;
+        public uint ControlsAccepted;
+        public uint Win32ExitCode;
+        public uint ServiceSpecificExitCode;
+        public uint CheckPoint;
+        public uint WaitHint;
+        public uint ProcessId;
+        public uint ServiceFlags;
+    }
 }
