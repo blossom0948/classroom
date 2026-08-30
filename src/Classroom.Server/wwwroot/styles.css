@@ -431,3 +431,5 @@ html[data-theme="dark"] .legal-links button { color: #aab6c9; }
   .install-app-prompt { grid-template-columns: 38px minmax(0, 1fr) auto 22px; bottom: 13px; }
   .install-app-prompt small { display: none; }
 }
+
+.auth-tab { cursor: pointer; }

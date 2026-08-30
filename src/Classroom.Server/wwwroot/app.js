@@ -566,6 +566,8 @@
     });
     $("login-panel").hidden = signup;
     $("signup-panel").hidden = !signup;
+    $("login-error").hidden = true;
+    $("signup-error").hidden = true;
   }
 
   const legalDocuments = {
@@ -728,7 +730,13 @@
     const form = event.currentTarget;
     const errorTarget = $("signup-error");
     errorTarget.hidden = true;
+    const email = $("signup-email").value.trim();
     const password = $("signup-password").value;
+    if (!email || !email.includes("@")) {
+      errorTarget.textContent = "학교 이메일 주소를 입력해 주세요.";
+      errorTarget.hidden = false;
+      return;
+    }
     if (password !== $("signup-password-confirm").value) {
       errorTarget.textContent = "비밀번호가 일치하지 않습니다.";
       errorTarget.hidden = false;
@@ -747,7 +755,7 @@
     setAuthBusy(form, true);
     try {
       const credentials = await firebaseClient().signUpEmail(
-        $("signup-email").value,
+        email,
         password,
         "");
       await finishFirebaseLogin(credentials, {
@@ -764,7 +772,8 @@
 
   $("google-login-button").addEventListener("click", async () => {
     const button = $("google-login-button");
-    const errorTarget = $("login-error");
+    const signupMode = !$("signup-panel").hidden;
+    const errorTarget = signupMode ? $("signup-error") : $("login-error");
     errorTarget.hidden = true;
     button.disabled = true;
     try {
