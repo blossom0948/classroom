@@ -83,8 +83,12 @@
       if (error?.code === "auth/popup-blocked"
         || error?.code === "auth/operation-not-supported-in-this-environment"
         || error?.code === "auth/internal-error") {
-        await auth.signInWithRedirect(provider);
-        return null;
+        try {
+          await auth.signInWithRedirect(provider);
+          return null;
+        } catch (redirectError) {
+          throw friendlyError(redirectError);
+        }
       }
       throw friendlyError(error);
     }
