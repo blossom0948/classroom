@@ -2,6 +2,7 @@ using Blossom.Classroom.Core.Security;
 using Blossom.Classroom.Protocol.Models;
 using Blossom.Classroom.Server.Configuration;
 using Blossom.Classroom.Server.Models;
+using Blossom.Classroom.Server.Security;
 using Blossom.Classroom.Server.Storage;
 
 var tests = new (string Name, Action Run)[]
@@ -15,7 +16,8 @@ var tests = new (string Name, Action Run)[]
     ("teachers cannot access unassigned classes", TeacherScopeIsEnforced),
     ("sqlite restores sessions and enrollment state", SqliteRestoresState),
     ("teacher session tokens can be revoked", TeacherSessionsCanBeRevoked),
-    ("password rotation revokes other teacher sessions", PasswordRotationRevokesOtherSessions)
+    ("password rotation revokes other teacher sessions", PasswordRotationRevokesOtherSessions),
+    ("firebase identities create and reuse a teacher", FirebaseIdentityCreatesTeacher)
 };
 
 var failures = 0;
@@ -301,6 +303,44 @@ static void PasswordRotationRevokesOtherSessions()
         if (Directory.Exists(fixture.RootPath))
         {
             Directory.Delete(fixture.RootPath, recursive: true);
+        }
+    }
+}
+
+static void FirebaseIdentityCreatesTeacher()
+{
+    var rootPath = Path.Combine(Path.GetTempPath(), $"classroom-firebase-tests-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(rootPath);
+    try
+    {
+        var options = new ServerOptions(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            TokenSecurity.HashToken("teacher-token"),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromMinutes(10),
+            Path.Combine(rootPath, "classroom.db"));
+        using var database = new ClassroomDatabase(options.DatabasePath);
+        database.Initialize(options);
+        var identity = new FirebaseIdentity(
+            "firebase-subject-001",
+            "teacher@example.edu",
+            "새 교사",
+            true,
+            "google.com");
+
+        var first = database.CreateOrGetFirebaseTeacher(identity);
+        var second = database.CreateOrGetFirebaseTeacher(identity);
+        Assert(first.Id == second.Id, "Firebase identity created duplicate teachers.");
+        Assert(first.LoginName == "teacher@example.edu", "Firebase email was not used as the login name.");
+        Assert(database.GetClassesForTeacher(first.Id).Count == 1, "Firebase teacher did not receive a starter class.");
+    }
+    finally
+    {
+        if (Directory.Exists(rootPath))
+        {
+            Directory.Delete(rootPath, recursive: true);
         }
     }
 }

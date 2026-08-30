@@ -90,6 +90,10 @@ var classroomDatabase = new ClassroomDatabase(serverOptions.DatabasePath);
 classroomDatabase.Initialize(serverOptions);
 builder.Services.AddSingleton(classroomDatabase);
 builder.Services.AddSingleton<TeacherLoginRateLimiter>();
+builder.Services.AddHttpClient<FirebaseIdentityVerifier>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(8);
+});
 builder.Services.AddSingleton<ClassroomStore>();
 builder.Services.AddSingleton<StudentWebSocketHandler>();
 builder.Services.AddCors(cors => cors.AddPolicy("TeacherConsole", policy =>
@@ -113,8 +117,12 @@ app.Use(async (context, next) =>
         ? "'self'"
         : $"'self' {string.Join(' ', consoleOrigins)}";
     context.Response.Headers["Content-Security-Policy"] =
-        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
-        $"connect-src {connectSources}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+        "default-src 'self'; script-src 'self' https://www.gstatic.com; style-src 'self'; " +
+        "img-src 'self' data: https://lh3.googleusercontent.com; " +
+        $"connect-src {connectSources} https://identitytoolkit.googleapis.com https://securetoken.googleapis.com " +
+        "https://firebaseinstallations.googleapis.com https://www.googleapis.com https://*.firebaseapp.com " +
+        "https://accounts.google.com; frame-src https://*.firebaseapp.com https://accounts.google.com; " +
+        "frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
     await next();
 });
 if (!serverOptions.DevelopmentMode && tlsTerminatedByProxy)
@@ -202,6 +210,61 @@ app.MapPost("/auth/login", (
     }
 
     rateLimiter.Reset(rateLimitKey);
+    var lifetime = serverOptions.TeacherSessionLifetime ?? TimeSpan.FromHours(8);
+    var accessToken = database.CreateTeacherSession(account.Id, lifetime);
+    var classes = database.GetClassesForTeacher(account.Id);
+    return Results.Ok(new TeacherLoginResponse(
+        accessToken,
+        DateTimeOffset.UtcNow.Add(lifetime),
+        account.Id,
+        account.DisplayName,
+        classes));
+});
+
+app.MapPost("/auth/firebase-login", async (
+    HttpContext context,
+    FirebaseLoginRequest? request,
+    ServerOptions serverOptions,
+    ClassroomDatabase database,
+    FirebaseIdentityVerifier verifier,
+    TeacherLoginRateLimiter rateLimiter,
+    CancellationToken cancellationToken) =>
+{
+    if (!serverOptions.FirebaseConfigured)
+    {
+        return Results.Json(
+            new { code = "FIREBASE_NOT_CONFIGURED", message = "Firebase authentication is not configured on the server." },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    var rateLimitKey = $"{context.Connection.RemoteIpAddress}|FIREBASE";
+    if (!rateLimiter.TryAcquire(rateLimitKey))
+    {
+        context.Response.Headers.RetryAfter = "60";
+        return Results.Json(
+            new { code = "LOGIN_RATE_LIMITED", message = "Too many login attempts. Try again later." },
+            statusCode: StatusCodes.Status429TooManyRequests);
+    }
+
+    if (request is null
+        || string.IsNullOrWhiteSpace(request.IdToken)
+        || request.IdToken.Length > 16_384)
+    {
+        return Results.Json(
+            new { code = "INVALID_FIREBASE_TOKEN", message = "A Firebase ID token is required." },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var identity = await verifier.VerifyAsync(request.IdToken, cancellationToken);
+    if (identity is null)
+    {
+        return Results.Json(
+            new { code = "INVALID_FIREBASE_TOKEN", message = "The Firebase sign-in could not be verified." },
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    rateLimiter.Reset(rateLimitKey);
+    var account = database.CreateOrGetFirebaseTeacher(identity);
     var lifetime = serverOptions.TeacherSessionLifetime ?? TimeSpan.FromHours(8);
     var accessToken = database.CreateTeacherSession(account.Id, lifetime);
     var classes = database.GetClassesForTeacher(account.Id);

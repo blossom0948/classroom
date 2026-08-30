@@ -10,7 +10,7 @@ const outputRoot = join(repositoryRoot, "dist");
 await rm(outputRoot, { recursive: true, force: true });
 await mkdir(outputRoot, { recursive: true });
 
-for (const fileName of ["index.html", "styles.css", "app.js", "config.js"]) {
+for (const fileName of ["index.html", "styles.css", "app.js", "config.js", "firebase-auth.js"]) {
   await copyFile(join(sourceRoot, fileName), join(outputRoot, fileName));
 }
 

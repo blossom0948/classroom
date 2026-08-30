@@ -17,6 +17,8 @@
 - 수업 종료 시 집중 모드 자동 정리 및 연결 단절 시 학생 PC fail-safe
 - 장치 연결 해제(revoke), 운영 TLS/reverse proxy 보호, CORS allowlist
 - Cloudflare Pages 정적 교사 콘솔과 Pages Function 기반 HTTPS/WSS 원본 proxy
+- Firebase 이메일 회원가입·로그인, Google 로그인과 Classroom bearer session 교환
+- 교사용 공개 랜딩페이지와 신규 계정 온보딩 흐름
 - Windows 서비스 설치 스크립트, Docker 서버 이미지, GitHub Actions 패키지
 
 화면 몰래 수집, 키 입력·비밀번호·쿠키 수집, webcam/microphone, 임의 원격 셸은

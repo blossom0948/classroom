@@ -19,6 +19,7 @@
   };
 
   const $ = (id) => document.getElementById(id);
+  const landingView = $("landing-view");
   const loginView = $("login-view");
   const appView = $("app-view");
   const loginError = $("login-error");
@@ -67,7 +68,9 @@
     state.teacher = null;
     sessionStorage.removeItem("classroom.teacherToken");
     if (state.pollTimer) clearInterval(state.pollTimer);
-    loginView.hidden = false;
+    state.pollTimer = null;
+    landingView.hidden = false;
+    loginView.hidden = true;
     appView.hidden = true;
   }
 
@@ -95,6 +98,7 @@
     const select = $("class-select");
     select.innerHTML = state.classes.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join("");
     select.value = state.classId;
+    landingView.hidden = true;
     loginView.hidden = true;
     appView.hidden = false;
     await refreshClass();
@@ -365,21 +369,160 @@
     return String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
   }
 
+  function showAuth(mode = "login") {
+    landingView.hidden = true;
+    loginView.hidden = false;
+    appView.hidden = true;
+    setAuthMode(mode);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function showLanding() {
+    landingView.hidden = false;
+    loginView.hidden = true;
+    appView.hidden = true;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function setAuthMode(mode) {
+    const signup = mode === "signup";
+    document.querySelectorAll(".auth-tab").forEach((button) => {
+      const active = button.dataset.authMode === mode;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    $("login-panel").hidden = signup;
+    $("signup-panel").hidden = !signup;
+  }
+
+  function firebaseClient() {
+    if (!window.ClassroomFirebaseAuth) {
+      throw new Error("Firebase 인증 모듈을 불러오지 못했습니다. 페이지를 새로고침해 주세요.");
+    }
+    return window.ClassroomFirebaseAuth;
+  }
+
+  async function finishFirebaseLogin(credentials) {
+    const result = await api("/auth/firebase-login", {
+      method: "POST",
+      body: { idToken: credentials.idToken }
+    });
+    state.token = result.accessToken;
+    sessionStorage.setItem("classroom.teacherToken", state.token);
+    await loadTeacher();
+  }
+
+  function setAuthBusy(form, busy) {
+    form.querySelectorAll("button").forEach((button) => { button.disabled = busy; });
+    form.setAttribute("aria-busy", String(busy));
+  }
+
+  function setFirebaseStatus(message, isError = false) {
+    const target = $("firebase-status");
+    target.textContent = message;
+    target.classList.toggle("error", isError);
+  }
+
   $("login-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     loginError.hidden = true;
+    const form = event.currentTarget;
+    setAuthBusy(form, true);
     try {
-      const result = await api("/auth/login", { method: "POST", body: { loginName: $("login-name").value, password: $("login-password").value } });
-      state.token = result.accessToken;
-      sessionStorage.setItem("classroom.teacherToken", state.token);
-      await loadTeacher();
+      const loginName = $("login-name").value.trim();
+      const password = $("login-password").value;
+      if (loginName.includes("@")) {
+        const credentials = await firebaseClient().signInEmail(loginName, password);
+        await finishFirebaseLogin(credentials);
+      } else {
+        const result = await api("/auth/login", { method: "POST", body: { loginName, password } });
+        state.token = result.accessToken;
+        sessionStorage.setItem("classroom.teacherToken", state.token);
+        await loadTeacher();
+      }
+    } catch (error) {
+      loginError.textContent = error.message;
+      loginError.hidden = false;
+    } finally {
+      setAuthBusy(form, false);
+    }
+  });
+
+  $("signup-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const errorTarget = $("signup-error");
+    errorTarget.hidden = true;
+    const password = $("signup-password").value;
+    if (password !== $("signup-password-confirm").value) {
+      errorTarget.textContent = "비밀번호가 일치하지 않습니다.";
+      errorTarget.hidden = false;
+      return;
+    }
+    if (password.length < 12) {
+      errorTarget.textContent = "비밀번호는 12자 이상이어야 합니다.";
+      errorTarget.hidden = false;
+      return;
+    }
+    setAuthBusy(form, true);
+    try {
+      const credentials = await firebaseClient().signUpEmail(
+        $("signup-email").value,
+        password,
+        $("signup-display-name").value);
+      await finishFirebaseLogin(credentials);
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
+    } finally {
+      setAuthBusy(form, false);
+    }
+  });
+
+  $("google-login-button").addEventListener("click", async () => {
+    const button = $("google-login-button");
+    const errorTarget = $("login-error");
+    errorTarget.hidden = true;
+    button.disabled = true;
+    try {
+      await finishFirebaseLogin(await firebaseClient().signInGoogle());
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  $("forgot-password-button").addEventListener("click", async () => {
+    const email = $("login-name").value.trim();
+    loginError.hidden = true;
+    if (!email.includes("@")) {
+      loginError.textContent = "비밀번호 재설정은 이메일 계정에만 사용할 수 있습니다.";
+      loginError.hidden = false;
+      return;
+    }
+    try {
+      await firebaseClient().sendPasswordReset(email);
+      showToast("비밀번호 재설정 메일을 보냈습니다.");
     } catch (error) {
       loginError.textContent = error.message;
       loginError.hidden = false;
     }
   });
+
+  document.querySelectorAll(".auth-tab").forEach((button) => {
+    button.addEventListener("click", () => setAuthMode(button.dataset.authMode));
+  });
+  $("landing-login-button").addEventListener("click", () => showAuth("login"));
+  $("landing-start-button").addEventListener("click", () => showAuth("signup"));
+  $("principles-login-button").addEventListener("click", () => showAuth("login"));
+  $("landing-cta-button").addEventListener("click", () => showAuth("signup"));
+  $("back-to-landing").addEventListener("click", (event) => { event.preventDefault(); showLanding(); });
+
   $("logout-button").addEventListener("click", async () => {
     try { await api("/auth/logout", { method: "POST" }); } catch (_) { /* local logout still clears the token */ }
+    try { await window.ClassroomFirebaseAuth?.signOut(); } catch (_) { /* local logout still clears the token */ }
     clearSession();
   });
   $("class-select").addEventListener("change", async (event) => {
@@ -500,7 +643,18 @@
     })
     .catch(() => { $("dev-login-hint").hidden = true; });
 
+  const firebaseReady = window.ClassroomFirebaseAuth?.isConfigured() === true;
+  $("google-login-button").disabled = !firebaseReady;
+  setFirebaseStatus(firebaseReady
+    ? "Google 로그인과 이메일 회원가입을 사용할 수 있습니다."
+    : "Google 로그인과 이메일 회원가입은 Firebase 설정 후 사용할 수 있습니다.");
+
   if (state.token) {
-    loadTeacher().catch((error) => { clearSession(); loginError.textContent = error.message; loginError.hidden = false; });
+    loadTeacher().catch((error) => {
+      clearSession();
+      showAuth("login");
+      loginError.textContent = error.message;
+      loginError.hidden = false;
+    });
   }
 })();

@@ -32,6 +32,8 @@ CLASSROOM_DATABASE_PATH=/data/classroom.db
 CLASSROOM_BOOTSTRAP_TEACHER_LOGIN=teacher
 CLASSROOM_BOOTSTRAP_TEACHER_PASSWORD=<12자 이상의 무작위 초기 비밀번호>
 CLASSROOM_CONSOLE_ORIGINS=https://classroom-2en.pages.dev
+CLASSROOM_FIREBASE_PROJECT_ID=<Firebase project id>
+CLASSROOM_FIREBASE_WEB_API_KEY=<Firebase Web API key>
 ```
 
 서버는 인터넷에 평문 HTTP로 직접 공개하지 않는다. HTTPS reverse proxy 또는
@@ -65,7 +67,26 @@ GitHub Actions의 `Classroom-Windows` 압축을 푼 뒤 관리자 PowerShell에�
 application의 service를 `http://127.0.0.1:48240`으로 설정한다. Windows가
 재시작되어도 `ClassroomServer` 서비스가 자동 시작되어야 한다.
 
-## 2. Cloudflare Pages 설정
+## 2. Firebase Authentication 설정
+
+Classroom의 공개 콘솔은 Firebase Authentication으로 신규 교사 계정을 만들고
+Google 계정 로그인을 처리한다. Firebase Console에서 별도 Classroom 프로젝트를
+사용하고 Authentication의 Email/Password와 Google provider를 활성화한다.
+웹 앱의 Firebase config는 `src/Classroom.Server/wwwroot/config.js`에 넣고,
+서버에는 같은 프로젝트의 `projectId`와 Web API key를 각각
+`CLASSROOM_FIREBASE_PROJECT_ID`, `CLASSROOM_FIREBASE_WEB_API_KEY`로 설정한다.
+Web API key는 웹 앱 식별자이며 비밀번호나 서비스 계정 키를 저장하지 않는다.
+새 계정은 Firebase ID token을 `/auth/firebase-login`으로 보내고, 서버가 Firebase
+Identity Toolkit에서 검증한 뒤 SQLite teacher/session으로 연결한다.
+
+Firebase Authentication의 승인 도메인에는 다음 주소를 등록한다.
+
+```text
+classroom-2en.pages.dev
+localhost
+```
+
+## 3. Cloudflare Pages 설정
 
 `classroom-2en` Pages project의 Git production branch를 `main`으로 설정한다.
 
@@ -85,7 +106,7 @@ Git integration을 유지하면 `main` push마다 Pages가 `dist`를 다시 만�
 [Cloudflare Pages build configuration](https://developers.cloudflare.com/pages/configuration/build-configuration/)과
 [Git integration](https://developers.cloudflare.com/pages/get-started/git-integration/)을 참고한다.
 
-## 3. 배포 검증
+## 4. 배포 검증
 
 다음 세 요청이 모두 성공해야 한다.
 
@@ -101,6 +122,7 @@ Invoke-WebRequest https://classroom-2en.pages.dev/
 - `/health` → `status: running`
 - `/health/ready` → `status: ready`, `database: available`
 - 로그인 → bearer token 발급
+- 신규 이메일 회원가입 또는 Google 로그인 → Firebase session 교환 → bearer token 발급
 - 학생 등록 파일의 `serverUrl` → `wss://classroom-2en.pages.dev`
 - Student Service → `/ws/student?deviceId=...`에서 101 WebSocket upgrade
 
@@ -108,7 +130,7 @@ Invoke-WebRequest https://classroom-2en.pages.dev/
 교사 로그인 후 수업 시작, 학생 heartbeat, 메시지 ACK/result, 수업 종료 집중
 모드 해제를 차례로 확인한다.
 
-## 4. 기존 404의 원인
+## 5. 기존 404의 원인
 
 이 저장소의 Teacher Console은 `src/Classroom.Server/wwwroot`에 있었지만 Pages
 project가 그 폴더를 build output으로 사용하지 않았다. 따라서 Git push와
@@ -120,7 +142,7 @@ GitHub Actions가 성공해도 Pages에는 root `index.html`이 없어 404가 �
 SQLite, WSS와 명령 routing은 별도 `Classroom.Server` 원본이 계속 실행되어야
 한다.
 
-## 5. 복구
+## 6. 복구
 
 - Pages 오류: 마지막 정상 Git commit으로 production deployment를 rollback한다.
 - 서버 오류: `/health/ready`와 Windows service/container log를 확인한다.

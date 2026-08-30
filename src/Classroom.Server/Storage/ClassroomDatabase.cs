@@ -12,7 +12,7 @@ namespace Blossom.Classroom.Server.Storage;
 
 public sealed class ClassroomDatabase : IDisposable
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     private readonly string connectionString;
 
@@ -68,6 +68,14 @@ public sealed class ClassroomDatabase : IDisposable
             throw new InvalidOperationException(
                 $"Classroom database schema {version} is newer than supported schema {CurrentSchemaVersion}.");
         }
+        else if (version < CurrentSchemaVersion)
+        {
+            ExecuteNonQuery(
+                connection,
+                transaction,
+                "UPDATE SchemaInfo SET Version = @version WHERE Id = 1;",
+                ("@version", CurrentSchemaVersion));
+        }
 
         ExecuteNonQuery(connection, transaction, """
             CREATE TABLE IF NOT EXISTS Users (
@@ -79,6 +87,14 @@ public sealed class ClassroomDatabase : IDisposable
                 PasswordHash TEXT NOT NULL,
                 IsActive INTEGER NOT NULL DEFAULT 1,
                 CreatedAtUtc TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS TeacherIdentities (
+                Provider TEXT NOT NULL,
+                Subject TEXT NOT NULL,
+                TeacherId TEXT NOT NULL,
+                Email TEXT NULL,
+                CreatedAtUtc TEXT NOT NULL,
+                PRIMARY KEY (Provider, Subject)
             );
             CREATE TABLE IF NOT EXISTS Classes (
                 Id TEXT PRIMARY KEY,
@@ -276,6 +292,105 @@ public sealed class ClassroomDatabase : IDisposable
         command.Parameters.AddWithValue("@passwordHash", passwordHash);
         command.Parameters.AddWithValue("@teacherId", ToDb(teacherId));
         return command.ExecuteNonQuery() == 1;
+    }
+
+    public TeacherAccount CreateOrGetFirebaseTeacher(FirebaseIdentity identity)
+    {
+        if (string.IsNullOrWhiteSpace(identity.Subject))
+        {
+            throw new ArgumentException("A Firebase subject is required.", nameof(identity));
+        }
+
+        var provider = string.IsNullOrWhiteSpace(identity.Provider)
+            ? "firebase"
+            : identity.Provider.Trim();
+        var email = identity.Email.Trim().ToLowerInvariant();
+        var displayName = string.IsNullOrWhiteSpace(identity.DisplayName)
+            ? email
+            : identity.DisplayName.Trim();
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            displayName = "새 교사";
+        }
+
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        var account = FindTeacherByIdentity(connection, transaction, provider, identity.Subject.Trim());
+        if (account is not null)
+        {
+            transaction.Commit();
+            return account;
+        }
+
+        if (identity.EmailVerified && !string.IsNullOrWhiteSpace(email))
+        {
+            account = FindTeacherByLogin(connection, transaction, email);
+        }
+
+        if (account is null)
+        {
+            var loginName = CreateFirebaseLoginName(
+                connection,
+                transaction,
+                email,
+                identity.Subject.Trim());
+            var teacherId = Guid.NewGuid();
+            var schoolId = Guid.NewGuid();
+            var classId = Guid.NewGuid();
+            account = new TeacherAccount(
+                teacherId,
+                schoolId,
+                "Teacher",
+                loginName,
+                displayName,
+                PasswordSecurity.HashPassword(TokenSecurity.CreateToken()));
+
+            ExecuteNonQuery(
+                connection,
+                transaction,
+                """
+                INSERT INTO Users
+                    (Id, SchoolId, Role, LoginName, DisplayName, PasswordHash, IsActive, CreatedAtUtc)
+                VALUES
+                    (@id, @schoolId, 'Teacher', @loginName, @displayName, @passwordHash, 1, @createdAtUtc);
+                """,
+                ("@id", ToDb(account.Id)),
+                ("@schoolId", ToDb(account.SchoolId)),
+                ("@loginName", account.LoginName),
+                ("@displayName", account.DisplayName),
+                ("@passwordHash", account.PasswordHash),
+                ("@createdAtUtc", ToDb(DateTimeOffset.UtcNow)));
+            ExecuteNonQuery(
+                connection,
+                transaction,
+                """
+                INSERT INTO Classes (Id, SchoolId, TeacherId, Name, DefaultSubject)
+                VALUES (@id, @schoolId, @teacherId, @name, @subject);
+                """,
+                ("@id", ToDb(classId)),
+                ("@schoolId", ToDb(schoolId)),
+                ("@teacherId", ToDb(teacherId)),
+                ("@name", "내 학급"),
+                ("@subject", "정보"));
+        }
+
+        ExecuteNonQuery(
+            connection,
+            transaction,
+            """
+            INSERT OR IGNORE INTO TeacherIdentities
+                (Provider, Subject, TeacherId, Email, CreatedAtUtc)
+            VALUES
+                (@provider, @subject, @teacherId, @email, @createdAtUtc);
+            """,
+            ("@provider", provider),
+            ("@subject", identity.Subject.Trim()),
+            ("@teacherId", ToDb(account.Id)),
+            ("@email", string.IsNullOrWhiteSpace(email) ? null : email),
+            ("@createdAtUtc", ToDb(DateTimeOffset.UtcNow)));
+
+        transaction.Commit();
+        return account;
     }
 
     public bool TeacherHasClass(Guid teacherId, Guid classId, out Guid schoolId)
@@ -750,6 +865,76 @@ public sealed class ClassroomDatabase : IDisposable
 
     private static DateTimeOffset ParseDate(string value) =>
         DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+
+    private static TeacherAccount? FindTeacherByIdentity(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string provider,
+        string subject)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT users.Id, users.SchoolId, users.Role, users.LoginName, users.DisplayName, users.PasswordHash
+            FROM TeacherIdentities AS identities
+            INNER JOIN Users AS users ON users.Id = identities.TeacherId
+            WHERE identities.Provider = @provider
+              AND identities.Subject = @subject
+              AND users.Role = 'Teacher'
+              AND users.IsActive = 1;
+            """;
+        AddParameters(
+            command,
+            ("@provider", provider),
+            ("@subject", subject));
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadTeacher(reader) : null;
+    }
+
+    private static TeacherAccount? FindTeacherByLogin(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string loginName)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT Id, SchoolId, Role, LoginName, DisplayName, PasswordHash
+            FROM Users
+            WHERE LoginName = @loginName AND Role = 'Teacher' AND IsActive = 1;
+            """;
+        AddParameters(command, ("@loginName", loginName));
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadTeacher(reader) : null;
+    }
+
+    private static string CreateFirebaseLoginName(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string email,
+        string subject)
+    {
+        var baseName = !string.IsNullOrWhiteSpace(email) && email.Length <= 64
+            ? email
+            : $"firebase-{subject[..Math.Min(subject.Length, 24)]}";
+        if (FindTeacherByLogin(connection, transaction, baseName) is null)
+        {
+            return baseName;
+        }
+
+        var suffix = $"-{subject[..Math.Min(subject.Length, 12)]}";
+        var availableLength = Math.Max(3, 64 - suffix.Length);
+        return $"{baseName[..Math.Min(baseName.Length, availableLength)]}{suffix}";
+    }
+
+    private static TeacherAccount ReadTeacher(SqliteDataReader reader) =>
+        new(
+            ParseGuid(reader.GetString(0)),
+            ParseGuid(reader.GetString(1)),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetString(5));
 }
 
 public sealed record TeacherAccount(

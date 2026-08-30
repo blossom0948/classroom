@@ -44,6 +44,9 @@ public sealed record TeacherLoginRequest(
     string LoginName,
     string Password);
 
+public sealed record FirebaseLoginRequest(
+    string IdToken);
+
 public sealed record TeacherLoginResponse(
     string AccessToken,
     DateTimeOffset ExpiresAtUtc,

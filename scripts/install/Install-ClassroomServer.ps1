@@ -14,7 +14,11 @@ param(
 
     [string]$InstallRoot = (Join-Path $env:ProgramFiles "Blossom Classroom Server"),
 
-    [string]$DatabasePath = (Join-Path $env:ProgramData "Blossom Classroom\data\classroom.db")
+    [string]$DatabasePath = (Join-Path $env:ProgramData "Blossom Classroom\data\classroom.db"),
+
+    [string]$FirebaseProjectId = "",
+
+    [string]$FirebaseWebApiKey = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -77,7 +81,9 @@ $serviceEnvironment = @(
     "CLASSROOM_BOOTSTRAP_TEACHER_LOGIN=$BootstrapTeacherLogin",
     "CLASSROOM_BOOTSTRAP_TEACHER_PASSWORD=$BootstrapTeacherPassword",
     "CLASSROOM_TLS_TERMINATED_BY_PROXY=true",
-    "CLASSROOM_CONSOLE_ORIGINS=$ConsoleOrigins"
+    "CLASSROOM_CONSOLE_ORIGINS=$ConsoleOrigins",
+    "CLASSROOM_FIREBASE_PROJECT_ID=$FirebaseProjectId",
+    "CLASSROOM_FIREBASE_WEB_API_KEY=$FirebaseWebApiKey"
 )
 New-ItemProperty -Path $serviceRegistryPath -Name "Environment" -PropertyType MultiString -Value $serviceEnvironment -Force | Out-Null
 

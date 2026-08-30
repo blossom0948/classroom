@@ -3,24 +3,85 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Classroom Teacher Console</title>
+  <title>Classroom — 안전한 교실 운영</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <section id="login-view" class="login-shell">
-    <div class="login-card">
-      <div class="eyebrow">BLOSSOM CLASSROOM</div>
-      <h1>수업을 한눈에<br>안전하게 관리하세요.</h1>
-      <p class="muted">담당 학급의 장치 상태와 수업 명령을 한 화면에서 확인합니다.</p>
-      <form id="login-form" class="stack">
-        <label>교사 계정<input id="login-name" autocomplete="username" required placeholder="teacher"></label>
-        <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" required></label>
-        <button class="primary wide" type="submit">로그인</button>
-        <p id="login-error" class="error" hidden></p>
-      </form>
-      <p id="dev-login-hint" class="login-hint" hidden>개발 환경 기본 계정: <code>teacher</code> / <code>ChangeMe!Classroom123</code></p>
+  <section id="landing-view" class="landing-page">
+    <header class="landing-nav">
+      <a class="landing-brand" href="#top" aria-label="Classroom 홈"><span class="brand-mark">C</span><span>Classroom</span></a>
+      <nav class="landing-links" aria-label="소개 메뉴">
+        <a href="#how-it-works">사용 방법</a>
+        <a href="#principles">운영 원칙</a>
+      </nav>
+      <button id="landing-login-button" class="secondary">로그인</button>
+    </header>
+    <main id="top">
+      <section class="landing-hero">
+        <div class="hero-copy">
+          <div class="eyebrow">BLOSSOM CLASSROOM · FOR SCHOOLS</div>
+          <h1>교실의 흐름을,<br><em>안전하게</em> 연결합니다.</h1>
+          <p>학생 PC의 수업 상태를 투명하게 확인하고, 필요한 안내를 학급 전체에 정확하게 전달하세요. Classroom은 교사와 학생의 수업 시간을 더 단순하게 만듭니다.</p>
+          <div class="landing-actions"><button id="landing-start-button" class="primary">무료로 시작하기 <span>→</span></button><a href="#how-it-works" class="text-link">어떻게 작동하나요? <span>↓</span></a></div>
+          <div class="landing-trust"><span class="trust-dot"></span><span>수업에 필요한 상태만 확인</span><span class="trust-divider"></span><span>감사 기록과 안전한 연결</span></div>
+        </div>
+        <div class="hero-visual" aria-label="Classroom 교사 콘솔 미리보기">
+          <div class="visual-glow"></div>
+          <div class="console-preview">
+            <div class="preview-top"><div class="preview-brand"><span class="mini-mark">C</span><strong>Classroom</strong></div><span class="preview-pill">TODAY'S CLASS</span></div>
+            <div class="preview-heading"><div><span class="preview-kicker">2학년 3반</span><strong>수업 현황</strong></div><div class="preview-online"><b>24 / 28</b><small>온라인</small></div></div>
+            <div class="preview-toolbar"><span class="preview-filter active">전체</span><span class="preview-filter">온라인</span><span class="preview-filter">집중 모드</span><span class="preview-search">학생·PC 검색</span></div>
+            <div class="preview-grid"><div class="preview-student"><span class="student-avatar blue">김</span><div><b>김민수</b><small>DESKTOP-7A2</small></div><span class="preview-status online">온라인</span><div class="preview-app">▣ Chrome <small>classroom.google.com</small></div></div><div class="preview-student"><span class="student-avatar violet">이</span><div><b>이서윤</b><small>DESKTOP-1F9</small></div><span class="preview-status focus">집중 모드</span><div class="preview-app">▣ Word <small>현재 문서 작업 중</small></div></div><div class="preview-student muted-card"><span class="student-avatar orange">박</span><div><b>박지호</b><small>DESKTOP-3D8</small></div><span class="preview-status">오프라인</span><div class="preview-app">— <small>마지막 연결 4분 전</small></div></div><div class="preview-student"><span class="student-avatar green">최</span><div><b>최하은</b><small>DESKTOP-9B1</small></div><span class="preview-status online">온라인</span><div class="preview-app">▣ Edge <small>docs.google.com</small></div></div></div>
+            <div class="preview-footer"><span>● 실시간 동기화 중</span><button>메시지 보내기</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="how-it-works" class="landing-section">
+        <div class="section-intro"><span class="eyebrow">A CLEARER CLASSROOM</span><h2>교사가 수업에 집중할 수 있도록</h2><p>복잡한 원격 관리 대신, 수업에 필요한 세 가지 흐름만 선명하게 제공합니다.</p></div>
+        <div class="feature-grid"><article class="feature-card"><span class="feature-number">01</span><span class="feature-icon blue-icon">◉</span><h3>한눈에 보는 수업 상태</h3><p>학생별 온라인 상태, 현재 앱, 네트워크와 배터리를 학급 단위로 확인합니다.</p><a href="#principles">자세히 보기 <span>→</span></a></article><article class="feature-card highlighted"><span class="feature-number">02</span><span class="feature-icon violet-icon">✦</span><h3>필요한 순간의 안내</h3><p>메시지, 집중 모드, 안전한 URL과 승인 앱을 수업 흐름에 맞춰 보냅니다.</p><a href="#principles">자세히 보기 <span>→</span></a></article><article class="feature-card"><span class="feature-number">03</span><span class="feature-icon green-icon">↗</span><h3>기록으로 남는 운영</h3><p>장치 등록부터 명령 결과까지 서버 감사 기록으로 남겨 다음 수업을 준비합니다.</p><a href="#principles">자세히 보기 <span>→</span></a></article></div>
+      </section>
+
+      <section id="principles" class="principles-section"><div class="principles-copy"><span class="eyebrow">BUILT FOR TRUST</span><h2>보여주고, 확인하고,<br><em>안전하게</em> 연결합니다.</h2><p>Classroom은 학생 화면을 몰래 수집하거나 임의의 원격 셸을 실행하지 않습니다. 학생에게 보이는 상태와 교사가 보낸 명령만 관리합니다.</p><button id="principles-login-button" class="secondary">교사 콘솔 시작하기 <span>→</span></button></div><div class="principles-list"><div><span class="principle-check">✓</span><div><strong>최소한의 상태 데이터</strong><p>수업에 필요한 앱·도메인·연결 상태만 표시합니다.</p></div></div><div><span class="principle-check">✓</span><div><strong>학급 범위 권한</strong><p>교사는 배정된 학급의 장치만 조회하고 제어합니다.</p></div></div><div><span class="principle-check">✓</span><div><strong>기록 가능한 명령</strong><p>메시지와 집중 모드의 전달·결과를 감사 이벤트로 남깁니다.</p></div></div></div></section>
+
+      <section class="landing-cta"><div><span class="eyebrow">READY WHEN YOU ARE</span><h2>다음 수업을 더 가볍게 시작하세요.</h2></div><button id="landing-cta-button" class="primary">Classroom 시작하기 <span>→</span></button></section>
+    </main>
+    <footer class="landing-footer"><span>© Blossom Classroom</span><span>수업을 위한 투명한 장치 관리</span></footer>
+  </section>
+
+  <section id="login-view" class="auth-shell" hidden>
+    <div class="auth-topbar"><a class="landing-brand" href="#top" id="back-to-landing"><span class="brand-mark">C</span><span>Classroom</span></a><span class="auth-topnote">학교용 수업 운영 콘솔</span></div>
+    <div class="auth-layout">
+      <div class="auth-copy"><div class="eyebrow">WELCOME TO CLASSROOM</div><h1>교실을 연결하는<br><em>첫 번째 단계</em></h1><p>교사 계정을 만들고 학급을 설정하면 학생 PC를 안전하게 등록할 수 있습니다.</p><div class="auth-benefits"><span>✓ 학급별 장치 상태</span><span>✓ 수업 명령과 감사 기록</span><span>✓ 안전한 학생용 연결</span></div></div>
+      <div class="login-card auth-card">
+        <div class="auth-card-heading"><div><span class="eyebrow">TEACHER ACCOUNT</span><h2>반가워요.</h2></div><span class="auth-lock">✦</span></div>
+        <div class="auth-tabs" role="tablist"><button type="button" class="auth-tab active" data-auth-mode="login" role="tab" aria-selected="true">로그인</button><button type="button" class="auth-tab" data-auth-mode="signup" role="tab" aria-selected="false">회원가입</button></div>
+        <div id="login-panel" class="auth-panel">
+          <form id="login-form" class="stack">
+            <label>이메일 또는 기존 교사 계정<input id="login-name" autocomplete="username" required placeholder="name@example.com 또는 teacher"></label>
+            <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" required></label>
+            <div class="form-row"><button id="forgot-password-button" class="inline-link" type="button">비밀번호를 잊으셨나요?</button></div>
+            <button class="primary wide" type="submit">로그인 <span>→</span></button>
+            <p id="login-error" class="error" hidden></p>
+          </form>
+          <p id="dev-login-hint" class="login-hint" hidden>기존 운영 계정: <code>teacher</code> · 초기 비밀번호는 설치 시 발급된 자격증명 파일을 확인하세요.</p>
+        </div>
+        <div id="signup-panel" class="auth-panel" hidden>
+          <form id="signup-form" class="stack">
+            <label>이름<input id="signup-display-name" autocomplete="name" required maxlength="80" placeholder="홍길동 선생님"></label>
+            <label>이메일<input id="signup-email" type="email" autocomplete="email" required placeholder="teacher@school.ac.kr"></label>
+            <label>비밀번호<input id="signup-password" type="password" autocomplete="new-password" minlength="12" required placeholder="12자 이상"></label>
+            <label>비밀번호 확인<input id="signup-password-confirm" type="password" autocomplete="new-password" minlength="12" required></label>
+            <button class="primary wide" type="submit">계정 만들기 <span>→</span></button>
+            <p id="signup-error" class="error" hidden></p>
+          </form>
+        </div>
+        <div class="auth-divider"><span>또는</span></div>
+        <button id="google-login-button" type="button" class="google-button"><span class="google-g">G</span> Google 계정으로 계속</button>
+        <p id="firebase-status" class="auth-footnote">Google 로그인과 이메일 회원가입은 Firebase Authentication을 사용합니다.</p>
+      </div>
     </div>
   </section>
 
@@ -139,7 +200,10 @@
       <p id="enrollment-error" class="error" hidden></p>
     </form>
   </dialog>
+  <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js" defer></script>
   <script src="/config.js"></script>
+  <script src="/firebase-auth.js" defer></script>
   <script src="/app.js" defer></script>
 </body>
 </html>

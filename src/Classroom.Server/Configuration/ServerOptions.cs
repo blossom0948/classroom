@@ -16,7 +16,9 @@ public sealed record ServerOptions(
     string BootstrapTeacherDisplayName = "담임 교사",
     string BootstrapClassName = "2학년 3반",
     string BootstrapClassSubject = "정보",
-    TimeSpan? TeacherSessionLifetime = null)
+    TimeSpan? TeacherSessionLifetime = null,
+    string FirebaseProjectId = "",
+    string FirebaseWebApiKey = "")
 {
     public static readonly Guid DefaultSchoolId =
         Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -76,6 +78,12 @@ public sealed record ServerOptions(
             480,
             minimum: 5,
             maximum: 1_440);
+        var firebaseProjectId = configuration["Classroom:FirebaseProjectId"]
+            ?? Environment.GetEnvironmentVariable("CLASSROOM_FIREBASE_PROJECT_ID")
+            ?? string.Empty;
+        var firebaseWebApiKey = configuration["Classroom:FirebaseWebApiKey"]
+            ?? Environment.GetEnvironmentVariable("CLASSROOM_FIREBASE_WEB_API_KEY")
+            ?? string.Empty;
 
         return new ServerOptions(
             ParseGuid(configuration["Classroom:DevSchoolId"], DefaultSchoolId),
@@ -99,8 +107,14 @@ public sealed record ServerOptions(
             configuration["Classroom:BootstrapTeacherDisplayName"] ?? "담임 교사",
             configuration["Classroom:BootstrapClassName"] ?? "2학년 3반",
             configuration["Classroom:BootstrapClassSubject"] ?? "정보",
-            TimeSpan.FromMinutes(sessionMinutes));
+            TimeSpan.FromMinutes(sessionMinutes),
+            firebaseProjectId.Trim(),
+            firebaseWebApiKey.Trim());
     }
+
+    public bool FirebaseConfigured =>
+        !string.IsNullOrWhiteSpace(FirebaseProjectId)
+        && !string.IsNullOrWhiteSpace(FirebaseWebApiKey);
 
     public bool CanTeacherAccess(Guid teacherId, Guid classId) =>
         teacherId == DevelopmentTeacherId && classId == DevelopmentClassId;
