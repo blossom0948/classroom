@@ -56,11 +56,7 @@
   }
 
   function logAuthFailure(stage, error) {
-    console.error("[Classroom] Firebase auth failure", {
-      stage,
-      code: error?.code || "",
-      message: error?.message || ""
-    });
+    console.error(`[Classroom] Firebase auth failure stage=${stage} code=${error?.code || "unknown"} message=${error?.message || "unknown"}`);
   }
 
   async function signInEmail(email, password) {
