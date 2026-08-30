@@ -26,7 +26,7 @@
   ],
   "vars": {
     "CONSOLE_ORIGIN": "https://classroom-2en.pages.dev",
-    "FIREBASE_WEB_API_KEY": "AIzaSyA0y-8IrlODAIBnaMw266LP5mJ0acHoQ2k"
+    "FIREBASE_WEB_API_KEY": "AIzaSyAYjzmqcVVIgBFgpzji7MOn2NVfl-B2N3c"
   },
   "observability": {
     "enabled": true

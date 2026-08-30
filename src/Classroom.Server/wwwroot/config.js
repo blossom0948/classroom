@@ -1,11 +1,11 @@
 window.CLASSROOM_CONFIG = Object.freeze({
   apiOrigin: "",
   firebase: {
-    apiKey: "AIzaSyA0y-8IrlODAIBnaMw266LP5mJ0acHoQ2k",
-    authDomain: "tngodvudrk-99d1d.firebaseapp.com",
-    projectId: "tngodvudrk-99d1d",
-    storageBucket: "tngodvudrk-99d1d.firebasestorage.app",
-    messagingSenderId: "350722737285",
-    appId: "1:350722737285:web:5587951aa6bf7462a555ec"
+    apiKey: "AIzaSyAYjzmqcVVIgBFgpzji7MOn2NVfl-B2N3c",
+    authDomain: "classroom-production-52ae6.firebaseapp.com",
+    projectId: "classroom-production-52ae6",
+    storageBucket: "classroom-production-52ae6.firebasestorage.app",
+    messagingSenderId: "151092222190",
+    appId: "1:151092222190:web:841e2701677167c83bfbff"
   }
 });
