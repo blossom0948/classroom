@@ -643,11 +643,24 @@
     })
     .catch(() => { $("dev-login-hint").hidden = true; });
 
-  const firebaseReady = window.ClassroomFirebaseAuth?.isConfigured() === true;
-  $("google-login-button").disabled = !firebaseReady;
-  setFirebaseStatus(firebaseReady
-    ? "Google 로그인과 이메일 회원가입을 사용할 수 있습니다."
-    : "Google 로그인과 이메일 회원가입은 Firebase 설정 후 사용할 수 있습니다.");
+  function refreshFirebaseAvailability() {
+    const firebaseReady = window.ClassroomFirebaseAuth?.isConfigured() === true;
+    $("google-login-button").disabled = !firebaseReady;
+    setFirebaseStatus(firebaseReady
+      ? "Google 로그인과 이메일 회원가입을 사용할 수 있습니다."
+      : "Google 로그인과 이메일 회원가입은 Firebase 설정 후 사용할 수 있습니다.");
+    return firebaseReady;
+  }
+
+  if (!refreshFirebaseAvailability()) {
+    let firebaseChecks = 0;
+    const firebaseReadinessTimer = window.setInterval(() => {
+      firebaseChecks += 1;
+      if (refreshFirebaseAvailability() || firebaseChecks >= 30) {
+        window.clearInterval(firebaseReadinessTimer);
+      }
+    }, 250);
+  }
 
   if (state.token) {
     loadTeacher().catch((error) => {
