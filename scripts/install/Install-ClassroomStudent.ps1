@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$PackageRoot,
+    [string]$PackageRoot = $PSScriptRoot,
 
     [string]$EnrollmentFile,
 
@@ -110,6 +109,20 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 
 $resolvedPackageRoot = (Resolve-Path -LiteralPath $PackageRoot).Path
+if (-not $EnrollmentFile -and -not $UpgradeOnly) {
+    $enrollmentCandidates = @(Get-ChildItem -LiteralPath $resolvedPackageRoot -Filter "classroom-enrollment-*.json" -File -ErrorAction SilentlyContinue)
+    if ($enrollmentCandidates.Count -eq 1) {
+        $EnrollmentFile = $enrollmentCandidates[0].FullName
+        Write-Host "등록 파일을 자동으로 찾았습니다: $($enrollmentCandidates[0].Name)"
+    }
+    elseif ($enrollmentCandidates.Count -eq 0) {
+        throw "패키지 폴더에서 classroom-enrollment-*.json 등록 파일을 찾지 못했습니다. 교사 콘솔에서 내려받은 등록 파일을 이 폴더에 넣어 주세요."
+    }
+    else {
+        $names = ($enrollmentCandidates | ForEach-Object Name) -join ", "
+        throw "등록 파일이 여러 개입니다 ($names). Install-ClassroomStudent.cmd에 사용할 등록 파일을 끌어다 놓거나 -EnrollmentFile을 지정해 주세요."
+    }
+}
 $serviceExecutable = Get-FirstExistingFile -Root $resolvedPackageRoot -Candidates @(
     "Classroom.Student.Service.exe",
     "student-service\Classroom.Student.Service.exe",

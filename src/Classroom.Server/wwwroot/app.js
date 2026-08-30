@@ -15,7 +15,9 @@
     commandTargetIds: null,
     pollTimer: null,
     toastTimer: null,
-    enrollmentBundle: null
+    enrollmentBundle: null,
+    theme: localStorage.getItem("classroom.theme") || "light",
+    activeSection: "class"
   };
 
   const $ = (id) => document.getElementById(id);
@@ -66,6 +68,11 @@
   function clearSession() {
     state.token = null;
     state.teacher = null;
+    state.classes = [];
+    state.classId = null;
+    state.session = null;
+    state.students = [];
+    state.selectedDeviceIds.clear();
     sessionStorage.removeItem("classroom.teacherToken");
     if (state.pollTimer) clearInterval(state.pollTimer);
     state.pollTimer = null;
@@ -101,6 +108,8 @@
     landingView.hidden = true;
     loginView.hidden = true;
     appView.hidden = false;
+    applyTheme(state.theme);
+    loadLessonNote();
     await refreshClass();
     if (state.pollTimer) clearInterval(state.pollTimer);
     state.pollTimer = setInterval(() => refreshClass().catch((error) => showToast(error.message)), 2000);
@@ -128,12 +137,21 @@
 
   function renderHeader() {
     const online = state.students.filter((student) => student.online).length;
+    const offline = state.students.length - online;
+    const focus = state.students.filter((student) => student.policyApplied).length;
     $("online-count").textContent = `${online} / ${state.students.length}`;
+    $("total-count").textContent = String(state.students.length);
+    $("metric-online-count").textContent = String(online);
+    $("offline-count").textContent = String(offline);
+    $("focus-count").textContent = String(focus);
     $("session-caption").textContent = state.session
       ? `${state.session.subject} · ${formatTime(state.session.startedAtUtc)} 시작`
       : "활성 수업이 없습니다.";
     $("end-session-button").hidden = !state.session;
     $("offline-banner").hidden = Boolean(state.session);
+    $("offline-banner-text").textContent = state.session
+      ? "현재 진행 중인 수업이 없습니다. 아래에서 새 수업을 시작하세요."
+      : "현재 진행 중인 수업이 없습니다. 아래에서 새 수업을 시작하세요.";
     renderSelection();
   }
 
@@ -195,6 +213,15 @@
 
   function renderActivity() {
     const table = $("activity-table");
+    const online = state.students.filter((student) => student.online).length;
+    const focus = state.students.filter((student) => student.policyApplied).length;
+    const offline = state.students.length - online;
+    $("activity-summary").innerHTML = `<article class="metric-card metric-online"><span class="metric-label">연결됨</span><strong>${online}</strong><small>학생 PC</small></article><article class="metric-card metric-offline"><span class="metric-label">확인 필요</span><strong>${offline}</strong><small>오프라인</small></article><article class="metric-card metric-focus"><span class="metric-label">집중 모드</span><strong>${focus}</strong><small>정책 적용</small></article>`;
+    const insights = [];
+    if (offline > 0) insights.push(`<span class="insight-dot warning"></span><strong>${offline}명</strong>의 장치가 오프라인입니다.`);
+    if (focus > 0) insights.push(`<span class="insight-dot focus"></span><strong>${focus}명</strong>에게 집중 모드가 적용되어 있습니다.`);
+    if (!insights.length) insights.push('<span class="insight-dot good"></span>현재 확인이 필요한 학생이 없습니다.');
+    $("activity-insights").innerHTML = insights.map((item) => `<div class="insight-item">${item}</div>`).join("");
     const rows = state.students.map((student) => {
       const activity = student.activity;
       return `<div class="activity-row"><div><strong>${escapeHtml(student.studentDisplayName)}</strong><div class="sub">${escapeHtml(student.computerName)}</div></div><div>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</div><div><span class="status-dot ${student.online ? "online" : ""}">${student.online ? "온라인" : "오프라인"}</span></div></div>`;
@@ -236,12 +263,17 @@
       return;
     }
     state.commandKind = kind;
-    state.commandTargetIds = targetIds;
+    state.commandTargetIds = Array.isArray(targetIds) ? [...targetIds] : null;
     $("dialog-title").textContent = kind === "url" ? "URL 열기" : kind === "app" ? "승인된 앱 실행" : "메시지 보내기";
+    const targetCount = state.commandTargetIds?.length || state.students.length;
+    $("command-audience").textContent = state.commandTargetIds?.length
+      ? `선택한 학생 ${targetCount}명에게만 전달합니다.`
+      : `등록된 학생 전체 ${targetCount}명에게 전달합니다.`;
     $("url-field").hidden = kind !== "url";
     $("app-field").hidden = kind !== "app";
     $("message-field").hidden = kind !== "message";
     $("seconds-field").hidden = kind !== "message";
+    $("message-presets").hidden = kind !== "message";
     $("command-message").value = "";
     $("command-url").value = "";
     $("dialog-error").hidden = true;
@@ -290,7 +322,9 @@
   }
 
   async function startSession(subject) {
-    await api(`/api/classes/${state.classId}/sessions`, { method: "POST", body: { subject } });
+    const started = await api(`/api/classes/${state.classId}/sessions`, { method: "POST", body: { subject } });
+    state.session = started;
+    renderHeader();
     showToast("수업을 시작했습니다.");
     await refreshClass();
   }
@@ -310,6 +344,7 @@
     $("enrollment-create").hidden = false;
     $("enrollment-cancel").hidden = false;
     $("enrollment-download").hidden = true;
+    $("enrollment-copy").hidden = true;
     $("enrollment-done").hidden = true;
     $("enrollment-error").hidden = true;
     $("enrollment-dialog").showModal();
@@ -317,7 +352,8 @@
 
   async function createEnrollmentBundle() {
     const displayName = $("enrollment-name").value.trim();
-    const studentId = $("enrollment-student-id").value.trim() || null;
+    if (!displayName) throw new Error("학생 이름을 입력해 주세요.");
+    const studentId = null;
     const ticket = await api(`/api/classes/${state.classId}/enrollment-tickets`, {
       method: "POST",
       body: { studentId, studentDisplayName: displayName }
@@ -337,12 +373,13 @@
     };
     $("enrollment-result-name").textContent = `${displayName} 학생 등록 파일이 준비되었습니다.`;
     $("enrollment-expiry").textContent = `${formatTime(ticket.expiresAtUtc)}까지 한 번만 사용할 수 있습니다.`;
-    $("enrollment-command").textContent = `.\\Install-ClassroomStudent.ps1 -PackageRoot . -EnrollmentFile .\\${state.enrollmentBundle.fileName}`;
+    $("enrollment-command").textContent = `학생용 패키지 폴더에 넣고 Install-ClassroomStudent.cmd를 두 번 클릭하세요. (${state.enrollmentBundle.fileName})`;
     $("enrollment-fields").hidden = true;
     $("enrollment-result").hidden = false;
     $("enrollment-create").hidden = true;
     $("enrollment-cancel").hidden = true;
     $("enrollment-download").hidden = false;
+    $("enrollment-copy").hidden = false;
     $("enrollment-done").hidden = false;
   }
 
@@ -358,6 +395,49 @@
     anchor.remove();
     URL.revokeObjectURL(url);
     showToast("등록 파일을 다운로드했습니다.");
+  }
+
+  async function copyEnrollmentInstructions() {
+    if (!state.enrollmentBundle) return;
+    const text = `Classroom 학생 PC 등록\n1. 학생용 패키지 압축을 풉니다.\n2. ${state.enrollmentBundle.fileName}을 패키지 폴더에 넣습니다.\n3. Install-ClassroomStudent.cmd를 두 번 클릭하고 관리자 권한을 승인합니다.`;
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast("학생 설치 안내를 복사했습니다.");
+    } catch (_) {
+      showToast("브라우저가 복사를 허용하지 않았습니다. 화면의 안내를 사용하세요.");
+    }
+  }
+
+  function applyTheme(theme) {
+    state.theme = theme === "dark" ? "dark" : "light";
+    document.documentElement.dataset.theme = state.theme;
+    localStorage.setItem("classroom.theme", state.theme);
+    const toggle = $("theme-toggle");
+    if (toggle) {
+      toggle.innerHTML = state.theme === "dark" ? "☀ <span>라이트</span>" : "◐ <span>다크</span>";
+      toggle.title = state.theme === "dark" ? "라이트 모드로 전환" : "다크 모드로 전환";
+    }
+    document.querySelectorAll("[data-theme-choice]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.themeChoice === state.theme);
+      button.setAttribute("aria-pressed", String(button.dataset.themeChoice === state.theme));
+    });
+  }
+
+  function toggleTheme() {
+    applyTheme(state.theme === "dark" ? "light" : "dark");
+    showToast(state.theme === "dark" ? "다크 모드를 적용했습니다." : "라이트 모드를 적용했습니다.");
+  }
+
+  function lessonNoteKey() {
+    return state.classId ? `classroom.lessonNote.${state.classId}` : "";
+  }
+
+  function loadLessonNote() {
+    const note = $("lesson-note");
+    const key = lessonNoteKey();
+    if (!note || !key) return;
+    note.value = localStorage.getItem(key) || "";
+    $("lesson-note-status").textContent = "학급별로 자동 저장됩니다.";
   }
 
   function formatTime(value) {
@@ -403,6 +483,9 @@
   }
 
   async function finishFirebaseLogin(credentials) {
+    if (!credentials?.idToken) {
+      throw new Error("Firebase 인증 결과를 받지 못했습니다. 다시 시도해 주세요.");
+    }
     const result = await api("/auth/firebase-login", {
       method: "POST",
       body: { idToken: credentials.idToken }
@@ -485,10 +568,15 @@
     errorTarget.hidden = true;
     button.disabled = true;
     try {
-      await finishFirebaseLogin(await firebaseClient().signInGoogle());
+      const credentials = await firebaseClient().signInGoogle();
+      if (credentials) await finishFirebaseLogin(credentials);
     } catch (error) {
-      errorTarget.textContent = error.message;
-      errorTarget.hidden = false;
+      if (error.code === "auth/popup-closed-by-user" || error.code === "auth/cancelled-popup-request") {
+        setFirebaseStatus("Google 로그인을 취소했습니다.");
+      } else {
+        errorTarget.textContent = error.message;
+        errorTarget.hidden = false;
+      }
     } finally {
       button.disabled = false;
     }
@@ -519,6 +607,10 @@
   $("principles-login-button").addEventListener("click", () => showAuth("login"));
   $("landing-cta-button").addEventListener("click", () => showAuth("signup"));
   $("back-to-landing").addEventListener("click", (event) => { event.preventDefault(); showLanding(); });
+  $("theme-toggle").addEventListener("click", toggleTheme);
+  document.querySelectorAll("[data-theme-choice]").forEach((button) => {
+    button.addEventListener("click", () => applyTheme(button.dataset.themeChoice));
+  });
 
   $("logout-button").addEventListener("click", async () => {
     try { await api("/auth/logout", { method: "POST" }); } catch (_) { /* local logout still clears the token */ }
@@ -529,10 +621,16 @@
     state.classId = event.target.value;
     state.session = null;
     state.selectedDeviceIds.clear();
+    loadLessonNote();
     await refreshClass();
   });
   $("start-session-button").addEventListener("click", openSessionDialog);
   $("enroll-button").addEventListener("click", openEnrollmentDialog);
+  $("announcement-button").addEventListener("click", () => openCommandDialog("message"));
+  $("hero-announcement-button").addEventListener("click", () => openCommandDialog("message"));
+  $("quick-message-button").addEventListener("click", () => openCommandDialog("message"));
+  $("quick-focus-button").addEventListener("click", () => sendCommand("focusMode", commandTargets(), { message: "수업에 집중해 주세요.", focusEnabled: true }).catch((error) => showToast(error.message)));
+  $("quick-url-button").addEventListener("click", () => openCommandDialog("url", commandTargets()));
   $("end-session-button").addEventListener("click", () => endSession().catch((error) => showToast(error.message)));
   $("focus-on-button").addEventListener("click", () => sendCommand("focusMode", commandTargets(), { message: "수업에 집중해 주세요.", focusEnabled: true }).catch((error) => showToast(error.message)));
   $("focus-off-button").addEventListener("click", () => sendCommand("focusMode", commandTargets(), { focusEnabled: false }).catch((error) => showToast(error.message)));
@@ -548,8 +646,23 @@
     state.search = event.target.value.trim();
     renderStudents();
   });
+  $("lesson-note").addEventListener("input", (event) => {
+    const key = lessonNoteKey();
+    if (!key) return;
+    localStorage.setItem(key, event.target.value);
+    $("lesson-note-status").textContent = "방금 저장했습니다.";
+  });
   $("refresh-audit-button").addEventListener("click", () => loadAudit().catch((error) => showToast(error.message)));
   $("close-detail").addEventListener("click", () => { $("detail-pane").hidden = true; });
+  document.querySelectorAll("[data-dialog-cancel]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const dialog = button.closest("dialog");
+      if (dialog?.open) dialog.close("cancel");
+    });
+  });
+  document.querySelectorAll("[data-message-preset]").forEach((button) => {
+    button.addEventListener("click", () => { $("command-message").value = button.dataset.messagePreset; });
+  });
   $("password-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const message = $("password-message");
@@ -632,6 +745,7 @@
     }
   });
   $("enrollment-download").addEventListener("click", downloadEnrollmentBundle);
+  $("enrollment-copy").addEventListener("click", copyEnrollmentInstructions);
 
   fetch(apiUrl("/health"), { headers: { Accept: "application/json" } })
     .then((response) => response.ok ? response.json() : null)
@@ -652,6 +766,8 @@
     return firebaseReady;
   }
 
+  applyTheme(state.theme);
+
   if (!refreshFirebaseAvailability()) {
     let firebaseChecks = 0;
     const firebaseReadinessTimer = window.setInterval(() => {
@@ -669,5 +785,13 @@
       loginError.textContent = error.message;
       loginError.hidden = false;
     });
+  } else if (window.ClassroomFirebaseAuth?.isConfigured()) {
+    window.ClassroomFirebaseAuth.consumeRedirectResult()
+      .then((credentials) => credentials ? finishFirebaseLogin(credentials) : null)
+      .catch((error) => {
+        loginError.textContent = error.message;
+        loginError.hidden = false;
+        showAuth("login");
+      });
   }
 })();

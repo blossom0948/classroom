@@ -70,13 +70,14 @@ foreach ($test in $tests) {
 
 ## 학생 PC 등록
 
-1. 교사 콘솔에서 `장치 등록`을 눌러 학생 이름을 입력합니다.
+1. 교사 콘솔에서 `학생 등록`을 눌러 학생 이름만 입력합니다.
 2. 생성된 `classroom-enrollment-학생이름.json`을 다운로드합니다.
 3. GitHub Actions의 `Classroom-Windows` 패키지와 등록 파일을 학생 PC에 옮깁니다.
-4. 관리자 PowerShell에서 다음 한 줄을 실행합니다.
+4. 패키지 폴더에 등록 파일을 넣고 `Install-ClassroomStudent.cmd`를 두 번 클릭합니다.
+   관리자 권한 확인은 Windows 서비스 등록에 필요한 한 번의 승인입니다.
 
-```powershell
-.\Install-ClassroomStudent.ps1 -PackageRoot . -EnrollmentFile .\classroom-enrollment-학생이름.json
+```text
+학생용 패키지\Install-ClassroomStudent.cmd
 ```
 
 스크립트가 일회용 token으로 서버에 PC를 등록하고, 장치 token과 IPC token을

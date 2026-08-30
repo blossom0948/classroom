@@ -120,13 +120,19 @@ GitHub Actions의 `Classroom-Windows` artifact를 내려받아 압축을 풀거�
 & $dotnet publish src\Classroom.Student.Desktop\Classroom.Student.Desktop.csproj -c Release -r win-x64 --self-contained false -o artifacts\student-desktop
 ```
 
-그 다음 관리자 PowerShell에서 설치한다.
+그 다음 패키지 폴더에 등록 JSON을 넣고 `Install-ClassroomStudent.cmd`를
+두 번 클릭한다. 래퍼가 관리자 권한 PowerShell을 자동으로 열고 설치 후
+서비스를 시작한다.
 
-```powershell
-.\scripts\install\Install-ClassroomStudent.ps1 `
-  -PackageRoot (Resolve-Path .\artifacts) `
-  -EnrollmentFile .\classroom-enrollment-학생이름.json
+```text
+학생용 패키지\Install-ClassroomStudent.cmd
 ```
+
+표준 사용자 계정만 허용되는 학교 노트북은 학생이 권한을 우회할 수 없다.
+학교 IT 관리자가 Intune, 그룹 정책 또는 학교 소프트웨어 배포 도구로 같은
+패키지를 관리자 권한으로 배포해야 한다. 고급 자동화에서는 기존
+`Install-ClassroomStudent.ps1 -PackageRoot ... -EnrollmentFile ...` 인자를
+직접 사용할 수 있다.
 
 설치 스크립트는 `ClassroomStudentService`를 Automatic 서비스로 등록하고,
 현재 사용자의 로그인 시 `Classroom.Student.Desktop.exe`를 실행한다. 서버
