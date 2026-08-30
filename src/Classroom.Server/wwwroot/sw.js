@@ -1,4 +1,6 @@
-const CACHE_NAME = "classroom-console-v3";
+// Bump this whenever the app shell changes so an already-installed school
+// browser drops the previous Firebase configuration and JavaScript bundle.
+const CACHE_NAME = "classroom-console-v4";
 const APP_SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/config.js", "/firebase-auth.js", "/manifest.webmanifest", "/icons/classroom.svg"];
 
 self.addEventListener("install", (event) => {
