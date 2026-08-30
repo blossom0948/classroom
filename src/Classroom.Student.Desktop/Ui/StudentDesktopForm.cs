@@ -300,20 +300,24 @@ public sealed class StudentDesktopForm : Form
     {
         public TeacherMessageForm(string message, int seconds)
         {
-            Text = "선생님 메시지";
-            StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(480, 220);
+            Text = "선생님 공지";
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(720, 360);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             TopMost = true;
+            BackColor = Color.FromArgb(196, 42, 52);
             var label = new Label
             {
                 Text = message,
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Padding = new Padding(20),
-                Font = new Font("Segoe UI Semibold", 16F, FontStyle.Bold, GraphicsUnit.Point)
+                Padding = new Padding(34),
+                ForeColor = Color.White,
+                BackColor = Color.FromArgb(196, 42, 52),
+                Font = new Font("Segoe UI Semibold", 25F, FontStyle.Bold, GraphicsUnit.Point),
+                AutoEllipsis = false
             };
             Controls.Add(label);
             var timer = new System.Windows.Forms.Timer { Interval = Math.Clamp(seconds, 1, 3_600) * 1_000 };

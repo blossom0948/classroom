@@ -41,7 +41,14 @@ public sealed class DesktopStatusBridge(
         EnsureStarted();
         lock (gate)
         {
-            return ValueTask.FromResult(latest);
+            // The service heartbeat can continue while the visible desktop
+            // process is gone. Never report the last desktop activity as if
+            // it were current; the server will mark this device as needing
+            // attention until the desktop reconnects.
+            var desktopConnected = connectedPipe is not null
+                && connectedWriter is not null
+                && connectedPipe.IsConnected;
+            return ValueTask.FromResult(desktopConnected ? latest : StudentStatusData.Empty);
         }
     }
 

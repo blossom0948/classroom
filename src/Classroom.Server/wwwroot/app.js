@@ -221,15 +221,16 @@
     grid.innerHTML = filtered.map((student) => {
       const activity = activityForClassroom(student);
       const activityContext = activity?.browserDomain || activity?.windowTitle || "현재 창 정보 없음";
-      const statusClass = student.policyApplied ? "focus" : student.online ? "online" : "";
-      const statusText = student.policyApplied ? "집중 모드" : student.online ? "온라인" : "오프라인";
+      const desktopDisconnected = student.online && !student.activity;
+      const statusClass = student.policyApplied ? "focus" : desktopDisconnected ? "attention" : student.online ? "online" : "";
+      const statusText = student.policyApplied ? "집중 모드" : desktopDisconnected ? "확인 필요" : student.online ? "온라인" : "오프라인";
       const battery = student.batteryPercent == null ? "배터리 —" : `배터리 ${student.batteryPercent}%`;
       const selected = state.selectedDeviceIds.has(student.deviceId);
       const risk = student.activityRisk;
       return `<article class="student-card${selected ? " selected" : ""}" data-device-id="${student.deviceId}">
         <label class="student-selector" title="명령 대상 선택"><input type="checkbox" aria-label="${escapeHtml(student.studentDisplayName)} 선택" ${selected ? "checked" : ""}></label>
         <div class="student-head"><div><div class="student-name">${escapeHtml(student.studentDisplayName)}</div><div class="student-device">${escapeHtml(student.computerName)}</div></div><span class="status-dot ${statusClass}">${statusText}</span></div>
-        <div class="student-activity"><span class="app-icon">▣</span><div><div class="activity-app">${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div class="activity-domain">${escapeHtml(activityContext)}</div></div></div>
+        <div class="student-activity"><span class="app-icon" aria-hidden="true">▣</span><div class="activity-copy"><div class="activity-label">현재 활동</div><div class="activity-app">${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div class="activity-domain">${escapeHtml(activityContext)}</div></div></div>
         <div class="student-meta"><span>${student.studentNumber ? `${student.studentNumber}번` : "번호 —"}</span><span>${battery}</span><span>${escapeHtml(student.networkStatus || "unknown")}</span>${student.policyApplied ? '<span class="policy-tag">🔒 집중</span>' : ""}${risk?.level === "warning" ? '<span class="risk-tag">확인 필요</span>' : ""}</div>
       </article>`;
     }).join("");
@@ -246,17 +247,20 @@
     });
   }
 
-  // The class dashboard is designed to be visible on a classroom display.
-  // Keep the raw activity available to the authenticated detail view, but do
-  // not put application names, window titles, or domains on the shared view.
+  // Show a short, current activity summary on the dashboard so a teacher can
+  // notice a disconnected student without opening every detail panel.
   function activityForClassroom(student) {
     if (!student.online) {
-      return { applicationDisplayName: "오프라인", browserDomain: "현재 활동 비공개" };
+      return { applicationDisplayName: "오프라인", browserDomain: "마지막 활동 없음" };
     }
-    if (student.activityRisk?.level === "warning") {
-      return { applicationDisplayName: "확인 필요", browserDomain: "세부 활동 비공개" };
+    if (!student.activity) {
+      return { applicationDisplayName: "학생 화면 확인 필요", browserDomain: "에이전트 연결 대기 중" };
     }
-    return { applicationDisplayName: "학습 활동 중", browserDomain: "세부 활동 비공개" };
+    const activity = student.activity;
+    return {
+      applicationDisplayName: activity.applicationDisplayName || "현재 앱 확인 필요",
+      browserDomain: activity.browserDomain ? `웹 · ${activity.browserDomain}` : activity.windowTitle || "창 제목 없음"
+    };
   }
 
   function openDetail(deviceId) {
@@ -264,11 +268,14 @@
     if (!student) return;
     $("detail-pane").hidden = false;
     const activity = student.activity;
+    const desktopDisconnected = student.online && !activity;
+    const detailStatusClass = desktopDisconnected ? "attention" : student.online ? "online" : "";
+    const detailStatusText = desktopDisconnected ? "확인 필요" : student.online ? "온라인" : "오프라인";
     const risk = student.activityRisk;
     const riskMarkup = risk?.level === "warning"
       ? `<div class="risk-callout"><strong>확인 필요</strong><span>${escapeHtml(risk.reason || "활동 신호를 확인해 주세요.")}</span></div>`
-      : `<div class="privacy-note">전자칠판·수업 현황에서는 세부 활동을 숨깁니다. 이 교사 전용 상세에서만 앱·도메인을 확인할 수 있으며 화면 캡처는 수집하지 않습니다.</div>`;
-    $("detail-content").innerHTML = `<div class="eyebrow">STUDENT DEVICE</div><h2 class="detail-title">${escapeHtml(student.studentDisplayName)}</h2><div class="detail-status"><span class="status-dot ${student.online ? "online" : ""}">${student.online ? "온라인" : "오프라인"}</span></div>${riskMarkup}<div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>학급 / 번호</span><strong>${student.grade ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번` : "학급 정보 없음"}</strong></div><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>현재 창</span><strong>${escapeHtml(activity?.windowTitle || "창 정보 미연결")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "확인 필요" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 연결</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div><div class="detail-section"><h3>장치 식별자</h3><div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div><div class="detail-row"><span>Agent</span><strong>${escapeHtml(student.agentVersion)}</strong></div><div class="detail-row"><span>원격 제어</span><strong>허용 목록 작업만 사용</strong></div></div><div class="detail-section stack"><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>`;
+      : `<div class="privacy-note">현재 앱과 창 제목을 상태 요약으로 표시합니다. 화면 캡처·키 입력·원격 셸은 수집하지 않습니다.</div>`;
+    $("detail-content").innerHTML = `<div class="eyebrow">STUDENT DEVICE</div><h2 class="detail-title">${escapeHtml(student.studentDisplayName)}</h2><div class="detail-status"><span class="status-dot ${detailStatusClass}">${detailStatusText}</span></div>${riskMarkup}<div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>학급 / 번호</span><strong>${student.grade ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번` : "학급 정보 없음"}</strong></div><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>현재 창</span><strong>${escapeHtml(activity?.windowTitle || "창 정보 미연결")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "확인 필요" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 연결</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div><div class="detail-section"><h3>장치 식별자</h3><div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div><div class="detail-row"><span>Agent</span><strong>${escapeHtml(student.agentVersion)}</strong></div><div class="detail-row"><span>원격 제어</span><strong>허용 목록 작업만 사용</strong></div></div><div class="detail-section stack"><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>`;
     $("detail-message-button").addEventListener("click", () => openCommandDialog("message", [deviceId]));
     $("detail-revoke-button").addEventListener("click", () => revokeDevice(student).catch((error) => showToast(error.message)));
   }
