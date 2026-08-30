@@ -142,7 +142,7 @@
       </section>
 
       <section id="activity-section" class="section-view" hidden>
-        <div class="hero-row"><div><div class="eyebrow">STUDENT ACTIVITY</div><h2>학생 활동</h2><p class="muted">현재 앱과 제한된 웹 도메인 상태입니다.</p></div></div>
+        <div class="hero-row"><div><div class="eyebrow">STUDENT ACTIVITY</div><h2>학생 활동</h2><p class="muted">학생에게 표시되는 상태 제공기가 보낸 현재 앱·창 제목과 설정된 웹 도메인입니다.</p></div></div>
         <div id="activity-summary" class="class-metrics activity-summary"></div>
         <div id="activity-insights" class="activity-insights"></div>
         <div id="activity-table" class="table-card"></div>
@@ -167,6 +167,11 @@
             <form id="roster-import-form" class="inline-fields"><label>대상 반<select id="roster-class-select" required></select></label><label class="file-field">명단 파일<input id="roster-file" type="file" accept=".csv,.tsv,.txt,.xlsx,.xls" required></label><button class="secondary" type="submit">명단 가져오기</button></form><p id="roster-import-message" class="muted small"></p>
           </div>
         </div>
+        <article class="settings-card operations-card">
+          <div><span class="settings-icon">✓</span><h3>운영 연결 상태</h3><p>비밀키 자체는 표시하지 않고, 서버에 필요한 외부 연동 준비 상태만 확인합니다.</p></div>
+          <div id="operations-status" class="operations-status"><div class="empty-state">상태를 불러오는 중입니다…</div></div>
+          <button id="operations-refresh" class="secondary" type="button">상태 새로고침</button>
+        </article>
         <form id="admin-form" class="admin-grant-form">
           <label>Google 이메일 또는 아이디<input id="admin-identifier" maxlength="254" autocomplete="off" placeholder="teacher@school.ac.kr 또는 teacher-id" required></label>
           <button class="primary" type="submit">관리자로 지정</button>
@@ -189,7 +194,7 @@
           <div id="profile-consent-fields" class="stack consent-stack" hidden><label class="consent-check"><input id="profile-terms" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="terms">이용약관</button>에 동의합니다.</span></label><label class="consent-check"><input id="profile-privacy" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="privacy">개인정보처리방침</button>에 동의합니다.</span></label></div>
           <button class="primary" type="submit">프로필 저장</button><p id="profile-message" class="error" hidden></p>
         </form>
-        <div class="settings-grid"><article class="settings-card"><span class="settings-icon">●</span><h3>연결 보안</h3><p id="security-setting">Teacher session bearer token으로 연결됨</p></article><article class="settings-card"><span class="settings-icon">▣</span><h3>학생 개인정보</h3><p>화면 캡처와 원격 셸을 사용하지 않습니다. 브라우저 도메인은 학생용 상태 제공기가 보낸 범위에서만 표시됩니다.</p></article><article class="settings-card"><span class="settings-icon">◷</span><h3>상태 갱신</h3><p>학생 상태는 2초 간격으로 갱신됩니다. 학생 순서는 이름 기준으로 고정됩니다.</p></article><article class="settings-card appearance-card"><span class="settings-icon">◐</span><h3>화면 모드</h3><p>교실 조명과 수업 환경에 맞춰 콘솔 화면을 바꿉니다.</p><div class="theme-options" role="group" aria-label="화면 모드"><button type="button" data-theme-choice="light" class="secondary">라이트</button><button type="button" data-theme-choice="dark" class="secondary">다크</button></div></article></div>
+        <div class="settings-grid"><article class="settings-card"><span class="settings-icon">●</span><h3>연결 보안</h3><p id="security-setting">Teacher session bearer token으로 연결됨</p></article><article class="settings-card"><span class="settings-icon">▣</span><h3>학생 개인정보</h3><p>학생 화면에 공유 상태가 표시됩니다. 현재 앱·창 제목과 설정된 웹 도메인만 사용하며, 화면 캡처·키 입력·원격 셸은 사용하지 않습니다.</p></article><article class="settings-card"><span class="settings-icon">◷</span><h3>상태 갱신</h3><p>학생 상태는 약 10초마다 서버에 전송되고 콘솔은 2초 간격으로 갱신합니다. 학생 순서는 이름 기준으로 고정됩니다.</p></article><article class="settings-card appearance-card"><span class="settings-icon">◐</span><h3>화면 모드</h3><p>교실 조명과 수업 환경에 맞춰 콘솔 화면을 바꿉니다.</p><div class="theme-options" role="group" aria-label="화면 모드"><button type="button" data-theme-choice="light" class="secondary">라이트</button><button type="button" data-theme-choice="dark" class="secondary">다크</button></div></article></div>
         <article class="settings-card password-card compact-setting">
           <div><span class="settings-icon">🔐</span><h3 id="password-card-title">교사 비밀번호</h3><p id="password-card-copy">이메일 확인 후 교사 아이디 로그인용 비밀번호를 관리합니다.</p></div>
           <button id="password-open-button" class="secondary" type="button">비밀번호 설정</button>

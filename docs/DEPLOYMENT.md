@@ -56,6 +56,11 @@ npx wrangler secret put CLASSROOM_EMAIL_FROM --config cloudflare/wrangler.jsonc
 Google·이메일 로그인과 Firebase 비밀번호 재설정은 사용할 수 있지만, 콘솔의
 비밀번호 변경 확인 코드 발송은 안전하게 비활성화된다.
 
+관리자 화면의 `운영 연결 상태`에서 NEIS 학교 검색과 Resend 확인 메일 설정이
+서버에 준비되었는지 키 값 없이 확인할 수 있다. 준비되지 않은 상태에서 학교 검색은
+`SCHOOL_SEARCH_NOT_CONFIGURED`, 확인 메일은 `VERIFICATION_EMAIL_NOT_CONFIGURED`로
+명확히 실패하며 임의의 기본 키를 사용하지 않는다.
+
 새 코드를 배포한 뒤에는 다음을 확인한다.
 
 ```powershell

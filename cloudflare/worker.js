@@ -258,6 +258,7 @@ export class ClassroomState {
       if (path === "/auth/change-password" && request.method === "POST") return this.changePassword(request, cors);
       if (path === "/api/schools/search" && request.method === "GET") return this.searchSchools(request, url, cors);
       if (path === "/api/classes" && request.method === "GET") return this.getClasses(request, cors);
+      if (path === "/api/admin/operations-status" && request.method === "GET") return this.getOperationsStatus(request, cors);
       if (path === "/api/student-codes" && request.method === "GET") return this.getStudentCodes(request, cors);
       if (path === "/api/admin/classes" && request.method === "POST") return this.createClass(request, cors);
       if (path === "/api/admin/student-codes/import" && request.method === "POST") return this.importStudentCodes(request, cors);
@@ -493,6 +494,36 @@ export class ClassroomState {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
     return responseJson(this.classesForTeacher(user), 200, cors);
+  }
+
+  async getOperationsStatus(request, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "관리자만 운영 상태를 확인할 수 있습니다.", 403, cors);
+
+    const neisConfigured = Boolean(String(this.env.NEIS_API_KEY || "").trim());
+    const resendKeyConfigured = Boolean(String(this.env.RESEND_API_KEY || "").trim());
+    const senderConfigured = Boolean(String(this.env.CLASSROOM_EMAIL_FROM || "").trim());
+    return responseJson({
+      checkedAtUtc: isoNow(),
+      schoolSearch: {
+        configured: neisConfigured,
+        label: neisConfigured ? "NEIS 학교 검색 사용 가능" : "NEIS 인증키 필요"
+      },
+      emailVerification: {
+        configured: resendKeyConfigured && senderConfigured,
+        providerKeyConfigured: resendKeyConfigured,
+        senderConfigured,
+        label: resendKeyConfigured && senderConfigured ? "확인 메일 발송 사용 가능" : "Resend 키와 인증 발신 주소 필요"
+      },
+      studentStatus: {
+        configured: true,
+        mode: "visible-status",
+        heartbeatSeconds: 10,
+        screenSharingAvailable: false,
+        remoteControlMode: "allow-listed"
+      }
+    }, 200, cors);
   }
 
   async searchSchools(request, url, cors) {
@@ -968,10 +999,11 @@ export class ClassroomState {
       }
       const active = this.activeSessionForClass(device.class_id);
       const now = isoNow();
+      const activity = normalizeActivity(incoming.payload.activity);
       this.exec(`UPDATE Devices SET last_heartbeat_utc = ?, agent_version = ?, activity_json = ?, battery_percent = ?, network_status = ?, policy_applied = ?, active_session_id = ? WHERE device_id = ?`,
         now,
         text(incoming.payload.agentVersion, 128) || device.agent_version,
-        incoming.payload.activity ? JSON.stringify(incoming.payload.activity) : null,
+        activity ? JSON.stringify(activity) : null,
         numberInRange(incoming.payload.batteryPercent, 0, 100),
         text(incoming.payload.networkStatus, 64) || null,
         incoming.payload.policyApplied === true ? 1 : 0,
@@ -1289,8 +1321,40 @@ function serializeDevice(device, activeSessionId, now) {
     batteryPercent: device.battery_percent ?? null,
     networkStatus: device.network_status || null,
     policyApplied: Boolean(device.policy_applied),
-    screenSharingAvailable: false
+    screenSharingAvailable: false,
+    statusSharingMode: "visible-status"
   };
+}
+
+function normalizeActivity(value) {
+  if (!value || typeof value !== "object") return null;
+  const applicationDisplayName = text(value.applicationDisplayName || value.ApplicationDisplayName, 128);
+  const processName = text(value.processName || value.ProcessName, 128);
+  if (!applicationDisplayName || !processName) return null;
+  const browserDomain = normalizeBrowserDomain(value.browserDomain || value.BrowserDomain);
+  const windowTitle = text(value.windowTitle || value.WindowTitle, 256) || null;
+  const observedAt = text(value.observedAtUtc || value.ObservedAtUtc, 64);
+  const parsedObservedAt = observedAt && !Number.isNaN(Date.parse(observedAt))
+    ? new Date(observedAt).toISOString()
+    : isoNow();
+  return {
+    applicationDisplayName,
+    processName,
+    browserDomain,
+    windowTitle,
+    observedAtUtc: parsedObservedAt
+  };
+}
+
+function normalizeBrowserDomain(value) {
+  const candidate = text(value, 253).trim().toLowerCase();
+  if (!candidate || candidate.includes("/") || candidate.includes("?") || candidate.includes("#") || candidate.includes("@")) return null;
+  return UriHostName(candidate) ? candidate : null;
+}
+
+function UriHostName(value) {
+  const hostnamePattern = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/;
+  return hostnamePattern.test(value) && value.includes(".");
 }
 
 function envelope(type, payload) {

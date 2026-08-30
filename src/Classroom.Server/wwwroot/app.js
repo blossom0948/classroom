@@ -10,6 +10,7 @@
     students: [],
     studentCodes: [],
     adminDirectory: null,
+    operationsStatus: null,
     filter: "all",
     search: "",
     selectedDeviceIds: new Set(),
@@ -221,6 +222,7 @@
     }
     grid.innerHTML = filtered.map((student) => {
       const activity = student.activity;
+      const activityContext = activity?.browserDomain || activity?.windowTitle || "현재 창 정보 없음";
       const statusClass = student.policyApplied ? "focus" : student.online ? "online" : "";
       const statusText = student.policyApplied ? "집중 모드" : student.online ? "온라인" : "오프라인";
       const battery = student.batteryPercent == null ? "배터리 —" : `배터리 ${student.batteryPercent}%`;
@@ -229,7 +231,7 @@
       return `<article class="student-card${selected ? " selected" : ""}" data-device-id="${student.deviceId}">
         <label class="student-selector" title="명령 대상 선택"><input type="checkbox" aria-label="${escapeHtml(student.studentDisplayName)} 선택" ${selected ? "checked" : ""}></label>
         <div class="student-head"><div><div class="student-name">${escapeHtml(student.studentDisplayName)}</div><div class="student-device">${escapeHtml(student.computerName)}</div></div><span class="status-dot ${statusClass}">${statusText}</span></div>
-        <div class="student-activity"><span class="app-icon">▣</span><div><div class="activity-app">${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div class="activity-domain">${escapeHtml(activity?.browserDomain || "현재 도메인 없음")}</div></div></div>
+        <div class="student-activity"><span class="app-icon">▣</span><div><div class="activity-app">${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div class="activity-domain">${escapeHtml(activityContext)}</div></div></div>
         <div class="student-meta"><span>${student.studentNumber ? `${student.studentNumber}번` : "번호 —"}</span><span>${battery}</span><span>${escapeHtml(student.networkStatus || "unknown")}</span>${student.policyApplied ? '<span class="policy-tag">🔒 집중</span>' : ""}${risk?.level === "warning" ? '<span class="risk-tag">확인 필요</span>' : ""}</div>
       </article>`;
     }).join("");
@@ -260,9 +262,10 @@
     $("activity-insights").innerHTML = insights.map((item) => `<div class="insight-item">${item}</div>`).join("");
     const rows = state.students.map((student) => {
       const activity = student.activity;
-      return `<div class="activity-row"><div><strong>${escapeHtml(student.studentDisplayName)}</strong><div class="sub">${escapeHtml(student.computerName)}</div></div><div>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</div><div><span class="status-dot ${student.online ? "online" : ""}">${student.online ? "온라인" : "오프라인"}</span></div></div>`;
+      const activityContext = activity?.browserDomain || activity?.windowTitle || "창 정보 미연결";
+      return `<div class="activity-row"><div><strong>${escapeHtml(student.studentDisplayName)}</strong><div class="sub">${escapeHtml(student.computerName)}</div></div><div>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div title="${escapeHtml(activityContext)}">${escapeHtml(activityContext)}</div><div><span class="status-dot ${student.online ? "online" : ""}">${student.online ? "온라인" : "오프라인"}</span></div></div>`;
     }).join("");
-    table.innerHTML = `<div class="activity-row header"><div>학생</div><div>현재 앱</div><div>웹 도메인</div><div>상태</div></div>${rows || '<div class="empty-state">표시할 학생이 없습니다.</div>'}`;
+    table.innerHTML = `<div class="activity-row header"><div>학생</div><div>현재 앱</div><div>현재 창 / 웹 도메인</div><div>상태</div></div>${rows || '<div class="empty-state">표시할 학생이 없습니다.</div>'}`;
   }
 
   function openDetail(deviceId) {
@@ -274,7 +277,7 @@
     const riskMarkup = risk?.level === "warning"
       ? `<div class="risk-callout"><strong>확인 필요</strong><span>${escapeHtml(risk.reason || "활동 신호를 확인해 주세요.")}</span></div>`
       : `<div class="privacy-note">학생에게 표시되는 상태 제공기가 보낸 앱·도메인만 표시합니다. 화면 캡처는 수집하지 않습니다.</div>`;
-    $("detail-content").innerHTML = `<div class="eyebrow">STUDENT DEVICE</div><h2 class="detail-title">${escapeHtml(student.studentDisplayName)}</h2><div class="detail-status"><span class="status-dot ${student.online ? "online" : ""}">${student.online ? "온라인" : "오프라인"}</span></div>${riskMarkup}<div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>학급 / 번호</span><strong>${student.grade ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번` : "학급 정보 없음"}</strong></div><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "확인 필요" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 연결</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div><div class="detail-section"><h3>장치 식별자</h3><div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div><div class="detail-row"><span>Agent</span><strong>${escapeHtml(student.agentVersion)}</strong></div></div><div class="detail-section stack"><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>`;
+    $("detail-content").innerHTML = `<div class="eyebrow">STUDENT DEVICE</div><h2 class="detail-title">${escapeHtml(student.studentDisplayName)}</h2><div class="detail-status"><span class="status-dot ${student.online ? "online" : ""}">${student.online ? "온라인" : "오프라인"}</span></div>${riskMarkup}<div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>학급 / 번호</span><strong>${student.grade ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번` : "학급 정보 없음"}</strong></div><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>현재 창</span><strong>${escapeHtml(activity?.windowTitle || "창 정보 미연결")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "확인 필요" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 연결</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div><div class="detail-section"><h3>장치 식별자</h3><div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div><div class="detail-row"><span>Agent</span><strong>${escapeHtml(student.agentVersion)}</strong></div><div class="detail-row"><span>원격 제어</span><strong>허용 목록 작업만 사용</strong></div></div><div class="detail-section stack"><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>`;
     $("detail-message-button").addEventListener("click", () => openCommandDialog("message", [deviceId]));
     $("detail-revoke-button").addEventListener("click", () => revokeDevice(student).catch((error) => showToast(error.message)));
   }
@@ -406,8 +409,42 @@
     if (!state.teacher?.isAdmin) return;
     const list = $("admin-list");
     if (list) list.innerHTML = '<div class="empty-state">관리자 목록을 불러오는 중입니다…</div>';
-    state.adminDirectory = await api("/api/admin/teachers");
+    const [directory, operations] = await Promise.all([
+      api("/api/admin/teachers"),
+      api("/api/admin/operations-status").catch((error) => ({ error: error.message }))
+    ]);
+    state.adminDirectory = directory;
+    state.operationsStatus = operations?.error ? null : operations;
     renderAdminDirectory();
+    renderOperationsStatus(operations);
+  }
+
+  async function loadOperationsStatus() {
+    if (!state.teacher?.isAdmin) return;
+    const target = $("operations-status");
+    if (target) target.innerHTML = '<div class="empty-state">상태를 확인하는 중입니다…</div>';
+    try {
+      state.operationsStatus = await api("/api/admin/operations-status");
+      renderOperationsStatus(state.operationsStatus);
+    } catch (error) {
+      state.operationsStatus = null;
+      renderOperationsStatus({ error: error.message });
+    }
+  }
+
+  function renderOperationsStatus(status) {
+    const target = $("operations-status");
+    if (!target) return;
+    if (!status || status.error) {
+      target.innerHTML = `<div class="operations-unavailable">운영 상태를 확인하지 못했습니다. ${escapeHtml(status?.error || "관리자 API를 확인해 주세요.")}</div>`;
+      return;
+    }
+    const items = [
+      ["학교 검색", status.schoolSearch?.configured, status.schoolSearch?.label || "NEIS 인증키 필요"],
+      ["확인 메일", status.emailVerification?.configured, status.emailVerification?.label || "Resend 설정 필요"],
+      ["학생 상태", status.studentStatus?.configured, status.studentStatus?.screenSharingAvailable === false ? "보이는 상태 제공 · 화면 공유 없음" : "연결됨"]
+    ];
+    target.innerHTML = items.map(([label, ready, copy]) => `<div class="operation-item"><span class="operation-indicator ${ready ? "ready" : "pending"}">${ready ? "✓" : "!"}</span><div><strong>${escapeHtml(label)}</strong><small>${escapeHtml(copy)}</small></div><span class="operation-state ${ready ? "ready" : "pending"}">${ready ? "준비됨" : "설정 필요"}</span></div>`).join("");
   }
 
   function renderAdminDirectory() {
@@ -850,7 +887,7 @@
     privacy: {
       kicker: "PRIVACY NOTICE",
       title: "개인정보처리방침",
-      html: `<p>시행일: 2026년 8월 30일</p><h3>1. 수집하는 정보</h3><p>교사 계정의 이메일·이름·담당 과목, 학급명, 학생 표시 이름, 학생 PC 이름·연결 시각·앱 이름·제한된 웹 도메인·배터리·네트워크 상태, 수업 명령 및 감사 기록을 처리합니다.</p><h3>2. 이용 목적</h3><p>교사 인증, 학급 운영, 학생 PC 등록, 수업 안내 전달, 연결 상태 확인, 보안 감사 및 장애 대응에만 사용합니다.</p><h3>3. 보관 기간</h3><p>교사·학생·수업 데이터는 학교 관리자가 삭제하거나 서비스 운영 목적이 종료될 때까지 보관합니다. 세부 보관 기간은 학교의 정보보호·기록 관리 규정에 맞춰 운영해야 합니다.</p><h3>4. 안전성</h3><p>인증 토큰은 서버에 해시 형태로 보관하며, 전송은 HTTPS/WSS로 보호합니다. 서비스는 화면 캡처와 개인 파일을 수집하지 않습니다.</p><h3>5. 이용자 권리와 문의</h3><p>정보 주체는 학교 관리자에게 열람·정정·삭제 요청을 할 수 있습니다. 실제 학교 도입 전에는 해당 학교의 개인정보 보호책임자와 연락처를 별도로 고지해야 합니다.</p>`
+      html: `<p>시행일: 2026년 8월 30일</p><h3>1. 수집하는 정보</h3><p>교사 계정의 이메일·이름·담당 과목, 학급명, 학생 표시 이름, 학생 PC 이름·연결 시각·현재 앱·창 제목·설정된 웹 도메인·배터리·네트워크 상태, 수업 명령 및 감사 기록을 처리합니다.</p><h3>2. 이용 목적</h3><p>교사 인증, 학급 운영, 학생 PC 등록, 수업 안내 전달, 연결 상태 확인, 보안 감사 및 장애 대응에만 사용합니다.</p><h3>3. 보관 기간</h3><p>교사·학생·수업 데이터는 학교 관리자가 삭제하거나 서비스 운영 목적이 종료될 때까지 보관합니다. 세부 보관 기간은 학교의 정보보호·기록 관리 규정에 맞춰 운영해야 합니다.</p><h3>4. 안전성</h3><p>인증 토큰은 서버에 해시 형태로 보관하며, 전송은 HTTPS/WSS로 보호합니다. 학생 화면에 상태 공유 사실을 표시하고, 서비스는 화면 캡처·키 입력·개인 파일·임의 원격 셸을 수집하거나 실행하지 않습니다.</p><h3>5. 이용자 권리와 문의</h3><p>정보 주체는 학교 관리자에게 열람·정정·삭제 요청을 할 수 있습니다. 실제 학교 도입 전에는 해당 학교의 개인정보 보호책임자와 연락처를 별도로 고지해야 합니다.</p>`
     }
   };
 
@@ -1301,6 +1338,7 @@
   $("refresh-audit-button").addEventListener("click", () => loadAudit().catch((error) => showToast(error.message)));
   $("admin-enroll-button").addEventListener("click", openEnrollmentDialog);
   $("student-installer-download").addEventListener("click", downloadStudentInstaller);
+  $("operations-refresh").addEventListener("click", () => loadOperationsStatus().catch((error) => showToast(error.message)));
   $("class-form").addEventListener("submit", (event) => {
     event.preventDefault();
     createClassFromAdmin();

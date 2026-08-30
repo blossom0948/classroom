@@ -47,7 +47,7 @@ public sealed class StudentDesktopForm : Form
         activityLabel.AutoSize = true;
 
         var transparency = CreateLabel(
-            "이 화면은 학교 관리 상태와 교사가 보낼 수 있는 작업을 명확히 표시합니다.\n화면 캡처와 임의 원격 명령은 사용하지 않습니다.",
+            "현재 앱·창 제목·연결 상태만 이 화면과 학교 콘솔에 표시됩니다.\n화면 캡처·키 입력·임의 원격 셸은 사용하지 않습니다.",
             10,
             Color.FromArgb(92, 102, 118));
         transparency.Location = new Point(30, 200);
@@ -145,7 +145,10 @@ public sealed class StudentDesktopForm : Form
             var activity = status.Activity;
             var battery = status.BatteryPercent is int value ? $"배터리 {value}%" : "배터리 확인 필요";
             var network = status.NetworkStatus ?? "unknown";
-            activityLabel.Text = $"현재 앱: {activity?.ApplicationDisplayName ?? "확인 필요"} · {battery} · 네트워크 {network}";
+            var windowTitle = string.IsNullOrWhiteSpace(activity?.WindowTitle)
+                ? "현재 창 확인 필요"
+                : activity.WindowTitle;
+            activityLabel.Text = $"현재 앱: {activity?.ApplicationDisplayName ?? "확인 필요"} · 창: {windowTitle} · {battery} · 네트워크 {network}";
         });
     }
 

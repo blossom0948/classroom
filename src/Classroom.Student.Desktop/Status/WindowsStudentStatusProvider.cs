@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
+using System.Text;
 using Blossom.Classroom.Protocol.Models;
 
 namespace Blossom.Classroom.Student.Desktop.Status;
@@ -54,7 +55,7 @@ public sealed class WindowsStudentStatusProvider
                     ? processName
                     : $"{processName}.exe",
                 BrowserDomain: null,
-                WindowTitle: null,
+                WindowTitle: GetWindowTitle(window),
                 DateTimeOffset.UtcNow);
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
@@ -106,6 +107,20 @@ public sealed class WindowsStudentStatusProvider
     private static ActivitySnapshot UnknownActivity() =>
         new("알 수 없음", "unknown.exe", null, null, DateTimeOffset.UtcNow);
 
+    private static string? GetWindowTitle(IntPtr window)
+    {
+        var length = GetWindowTextLength(window);
+        if (length <= 0)
+        {
+            return null;
+        }
+
+        var buffer = new StringBuilder(length + 1);
+        return GetWindowText(window, buffer, buffer.Capacity) > 0
+            ? buffer.ToString().Trim()
+            : null;
+    }
+
     private static bool IsBrowser(string processName) =>
         processName.Equals("chrome", StringComparison.OrdinalIgnoreCase)
         || processName.Equals("msedge", StringComparison.OrdinalIgnoreCase)
@@ -124,6 +139,12 @@ public sealed class WindowsStudentStatusProvider
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetWindowTextLength(IntPtr window);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetWindowText(IntPtr window, StringBuilder text, int maxCount);
 
     [DllImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

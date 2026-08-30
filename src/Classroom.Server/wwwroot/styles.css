@@ -481,6 +481,22 @@ html[data-theme="dark"] .legal-links button { color: #aab6c9; }
 .admin-actions { display: flex; gap: 8px; }
 .admin-actions button { white-space: nowrap; }
 .admin-management-grid { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; margin-bottom: 18px; }
+.operations-card { align-items: center; display: grid; gap: 16px; grid-template-columns: minmax(220px, 1fr) minmax(360px, 1.4fr) auto; margin-bottom: 18px; padding: 17px; }
+.operations-card > div:first-child { min-width: 0; }
+.operations-card h3 { margin-top: 8px; }
+.operations-card > button { white-space: nowrap; }
+.operations-status { display: grid; gap: 8px; min-width: 0; }
+.operation-item { align-items: center; background: var(--soft); border: 1px solid var(--line); border-radius: 10px; display: flex; gap: 9px; min-width: 0; padding: 9px 10px; }
+.operation-item > div { display: grid; gap: 2px; min-width: 0; }
+.operation-item strong { font-size: 12px; }
+.operation-item small { color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.operation-indicator { align-items: center; border-radius: 50%; display: inline-flex; flex: 0 0 22px; font-size: 12px; font-weight: 900; height: 22px; justify-content: center; }
+.operation-indicator.ready { background: var(--green-soft); color: var(--green); }
+.operation-indicator.pending { background: var(--orange-soft); color: var(--orange); }
+.operation-state { font-size: 10px; font-weight: 800; margin-left: auto; white-space: nowrap; }
+.operation-state.ready { color: var(--green); }
+.operation-state.pending { color: var(--orange); }
+.operations-unavailable { background: var(--orange-soft); border-radius: 10px; color: var(--orange); font-size: 11px; line-height: 1.5; padding: 10px; }
 .compact-form { display: grid; gap: 13px; padding: 17px; }
 .compact-form h3 { margin: 8px 0 5px; }
 .compact-form > div:first-child p { max-width: 420px; }
@@ -508,6 +524,8 @@ html[data-theme="dark"] label { color: #c5cfdf; }
   .class-status-actions { align-items: flex-start; flex-wrap: wrap; }
   .today-info { text-align: left; }
   .admin-management-grid { grid-template-columns: 1fr; }
+  .operations-card { grid-template-columns: 1fr; }
+  .operations-card > button { justify-self: start; }
 }
 
 @media (max-width: 620px) {
