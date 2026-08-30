@@ -89,7 +89,7 @@ internal static class ElevatedStudentInstaller
         var installedService = Path.Combine(serviceInstallRoot, "Classroom.Student.Service.exe");
         var installedDesktop = Path.Combine(desktopInstallRoot, "Classroom.Student.Desktop.exe");
 
-        StopExistingService(logPath);
+        StopExistingService(installedService, logPath);
         StopExistingDesktop(desktopInstallRoot, logPath);
 
         CopyDirectory(Path.GetDirectoryName(serviceSource)!, serviceInstallRoot);
@@ -231,7 +231,7 @@ internal static class ElevatedStudentInstaller
         WaitForServiceState(4, logPath);
     }
 
-    private static void StopExistingService(string? logPath)
+    private static void StopExistingService(string expectedExecutable, string? logPath)
     {
         var state = QueryService();
         if (!state.Exists || state.Code == 1)
@@ -239,6 +239,7 @@ internal static class ElevatedStudentInstaller
             return;
         }
 
+        var previousProcessId = state.ProcessId;
         Log(logPath, "기존 Classroom 서비스를 중지하는 중");
         var stop = RunSc(new[] { "stop", ServiceName });
         if (stop.ExitCode != 0 && stop.ExitCode != 1062)
@@ -247,6 +248,60 @@ internal static class ElevatedStudentInstaller
         }
 
         WaitForServiceState(1, logPath);
+        WaitForProcessExit(previousProcessId, expectedExecutable, logPath);
+    }
+
+    private static void WaitForProcessExit(int processId, string expectedExecutable, string? logPath)
+    {
+        if (processId <= 0)
+        {
+            return;
+        }
+
+        var expectedPath = Path.GetFullPath(expectedExecutable);
+        var deadline = DateTime.UtcNow.AddSeconds(25);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(processId);
+                if (process.HasExited)
+                {
+                    return;
+                }
+
+                var processPath = process.MainModule?.FileName;
+                if (!string.IsNullOrWhiteSpace(processPath)
+                    && !string.Equals(
+                        Path.GetFullPath(processPath),
+                        expectedPath,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    // The PID was reused by an unrelated process. Do not wait
+                    // for or terminate a process that is not Classroom.
+                    return;
+                }
+            }
+            catch (ArgumentException)
+            {
+                return;
+            }
+            catch (InvalidOperationException)
+            {
+                return;
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                // The service process can briefly disappear while Windows closes
+                // its handles. Treat that as successful termination.
+                return;
+            }
+
+            Thread.Sleep(500);
+        }
+
+        Log(logPath, $"기존 서비스 프로세스가 종료되지 않음: PID {processId}");
+        throw new TimeoutException("기존 Classroom 서비스가 파일을 해제할 때까지 기다리지 못했습니다.");
     }
 
     private static void StopExistingDesktop(string desktopInstallRoot, string? logPath)
@@ -318,7 +373,7 @@ internal static class ElevatedStudentInstaller
                 var error = Marshal.GetLastWin32Error();
                 if (error == ServiceDoesNotExist)
                 {
-                    return new ServiceQuery(false, 0);
+                    return new ServiceQuery(false, 0, 0);
                 }
 
                 throw new Win32Exception(error, "Windows Classroom 서비스에 연결하지 못했습니다.");
@@ -343,7 +398,10 @@ internal static class ElevatedStudentInstaller
                     }
 
                     var status = Marshal.PtrToStructure<ServiceStatusProcess>(buffer);
-                    return new ServiceQuery(true, checked((int)status.CurrentState));
+                    return new ServiceQuery(
+                        true,
+                        checked((int)status.CurrentState),
+                        checked((int)status.ProcessId));
                 }
                 finally
                 {
@@ -458,8 +516,32 @@ internal static class ElevatedStudentInstaller
             var destinationFile = Path.Combine(destinationDirectory, relativePath);
             Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
             RemoveDownloadMark(sourceFile);
-            File.Copy(sourceFile, destinationFile, overwrite: true);
+            CopyFileWithRetry(sourceFile, destinationFile);
         }
+    }
+
+    private static void CopyFileWithRetry(string sourcePath, string destinationPath)
+    {
+        IOException? lastException = null;
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        do
+        {
+            try
+            {
+                File.Copy(sourcePath, destinationPath, overwrite: true);
+                return;
+            }
+            catch (IOException exception)
+            {
+                lastException = exception;
+                Thread.Sleep(500);
+            }
+        }
+        while (DateTime.UtcNow < deadline);
+
+        throw new IOException(
+            $"학생용 파일을 복사하지 못했습니다. 다른 프로세스가 파일을 사용 중일 수 있습니다: {destinationPath}",
+            lastException);
     }
 
     private static void CopyOptionalFile(string sourcePath, string destinationPath)
@@ -565,7 +647,7 @@ internal static class ElevatedStudentInstaller
 
     private sealed record ScResult(int ExitCode, string Output);
 
-    private sealed record ServiceQuery(bool Exists, int Code);
+    private sealed record ServiceQuery(bool Exists, int Code, int ProcessId);
 
     [DllImport("advapi32.dll", EntryPoint = "OpenSCManagerW", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr OpenScManager(
