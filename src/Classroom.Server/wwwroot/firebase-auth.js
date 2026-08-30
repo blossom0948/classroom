@@ -46,10 +46,21 @@
 
   async function toSessionPayload(user) {
     return {
-      idToken: await user.getIdToken(true),
+      // A freshly completed OAuth flow already has a valid token. Forcing a
+      // refresh here adds an unnecessary network dependency and can turn a
+      // successful popup into auth/internal-error on managed school networks.
+      idToken: await user.getIdToken(),
       email: user.email || "",
       displayName: user.displayName || ""
     };
+  }
+
+  function logAuthFailure(stage, error) {
+    console.error("[Classroom] Firebase auth failure", {
+      stage,
+      code: error?.code || "",
+      message: error?.message || ""
+    });
   }
 
   async function signInEmail(email, password) {
@@ -84,11 +95,13 @@
       const result = await auth.signInWithPopup(provider);
       return toSessionPayload(result.user);
     } catch (error) {
+      logAuthFailure("google-sign-in", error);
       if (error?.code === "auth/popup-blocked" || error?.code === "auth/cancelled-popup-request") {
         try {
           await auth.signInWithRedirect(provider);
           return null;
         } catch (redirectError) {
+          logAuthFailure("google-redirect-fallback", redirectError);
           throw friendlyError(redirectError);
         }
       }
@@ -101,6 +114,7 @@
       const result = await getAuth().getRedirectResult();
       return result?.user ? toSessionPayload(result.user) : null;
     } catch (error) {
+      logAuthFailure("google-redirect-result", error);
       throw friendlyError(error);
     }
   }
