@@ -6,7 +6,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$BootstrapTeacherPassword,
 
-    [string]$BootstrapTeacherLogin = "teacher",
+    [string]$BootstrapTeacherLogin = "blossom0948",
 
     [string]$ConsoleOrigins = "https://classroom-2en.pages.dev",
 

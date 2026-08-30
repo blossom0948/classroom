@@ -12,6 +12,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Classroom.Student.Service",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Classroom.Student.Desktop", "src\Classroom.Student.Desktop\Classroom.Student.Desktop.csproj", "{C5E75F25-8E6D-46BD-8D68-3A9A4A778E93}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Classroom.Student.Setup", "src\Classroom.Student.Setup\Classroom.Student.Setup.csproj", "{F2C66F7D-6C7D-4D43-9D55-CEB0E67D4E18}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Classroom.Core.Tests", "tests\Classroom.Core.Tests\Classroom.Core.Tests.csproj", "{AE8D7D2F-9EE9-4D8F-8F6E-DDAEF48E9EB8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Classroom.Protocol.Tests", "tests\Classroom.Protocol.Tests\Classroom.Protocol.Tests.csproj", "{D32A4A7B-2E2C-4A76-88A2-3B4D660AE8D3}"
@@ -46,6 +48,10 @@ Global
 		{C5E75F25-8E6D-46BD-8D68-3A9A4A778E93}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C5E75F25-8E6D-46BD-8D68-3A9A4A778E93}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C5E75F25-8E6D-46BD-8D68-3A9A4A778E93}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F2C66F7D-6C7D-4D43-9D55-CEB0E67D4E18}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F2C66F7D-6C7D-4D43-9D55-CEB0E67D4E18}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F2C66F7D-6C7D-4D43-9D55-CEB0E67D4E18}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F2C66F7D-6C7D-4D43-9D55-CEB0E67D4E18}.Release|Any CPU.Build.0 = Release|Any CPU
 		{AE8D7D2F-9EE9-4D8F-8F6E-DDAEF48E9EB8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{AE8D7D2F-9EE9-4D8F-8F6E-DDAEF48E9EB8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AE8D7D2F-9EE9-4D8F-8F6E-DDAEF48E9EB8}.Release|Any CPU.ActiveCfg = Release|Any CPU

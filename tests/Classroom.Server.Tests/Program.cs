@@ -8,6 +8,7 @@ using Blossom.Classroom.Server.Storage;
 var tests = new (string Name, Action Run)[]
 {
     ("enrollment binds a server-issued device to a student", EnrollmentBindsIdentity),
+    ("student join code remains valid until regenerated", StudentJoinCodeRemainsValidUntilRegenerated),
     ("device token authentication rejects wrong tokens", DeviceAuthenticationIsBound),
     ("devices follow the server session without reinstalling", HeartbeatUpdatesStatus),
     ("commands are queued and ACK/result are audited", CommandsAreTracked),
@@ -17,7 +18,8 @@ var tests = new (string Name, Action Run)[]
     ("sqlite restores sessions and enrollment state", SqliteRestoresState),
     ("teacher session tokens can be revoked", TeacherSessionsCanBeRevoked),
     ("password rotation revokes other teacher sessions", PasswordRotationRevokesOtherSessions),
-    ("firebase identities create and reuse a teacher", FirebaseIdentityCreatesTeacher)
+    ("firebase identities create and reuse a teacher", FirebaseIdentityCreatesTeacher),
+    ("administrators can grant school-wide access", AdministratorsCanGrantSchoolWideAccess)
 };
 
 var failures = 0;
@@ -86,6 +88,53 @@ static void DeviceAuthenticationIsBound()
         enrollment.Value!.DeviceToken,
         out var identity), "Issued device token was rejected.");
     Assert(identity is not null && identity.StudentId == fixture.StudentId, "Authenticated identity was not server-bound.");
+}
+
+static void StudentJoinCodeRemainsValidUntilRegenerated()
+{
+    var fixture = CreateFixture();
+    var ticket = fixture.Store.CreateEnrollmentTicket(
+        fixture.TeacherId,
+        fixture.ClassId,
+        fixture.StudentId,
+        "코드 학생");
+
+    var formattedCode = $"{ticket.JoinCode[..4]}-{ticket.JoinCode[4..]}";
+    var result = fixture.Store.EnrollByJoinCode(new JoinCodeEnrollmentRequest(
+        formattedCode,
+        "STUDENT-CODE-01",
+        "0.3.0"));
+
+    Assert(result.Succeeded && result.Value is not null, "Join code enrollment did not succeed.");
+    Assert(result.Value!.DeviceId != ticket.DeviceId, "Join code enrollment should issue a device identity for the computer.");
+    Assert(result.Value.StudentId == fixture.StudentId, "Join code enrollment changed the student identity.");
+
+    var reused = fixture.Store.EnrollByJoinCode(new JoinCodeEnrollmentRequest(
+        ticket.JoinCode,
+        "STUDENT-CODE-02",
+        "0.3.0"));
+    Assert(reused.Succeeded && reused.Value is not null, "Persistent join code could not enroll another computer.");
+    Assert(reused.Value!.DeviceId != result.Value.DeviceId, "Persistent join code reused a device identity.");
+
+    var regenerated = fixture.Store.CreateEnrollmentTicket(
+        fixture.TeacherId,
+        fixture.ClassId,
+        fixture.StudentId,
+        "코드 학생");
+    Assert(regenerated.DeviceId == ticket.DeviceId, "Regeneration should update the student's existing code record.");
+    Assert(regenerated.JoinCode != ticket.JoinCode, "Regeneration did not create a new code.");
+
+    var oldCode = fixture.Store.EnrollByJoinCode(new JoinCodeEnrollmentRequest(
+        ticket.JoinCode,
+        "STUDENT-CODE-03",
+        "0.3.0"));
+    Assert(oldCode.Code == "ENROLLMENT_INVALID", "The previous code remained valid after regeneration.");
+
+    var newCode = fixture.Store.EnrollByJoinCode(new JoinCodeEnrollmentRequest(
+        regenerated.JoinCode,
+        "STUDENT-CODE-03",
+        "0.3.0"));
+    Assert(newCode.Succeeded, "The regenerated code could not be used.");
 }
 
 static void HeartbeatUpdatesStatus()
@@ -330,11 +379,58 @@ static void FirebaseIdentityCreatesTeacher()
             true,
             "google.com");
 
-        var first = database.CreateOrGetFirebaseTeacher(identity);
+        var first = database.CreateOrGetFirebaseTeacher(identity, "수학 선생님", "수학");
         var second = database.CreateOrGetFirebaseTeacher(identity);
         Assert(first.Id == second.Id, "Firebase identity created duplicate teachers.");
         Assert(first.LoginName == "teacher@example.edu", "Firebase email was not used as the login name.");
+        Assert(first.DisplayName == "수학 선생님", "Firebase signup display name was not saved.");
         Assert(database.GetClassesForTeacher(first.Id).Count == 1, "Firebase teacher did not receive a starter class.");
+        Assert(database.GetClassesForTeacher(first.Id).Single().DefaultSubject == "수학", "Firebase signup subject was not saved.");
+    }
+    finally
+    {
+        if (Directory.Exists(rootPath))
+        {
+            Directory.Delete(rootPath, recursive: true);
+        }
+    }
+}
+
+static void AdministratorsCanGrantSchoolWideAccess()
+{
+    var rootPath = Path.Combine(Path.GetTempPath(), $"classroom-admin-tests-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(rootPath);
+    try
+    {
+        var options = new ServerOptions(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            TokenSecurity.HashToken("teacher-token"),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromMinutes(10),
+            Path.Combine(rootPath, "classroom.db"));
+        using var database = new ClassroomDatabase(options.DatabasePath);
+        database.Initialize(options);
+        Assert(database.IsTeacherAdmin(options.DevelopmentTeacherId), "Bootstrap teacher was not made an administrator.");
+
+        var identity = new FirebaseIdentity(
+            "firebase-admin-target-001",
+            "teacher2@example.edu",
+            "두 번째 선생님",
+            true,
+            "google.com");
+        var target = database.CreateOrGetFirebaseTeacher(identity, "두 번째 선생님", "영어");
+        Assert(target.SchoolId == options.DevelopmentSchoolId, "Firebase teachers were not placed in the school organization.");
+        Assert(!database.IsTeacherAdmin(target.Id), "A normal teacher was made an administrator automatically.");
+
+        Assert(database.SetTeacherAdmin(options.DevelopmentTeacherId, "teacher2@example.edu", true), "Existing teacher was not found by Google email.");
+        Assert(database.IsTeacherAdmin(target.Id), "Administrator grant did not update the existing teacher.");
+        Assert(database.SetTeacherAdmin(options.DevelopmentTeacherId, "pending.teacher", true) is false, "Pending grant should report no existing teacher.");
+        Assert(database.GetActiveAdministratorGrants(options.DevelopmentSchoolId).Any(grant => grant.Identifier == "pending.teacher"), "Pending administrator grant was not persisted.");
+
+        Assert(database.SetTeacherAdmin(options.DevelopmentTeacherId, "teacher2@example.edu", false), "Existing administrator was not found for removal.");
+        Assert(!database.IsTeacherAdmin(target.Id), "Administrator removal did not update the existing teacher.");
     }
     finally
     {

@@ -8,6 +8,8 @@
     classId: null,
     session: null,
     students: [],
+    studentCodes: [],
+    adminDirectory: null,
     filter: "all",
     search: "",
     selectedDeviceIds: new Set(),
@@ -28,15 +30,6 @@
 
   function apiUrl(path) {
     return apiOrigin ? `${apiOrigin}${path}` : path;
-  }
-
-  function studentServerUrl() {
-    const value = new URL(apiOrigin || window.location.origin);
-    value.protocol = value.protocol === "https:" ? "wss:" : "ws:";
-    value.pathname = value.pathname.replace(/\/+$/, "");
-    value.search = "";
-    value.hash = "";
-    return value.toString().replace(/\/+$/, "");
   }
 
   async function api(path, options = {}) {
@@ -72,6 +65,8 @@
     state.classId = null;
     state.session = null;
     state.students = [];
+    state.studentCodes = [];
+    state.adminDirectory = null;
     state.selectedDeviceIds.clear();
     sessionStorage.removeItem("classroom.teacherToken");
     if (state.pollTimer) clearInterval(state.pollTimer);
@@ -102,14 +97,19 @@
       ? state.classId
       : state.classes[0].id;
     $("teacher-name").textContent = session.displayName || "교사";
+    $("enroll-button").hidden = !session.isAdmin;
+    $("admins-nav").hidden = !session.isAdmin;
+    $("student-code-permission").textContent = session.isAdmin
+      ? "관리자: 코드 발급 및 재발급 가능"
+      : "조회 전용 · 코드는 관리자에게 요청하세요";
     const select = $("class-select");
     select.innerHTML = state.classes.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join("");
     select.value = state.classId;
+    $("teacher-greeting").textContent = `${session.displayName || "선생님"}님, 안녕하세요.`;
     landingView.hidden = true;
     loginView.hidden = true;
     appView.hidden = false;
     applyTheme(state.theme);
-    loadLessonNote();
     await refreshClass();
     if (state.pollTimer) clearInterval(state.pollTimer);
     state.pollTimer = setInterval(() => refreshClass().catch((error) => showToast(error.message)), 2000);
@@ -138,12 +138,11 @@
   function renderHeader() {
     const online = state.students.filter((student) => student.online).length;
     const offline = state.students.length - online;
-    const focus = state.students.filter((student) => student.policyApplied).length;
-    $("online-count").textContent = `${online} / ${state.students.length}`;
+    const needsAttention = state.students.filter(isNeedsAttention).length;
     $("total-count").textContent = String(state.students.length);
     $("metric-online-count").textContent = String(online);
     $("offline-count").textContent = String(offline);
-    $("focus-count").textContent = String(focus);
+    $("needs-attention-count").textContent = String(needsAttention);
     $("session-caption").textContent = state.session
       ? `${state.session.subject} · ${formatTime(state.session.startedAtUtc)} 시작`
       : "활성 수업이 없습니다.";
@@ -153,6 +152,14 @@
       ? "현재 진행 중인 수업이 없습니다. 아래에서 새 수업을 시작하세요."
       : "현재 진행 중인 수업이 없습니다. 아래에서 새 수업을 시작하세요.";
     renderSelection();
+  }
+
+  function isNeedsAttention(student) {
+    if (!student.online) return false;
+    return !student.activity
+      || !student.networkStatus
+      || student.networkStatus === "unknown"
+      || (student.batteryPercent != null && student.batteryPercent <= 15);
   }
 
   function renderSelection() {
@@ -171,7 +178,7 @@
     const filtered = state.students.filter((student) => {
       if (state.filter === "online") return student.online;
       if (state.filter === "offline") return !student.online;
-      if (state.filter === "focus") return student.policyApplied;
+      if (state.filter === "attention") return isNeedsAttention(student);
       return true;
     }).filter((student) => !query
       || student.studentDisplayName.toLocaleLowerCase("ko-KR").includes(query)
@@ -180,8 +187,11 @@
       if (state.students.length) {
         grid.innerHTML = '<div class="empty-state">현재 필터에 해당하는 학생이 없습니다.</div>';
       } else {
-        grid.innerHTML = '<div class="empty-state"><strong>첫 학생 PC를 등록해 보세요.</strong><p>학생 이름만 입력하면 일회성 등록 파일을 만들 수 있습니다.</p><button id="empty-enroll-button" class="primary">학생 PC 등록</button></div>';
-        $("empty-enroll-button").addEventListener("click", openEnrollmentDialog);
+        const emptyAction = state.teacher?.isAdmin
+          ? '<button id="empty-enroll-button" class="primary">학생 PC 등록</button>'
+          : '<p>학생 코드 발급 권한이 있는 관리자에게 등록을 요청하세요.</p>';
+        grid.innerHTML = `<div class="empty-state"><strong>등록된 학생 PC가 없습니다.</strong><p>학생 코드는 관리자만 발급할 수 있습니다.</p>${emptyAction}</div>`;
+        $("empty-enroll-button")?.addEventListener("click", openEnrollmentDialog);
       }
       return;
     }
@@ -216,7 +226,8 @@
     const online = state.students.filter((student) => student.online).length;
     const focus = state.students.filter((student) => student.policyApplied).length;
     const offline = state.students.length - online;
-    $("activity-summary").innerHTML = `<article class="metric-card metric-online"><span class="metric-label">연결됨</span><strong>${online}</strong><small>학생 PC</small></article><article class="metric-card metric-offline"><span class="metric-label">확인 필요</span><strong>${offline}</strong><small>오프라인</small></article><article class="metric-card metric-focus"><span class="metric-label">집중 모드</span><strong>${focus}</strong><small>정책 적용</small></article>`;
+    const attention = state.students.filter(isNeedsAttention).length;
+    $("activity-summary").innerHTML = `<article class="metric-card metric-online"><span class="metric-label">온라인</span><strong>${online}</strong><small>학생 PC</small></article><article class="metric-card metric-offline"><span class="metric-label">오프라인</span><strong>${offline}</strong><small>연결 끊김</small></article><article class="metric-card metric-attention"><span class="metric-label">확인 필요</span><strong>${attention}</strong><small>상태 점검</small></article>`;
     const insights = [];
     if (offline > 0) insights.push(`<span class="insight-dot warning"></span><strong>${offline}명</strong>의 장치가 오프라인입니다.`);
     if (focus > 0) insights.push(`<span class="insight-dot focus"></span><strong>${focus}명</strong>에게 집중 모드가 적용되어 있습니다.`);
@@ -255,6 +266,105 @@
       const bad = ["FAILED", "REJECTED", "QUEUE_FULL"].includes(entry.result);
       return `<div class="audit-item"><span class="audit-time">${formatTime(entry.timestampUtc)}</span><span class="audit-action">${escapeHtml(entry.action)}</span><span class="audit-reason">${escapeHtml(entry.reason || "—")}</span><span class="result-pill ${good ? "good" : bad ? "bad" : "neutral"}">${escapeHtml(entry.result)}</span></div>`;
     }).join("") : '<div class="empty-state">아직 기록이 없습니다.</div>';
+  }
+
+  async function loadStudentCodes() {
+    const list = $("student-codes-list");
+    if (!list) return;
+    list.innerHTML = '<div class="empty-state">학생 코드를 불러오는 중입니다…</div>';
+    const codes = await api("/api/student-codes");
+    state.studentCodes = Array.isArray(codes) ? codes : [];
+    renderStudentCodes();
+  }
+
+  function renderStudentCodes() {
+    const list = $("student-codes-list");
+    if (!list) return;
+    const query = $("student-code-search")?.value.trim().toLocaleLowerCase("ko-KR") || "";
+    const filtered = state.studentCodes.filter((code) => !query
+      || `${code.className} ${code.subject} ${code.studentDisplayName}`.toLocaleLowerCase("ko-KR").includes(query));
+    if (!filtered.length) {
+      list.innerHTML = state.studentCodes.length
+        ? '<div class="empty-state">검색 조건에 맞는 학생 코드가 없습니다.</div>'
+        : '<div class="empty-state"><strong>아직 발급된 학생 코드가 없습니다.</strong><p>관리자가 수업 화면에서 학생을 등록하면 이곳에 표시됩니다.</p></div>';
+      return;
+    }
+
+    const groups = new Map();
+    filtered.forEach((code) => {
+      const key = code.classId;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(code);
+    });
+    list.innerHTML = [...groups.values()].map((group) => {
+      const first = group[0];
+      return `<section class="student-code-group"><div class="student-code-group-heading"><div><span class="eyebrow">CLASS</span><h3>${escapeHtml(first.className)}</h3></div><span class="class-subject-small">${escapeHtml(first.subject || "정보")} · ${group.length}명</span></div><div class="student-code-grid">${group.map((code) => `<article class="student-code-card"><div class="student-code-student"><span class="avatar">${escapeHtml(code.studentDisplayName.slice(0, 1))}</span><div><strong>${escapeHtml(code.studentDisplayName)}</strong><small>${escapeHtml(code.createdByDisplayName || "관리자")} 발급 · ${formatTime(code.createdAtUtc)}</small></div></div><div class="student-code-value"><code>${escapeHtml(code.joinCode)}</code><button class="secondary code-copy-button" type="button" data-code-copy="${escapeHtml(code.joinCode)}">복사</button></div><div class="student-code-meta"><span>${code.lastUsedAtUtc ? `최근 사용 ${formatTime(code.lastUsedAtUtc)}` : "아직 사용하지 않음"}</span>${state.teacher?.isAdmin ? `<button class="ghost-button code-reissue-button" type="button" data-code-reissue="${escapeHtml(code.studentId)}">새 코드 발급</button>` : ""}</div></article>`).join("")}</div></section>`;
+    }).join("");
+
+    list.querySelectorAll("[data-code-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(button.dataset.codeCopy || "");
+          showToast("학생 코드를 복사했습니다.");
+        } catch (_) {
+          showToast("브라우저가 복사를 허용하지 않았습니다.");
+        }
+      });
+    });
+    list.querySelectorAll("[data-code-reissue]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const code = state.studentCodes.find((item) => item.studentId === button.dataset.codeReissue);
+        if (code) reissueStudentCode(code).catch((error) => showToast(error.message));
+      });
+    });
+  }
+
+  async function reissueStudentCode(code) {
+    if (!state.teacher?.isAdmin) {
+      throw new Error("학생 코드는 관리자만 재발급할 수 있습니다.");
+    }
+    if (!confirm(`${code.studentDisplayName} 학생의 기존 코드를 폐기하고 새 코드를 발급할까요?`)) return;
+    const ticket = await api(`/api/classes/${code.classId}/enrollment-tickets`, {
+      method: "POST",
+      body: { studentId: code.studentId, studentDisplayName: code.studentDisplayName }
+    });
+    showToast(`${code.studentDisplayName} 학생의 새 코드를 발급했습니다: ${ticket.joinCode}`);
+    await loadStudentCodes();
+  }
+
+  async function loadAdminDirectory() {
+    if (!state.teacher?.isAdmin) return;
+    const list = $("admin-list");
+    if (list) list.innerHTML = '<div class="empty-state">관리자 목록을 불러오는 중입니다…</div>';
+    state.adminDirectory = await api("/api/admin/teachers");
+    renderAdminDirectory();
+  }
+
+  function renderAdminDirectory() {
+    const list = $("admin-list");
+    if (!list || !state.adminDirectory) return;
+    const teachers = Array.isArray(state.adminDirectory.teachers) ? state.adminDirectory.teachers : [];
+    const grants = Array.isArray(state.adminDirectory.grants) ? state.adminDirectory.grants : [];
+    const known = new Set(teachers.map((teacher) => [teacher.email, teacher.loginName].filter(Boolean).map((value) => value.toLowerCase())) .flat());
+    const pending = grants.filter((grant) => !known.has(String(grant.identifier || "").toLowerCase()));
+    const teacherRows = teachers.map((teacher) => {
+      const identifier = teacher.email || teacher.loginName;
+      const canRemove = teacher.isAdmin && teacher.teacherId !== state.teacher?.teacherId;
+      return `<div class="admin-row"><div><strong>${escapeHtml(teacher.displayName)}</strong><small>${escapeHtml(teacher.email || teacher.loginName)}</small></div><span class="admin-badge ${teacher.isAdmin ? "active" : ""}">${teacher.isAdmin ? "관리자" : "선생님"}</span>${canRemove ? `<button class="ghost-button admin-remove-button" type="button" data-admin-remove="${escapeHtml(identifier)}">해제</button>` : ""}</div>`;
+    }).join("");
+    const pendingRows = pending.map((grant) => `<div class="admin-row pending"><div><strong>${escapeHtml(grant.identifier)}</strong><small>아직 가입하지 않은 계정 · ${formatTime(grant.createdAtUtc)}</small></div><span class="admin-badge active">가입 시 관리자</span><button class="ghost-button admin-remove-button" type="button" data-admin-remove="${escapeHtml(grant.identifier)}">해제</button></div>`).join("");
+    list.innerHTML = `<div class="admin-list-heading"><strong>학교 계정</strong><span class="muted small">${teachers.length}명</span></div>${teacherRows || '<div class="empty-state">아직 등록된 선생님이 없습니다.</div>'}${pendingRows ? `<div class="admin-list-heading pending-heading"><strong>가입 대기 권한</strong></div>${pendingRows}` : ""}`;
+    list.querySelectorAll("[data-admin-remove]").forEach((button) => {
+      button.addEventListener("click", () => updateAdminAccess(button.dataset.adminRemove, false).catch((error) => showToast(error.message)));
+    });
+  }
+
+  async function updateAdminAccess(identifier, isAdmin) {
+    if (!identifier) return;
+    if (!isAdmin && !confirm(`${identifier} 계정의 관리자 권한을 해제할까요?`)) return;
+    await api("/api/admin/teachers", { method: "POST", body: { identifier, isAdmin } });
+    showToast(isAdmin ? "관리자 권한을 부여했습니다." : "관리자 권한을 해제했습니다.");
+    await loadAdminDirectory();
   }
 
   function openCommandDialog(kind, targetIds = null) {
@@ -343,9 +453,9 @@
     $("enrollment-result").hidden = true;
     $("enrollment-create").hidden = false;
     $("enrollment-cancel").hidden = false;
-    $("enrollment-download").hidden = true;
     $("enrollment-copy").hidden = true;
     $("enrollment-done").hidden = true;
+    $("enrollment-code").textContent = "--------";
     $("enrollment-error").hidden = true;
     $("enrollment-dialog").showModal();
   }
@@ -358,53 +468,44 @@
       method: "POST",
       body: { studentId, studentDisplayName: displayName }
     });
-    const safeName = displayName.replace(/[^0-9A-Za-z가-힣_-]+/g, "-").replace(/^-|-$/g, "") || "student";
+    if (!ticket.joinCode) {
+      throw new Error("학생 코드를 만들지 못했습니다. 서버를 최신 버전으로 배포한 뒤 다시 시도해 주세요.");
+    }
     state.enrollmentBundle = {
-      fileName: `classroom-enrollment-${safeName}.json`,
-      value: {
-        format: "BLOSSOM-CLASSROOM-ENROLLMENT-V1",
-        serverUrl: studentServerUrl(),
-        deviceId: ticket.deviceId,
-        studentId: ticket.studentId,
-        studentDisplayName: displayName,
-        enrollmentToken: ticket.enrollmentToken,
-        expiresAtUtc: ticket.expiresAtUtc
-      }
+      joinCode: ticket.joinCode,
+      studentDisplayName: displayName,
+      expiresAtUtc: ticket.expiresAtUtc
     };
-    $("enrollment-result-name").textContent = `${displayName} 학생 등록 파일이 준비되었습니다.`;
-    $("enrollment-expiry").textContent = `${formatTime(ticket.expiresAtUtc)}까지 한 번만 사용할 수 있습니다.`;
-    $("enrollment-command").textContent = `학생용 패키지 폴더에 넣고 Install-ClassroomStudent.cmd를 두 번 클릭하세요. (${state.enrollmentBundle.fileName})`;
+    $("enrollment-result-name").textContent = `${displayName} 학생 코드를 만들었습니다.`;
+    $("enrollment-expiry").textContent = "관리자가 새 코드를 발급하기 전까지 계속 유효합니다.";
+    $("enrollment-code").textContent = ticket.joinCode;
+    $("enrollment-command").textContent = "학생용 설치 파일: Classroom.Student.Setup.exe";
     $("enrollment-fields").hidden = true;
     $("enrollment-result").hidden = false;
     $("enrollment-create").hidden = true;
     $("enrollment-cancel").hidden = true;
-    $("enrollment-download").hidden = false;
     $("enrollment-copy").hidden = false;
     $("enrollment-done").hidden = false;
   }
 
-  function downloadEnrollmentBundle() {
-    if (!state.enrollmentBundle) return;
-    const blob = new Blob([`${JSON.stringify(state.enrollmentBundle.value, null, 2)}\n`], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = state.enrollmentBundle.fileName;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-    showToast("등록 파일을 다운로드했습니다.");
-  }
-
   async function copyEnrollmentInstructions() {
     if (!state.enrollmentBundle) return;
-    const text = `Classroom 학생 PC 등록\n1. 학생용 패키지 압축을 풉니다.\n2. ${state.enrollmentBundle.fileName}을 패키지 폴더에 넣습니다.\n3. Install-ClassroomStudent.cmd를 두 번 클릭하고 관리자 권한을 승인합니다.`;
+    const text = `Classroom 학생 PC 등록\n학생: ${state.enrollmentBundle.studentDisplayName}\n학생 코드: ${state.enrollmentBundle.joinCode}\n1. 학생용 패키지 압축을 풉니다.\n2. Classroom.Student.Setup.exe를 실행합니다.\n3. 학생 코드 ${state.enrollmentBundle.joinCode}를 입력하고 관리자 권한을 승인합니다.`;
     try {
       await navigator.clipboard.writeText(text);
       showToast("학생 설치 안내를 복사했습니다.");
     } catch (_) {
       showToast("브라우저가 복사를 허용하지 않았습니다. 화면의 안내를 사용하세요.");
+    }
+  }
+
+  async function copyEnrollmentCode() {
+    if (!state.enrollmentBundle) return;
+    try {
+      await navigator.clipboard.writeText(state.enrollmentBundle.joinCode);
+      showToast("학생 코드를 복사했습니다.");
+    } catch (_) {
+      showToast("브라우저가 복사를 허용하지 않았습니다. 화면의 코드를 사용하세요.");
     }
   }
 
@@ -426,18 +527,6 @@
   function toggleTheme() {
     applyTheme(state.theme === "dark" ? "light" : "dark");
     showToast(state.theme === "dark" ? "다크 모드를 적용했습니다." : "라이트 모드를 적용했습니다.");
-  }
-
-  function lessonNoteKey() {
-    return state.classId ? `classroom.lessonNote.${state.classId}` : "";
-  }
-
-  function loadLessonNote() {
-    const note = $("lesson-note");
-    const key = lessonNoteKey();
-    if (!note || !key) return;
-    note.value = localStorage.getItem(key) || "";
-    $("lesson-note-status").textContent = "학급별로 자동 저장됩니다.";
   }
 
   function formatTime(value) {
@@ -482,14 +571,19 @@
     return window.ClassroomFirebaseAuth;
   }
 
-  async function finishFirebaseLogin(credentials) {
+  async function finishFirebaseLogin(credentials, profile = {}) {
     if (!credentials?.idToken) {
       throw new Error("Firebase 인증 결과를 받지 못했습니다. 다시 시도해 주세요.");
     }
     const result = await api("/auth/firebase-login", {
       method: "POST",
-      body: { idToken: credentials.idToken }
+      body: {
+        idToken: credentials.idToken,
+        displayName: String(profile.displayName || "").trim(),
+        subject: String(profile.subject || "").trim()
+      }
     });
+    sessionStorage.removeItem("classroom.pendingFirebaseProfile");
     state.token = result.accessToken;
     sessionStorage.setItem("classroom.teacherToken", state.token);
     await loadTeacher();
@@ -553,7 +647,10 @@
         $("signup-email").value,
         password,
         $("signup-display-name").value);
-      await finishFirebaseLogin(credentials);
+      await finishFirebaseLogin(credentials, {
+        displayName: $("signup-display-name").value,
+        subject: $("signup-subject").value
+      });
     } catch (error) {
       errorTarget.textContent = error.message;
       errorTarget.hidden = false;
@@ -568,8 +665,19 @@
     errorTarget.hidden = true;
     button.disabled = true;
     try {
+      const signupProfile = !$('signup-panel').hidden
+        ? {
+          displayName: $("signup-display-name").value.trim(),
+          subject: $("signup-subject").value.trim()
+        }
+        : {};
+      if (signupProfile.displayName || signupProfile.subject) {
+        sessionStorage.setItem("classroom.pendingFirebaseProfile", JSON.stringify(signupProfile));
+      } else {
+        sessionStorage.removeItem("classroom.pendingFirebaseProfile");
+      }
       const credentials = await firebaseClient().signInGoogle();
-      if (credentials) await finishFirebaseLogin(credentials);
+      if (credentials) await finishFirebaseLogin(credentials, signupProfile);
     } catch (error) {
       if (error.code === "auth/popup-closed-by-user" || error.code === "auth/cancelled-popup-request") {
         setFirebaseStatus("Google 로그인을 취소했습니다.");
@@ -621,16 +729,11 @@
     state.classId = event.target.value;
     state.session = null;
     state.selectedDeviceIds.clear();
-    loadLessonNote();
     await refreshClass();
   });
   $("start-session-button").addEventListener("click", openSessionDialog);
   $("enroll-button").addEventListener("click", openEnrollmentDialog);
   $("announcement-button").addEventListener("click", () => openCommandDialog("message"));
-  $("hero-announcement-button").addEventListener("click", () => openCommandDialog("message"));
-  $("quick-message-button").addEventListener("click", () => openCommandDialog("message"));
-  $("quick-focus-button").addEventListener("click", () => sendCommand("focusMode", commandTargets(), { message: "수업에 집중해 주세요.", focusEnabled: true }).catch((error) => showToast(error.message)));
-  $("quick-url-button").addEventListener("click", () => openCommandDialog("url", commandTargets()));
   $("end-session-button").addEventListener("click", () => endSession().catch((error) => showToast(error.message)));
   $("focus-on-button").addEventListener("click", () => sendCommand("focusMode", commandTargets(), { message: "수업에 집중해 주세요.", focusEnabled: true }).catch((error) => showToast(error.message)));
   $("focus-off-button").addEventListener("click", () => sendCommand("focusMode", commandTargets(), { focusEnabled: false }).catch((error) => showToast(error.message)));
@@ -646,12 +749,8 @@
     state.search = event.target.value.trim();
     renderStudents();
   });
-  $("lesson-note").addEventListener("input", (event) => {
-    const key = lessonNoteKey();
-    if (!key) return;
-    localStorage.setItem(key, event.target.value);
-    $("lesson-note-status").textContent = "방금 저장했습니다.";
-  });
+  $("student-code-search").addEventListener("input", renderStudentCodes);
+  $("student-code-refresh").addEventListener("click", () => loadStudentCodes().catch((error) => showToast(error.message)));
   $("refresh-audit-button").addEventListener("click", () => loadAudit().catch((error) => showToast(error.message)));
   $("close-detail").addEventListener("click", () => { $("detail-pane").hidden = true; });
   document.querySelectorAll("[data-dialog-cancel]").forEach((button) => {
@@ -694,10 +793,13 @@
     renderStudents();
   }));
   document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", async () => {
+    state.activeSection = button.dataset.section;
     document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
     button.classList.add("active");
     document.querySelectorAll(".section-view").forEach((section) => { section.hidden = section.id !== `${button.dataset.section}-section`; });
     if (button.dataset.section === "history") await loadAudit().catch((error) => showToast(error.message));
+    if (button.dataset.section === "student-codes") await loadStudentCodes().catch((error) => showToast(error.message));
+    if (button.dataset.section === "admins") await loadAdminDirectory().catch((error) => showToast(error.message));
   }));
   $("command-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -744,8 +846,22 @@
       errorTarget.hidden = false;
     }
   });
-  $("enrollment-download").addEventListener("click", downloadEnrollmentBundle);
+  $("admin-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const errorTarget = $("admin-error");
+    errorTarget.hidden = true;
+    try {
+      const identifier = $("admin-identifier").value.trim();
+      if (!identifier) throw new Error("관리자 이메일 또는 아이디를 입력해 주세요.");
+      await updateAdminAccess(identifier, true);
+      $("admin-form").reset();
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
+    }
+  });
   $("enrollment-copy").addEventListener("click", copyEnrollmentInstructions);
+  $("enrollment-code-copy").addEventListener("click", copyEnrollmentCode);
 
   fetch(apiUrl("/health"), { headers: { Accept: "application/json" } })
     .then((response) => response.ok ? response.json() : null)
@@ -787,7 +903,16 @@
     });
   } else if (window.ClassroomFirebaseAuth?.isConfigured()) {
     window.ClassroomFirebaseAuth.consumeRedirectResult()
-      .then((credentials) => credentials ? finishFirebaseLogin(credentials) : null)
+      .then((credentials) => {
+        if (!credentials) return null;
+        let profile = {};
+        try {
+          profile = JSON.parse(sessionStorage.getItem("classroom.pendingFirebaseProfile") || "{}");
+        } catch (_) {
+          profile = {};
+        }
+        return finishFirebaseLogin(credentials, profile);
+      })
       .catch((error) => {
         loginError.textContent = error.message;
         loginError.hidden = false;

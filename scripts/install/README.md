@@ -1,9 +1,9 @@
 # Classroom Student 설치
 
-교사 콘솔에서 학생 이름을 입력해 등록 파일을 만든 뒤, 학생용 패키지 폴더에
-등록 파일을 넣고 `Install-ClassroomStudent.cmd`를 두 번 클릭하면 됩니다. 이
-래퍼가 필요한 관리자 권한 PowerShell을 자동으로 열고 설치 후 서비스를
-시작합니다. 학생별 등록 파일은 10분 동안 한 번만 사용할 수 있습니다.
+일반적인 설치는 교사 콘솔에서 학생 이름을 입력해 8자리 코드를 만든 뒤,
+학생용 패키지의 `Classroom.Student.Setup.exe`를 실행하는 방식입니다. 학생은
+코드만 입력하고, 앱이 서버 등록·관리자 권한 확인·서비스 설치·학생 화면 실행을
+자동으로 진행합니다. 코드는 관리자가 새로 발급하기 전까지 계속 사용할 수 있습니다.
 
 학교가 표준 사용자 계정만 허용하는 경우에는 학생이 권한을 우회할 수 없습니다.
 학교 IT 관리자가 동일한 패키지와 등록 파일을 Intune, 그룹 정책 또는 학교의
@@ -18,22 +18,27 @@ $dotnet = Join-Path (Get-Location) ".tools\dotnet\dotnet.exe"
 & $dotnet publish src\Classroom.Student.Desktop\Classroom.Student.Desktop.csproj -c Release -r win-x64 --self-contained false -o artifacts\student
 ```
 
-교사 Console에서 `학생 등록`을 눌러 만든 `classroom-enrollment-*.json`을
-publish 결과 폴더에 넣은 다음, 관리자 권한이 필요한 PC에서 아래 파일을
-실행한다. 등록 토큰 교환과 장치 토큰 발급은 스크립트가 서버와 자동으로
-처리한다.
+GitHub Actions의 `Classroom-Windows` 패키지에는 아래 설치 앱이 포함됩니다.
+학생 PC에는 패키지 전체 압축을 한 번만 풀고 설치 앱만 실행합니다.
 
 ```text
 학생용 패키지\
-├─ Classroom.Student.Service.exe
-├─ Classroom.Student.Desktop.exe
+├─ Classroom.Student.Setup.exe
+├─ student-service\Classroom.Student.Service.exe
+├─ student-desktop\Classroom.Student.Desktop.exe
 ├─ Install-ClassroomStudent.cmd
 ├─ Install-ClassroomStudent.ps1
-└─ classroom-enrollment-홍길동.json
+└─ ...
 ```
 
-`Install-ClassroomStudent.cmd`는 폴더 안의 등록 JSON을 자동으로 찾는다. 여러
-파일이 있으면 사용할 JSON을 `.cmd` 파일 위로 끌어다 놓으면 된다.
+`Classroom.Student.Setup.exe`가 기본 설치 경로와 운영 서버를 자동으로 사용합니다.
+코드 등록이 성공하면 임시 장치 설정을 만들어 PowerShell 설치 스크립트에
+전달하고, 설치가 끝난 뒤 임시 파일을 삭제합니다. 관리자 권한을 취소하거나 설치에
+실패하면 같은 코드로 다시 설치를 시도할 수 있습니다. 코드가 외부에 노출된 경우에만
+교사 콘솔에서 새 코드를 발급해 이전 코드를 폐기합니다.
+
+`Install-ClassroomStudent.cmd`와 JSON 파일 방식은 기존 파일럿과 관리형 배포를
+위한 호환 경로입니다. 새 설치에서는 학생에게 이 수동 경로를 안내하지 않습니다.
 
 고급 자동화가 필요한 경우에는 기존 PowerShell 인자를 직접 사용할 수 있다.
 

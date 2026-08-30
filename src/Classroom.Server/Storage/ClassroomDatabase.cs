@@ -6,13 +6,14 @@ using Blossom.Classroom.Core.Serialization;
 using Blossom.Classroom.Protocol.Models;
 using Blossom.Classroom.Protocol.Serialization;
 using Blossom.Classroom.Server.Configuration;
+using Blossom.Classroom.Server.Models;
 using Blossom.Classroom.Server.Security;
 
 namespace Blossom.Classroom.Server.Storage;
 
 public sealed class ClassroomDatabase : IDisposable
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 4;
 
     private readonly string connectionString;
 
@@ -86,6 +87,7 @@ public sealed class ClassroomDatabase : IDisposable
                 DisplayName TEXT NOT NULL,
                 PasswordHash TEXT NOT NULL,
                 IsActive INTEGER NOT NULL DEFAULT 1,
+                IsAdmin INTEGER NOT NULL DEFAULT 0,
                 CreatedAtUtc TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS TeacherIdentities (
@@ -116,6 +118,10 @@ public sealed class ClassroomDatabase : IDisposable
                 StudentId TEXT NOT NULL,
                 StudentDisplayName TEXT NOT NULL,
                 TokenHash TEXT NOT NULL,
+                JoinCode TEXT NULL,
+                JoinCodeHash TEXT NULL,
+                JoinCodeCreatedAtUtc TEXT NULL,
+                JoinCodeLastUsedAtUtc TEXT NULL,
                 ExpiresAtUtc TEXT NOT NULL,
                 CreatedByTeacherId TEXT NOT NULL,
                 Consumed INTEGER NOT NULL DEFAULT 0
@@ -177,26 +183,95 @@ public sealed class ClassroomDatabase : IDisposable
                 ExpiresAtUtc TEXT NOT NULL,
                 Revoked INTEGER NOT NULL DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS AdminGrants (
+                Identifier TEXT NOT NULL,
+                SchoolId TEXT NOT NULL,
+                CreatedByTeacherId TEXT NOT NULL,
+                CreatedAtUtc TEXT NOT NULL,
+                IsActive INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (Identifier, SchoolId)
+            );
             CREATE INDEX IF NOT EXISTS IX_Classes_TeacherId ON Classes (TeacherId);
             CREATE INDEX IF NOT EXISTS IX_Devices_ClassId ON Devices (ClassId);
             CREATE INDEX IF NOT EXISTS IX_AuditEvents_ClassId_TimestampUtc ON AuditEvents (ClassId, TimestampUtc);
             CREATE INDEX IF NOT EXISTS IX_Commands_DeviceId_State ON Commands (DeviceId, State);
             """);
 
+        // Keep migrations idempotent so an existing pilot database upgrades in place.
+        if (!HasColumn(connection, transaction, "Users", "IsAdmin"))
+        {
+            ExecuteNonQuery(
+                connection,
+                transaction,
+                "ALTER TABLE Users ADD COLUMN IsAdmin INTEGER NOT NULL DEFAULT 0;");
+        }
+        // Keep this idempotent so an existing pilot database upgrades in place.
+        if (!HasColumn(connection, transaction, "EnrollmentTickets", "JoinCodeHash"))
+        {
+            ExecuteNonQuery(
+                connection,
+                transaction,
+                "ALTER TABLE EnrollmentTickets ADD COLUMN JoinCodeHash TEXT NULL;");
+        }
+        if (!HasColumn(connection, transaction, "EnrollmentTickets", "JoinCode"))
+        {
+            ExecuteNonQuery(
+                connection,
+                transaction,
+                "ALTER TABLE EnrollmentTickets ADD COLUMN JoinCode TEXT NULL;");
+        }
+        if (!HasColumn(connection, transaction, "EnrollmentTickets", "JoinCodeCreatedAtUtc"))
+        {
+            ExecuteNonQuery(
+                connection,
+                transaction,
+                "ALTER TABLE EnrollmentTickets ADD COLUMN JoinCodeCreatedAtUtc TEXT NULL;");
+        }
+        if (!HasColumn(connection, transaction, "EnrollmentTickets", "JoinCodeLastUsedAtUtc"))
+        {
+            ExecuteNonQuery(
+                connection,
+                transaction,
+                "ALTER TABLE EnrollmentTickets ADD COLUMN JoinCodeLastUsedAtUtc TEXT NULL;");
+        }
+
+        ExecuteNonQuery(
+            connection,
+            transaction,
+            "UPDATE Users SET LoginName = @loginName, IsAdmin = 1 WHERE Id = @teacherId AND Role = 'Teacher';",
+            ("@loginName", options.BootstrapTeacherLogin),
+            ("@teacherId", ToDb(options.DevelopmentTeacherId)));
+        ExecuteNonQuery(
+            connection,
+            transaction,
+            "UPDATE Users SET IsAdmin = 1 WHERE LoginName = 'blossom0948';");
+
         ExecuteNonQuery(
             connection,
             transaction,
             """
             INSERT OR IGNORE INTO Users
-                (Id, SchoolId, Role, LoginName, DisplayName, PasswordHash, IsActive, CreatedAtUtc)
+                (Id, SchoolId, Role, LoginName, DisplayName, PasswordHash, IsActive, IsAdmin, CreatedAtUtc)
             VALUES
-                (@id, @schoolId, 'Teacher', @loginName, @displayName, @passwordHash, 1, @createdAtUtc);
+                (@id, @schoolId, 'Teacher', @loginName, @displayName, @passwordHash, 1, 1, @createdAtUtc);
             """,
             ("@id", ToDb(options.DevelopmentTeacherId)),
             ("@schoolId", ToDb(options.DevelopmentSchoolId)),
             ("@loginName", options.BootstrapTeacherLogin),
             ("@displayName", options.BootstrapTeacherDisplayName),
             ("@passwordHash", PasswordSecurity.HashPassword(options.BootstrapTeacherPassword)),
+            ("@createdAtUtc", ToDb(DateTimeOffset.UtcNow)));
+        ExecuteNonQuery(
+            connection,
+            transaction,
+            """
+            INSERT OR IGNORE INTO AdminGrants
+                (Identifier, SchoolId, CreatedByTeacherId, CreatedAtUtc, IsActive)
+            VALUES
+                ('blossom0948@gmail.com', @schoolId, @teacherId, @createdAtUtc, 1);
+            """,
+            ("@schoolId", ToDb(options.DevelopmentSchoolId)),
+            ("@teacherId", ToDb(options.DevelopmentTeacherId)),
             ("@createdAtUtc", ToDb(DateTimeOffset.UtcNow)));
         ExecuteNonQuery(
             connection,
@@ -294,7 +369,10 @@ public sealed class ClassroomDatabase : IDisposable
         return command.ExecuteNonQuery() == 1;
     }
 
-    public TeacherAccount CreateOrGetFirebaseTeacher(FirebaseIdentity identity)
+    public TeacherAccount CreateOrGetFirebaseTeacher(
+        FirebaseIdentity identity,
+        string? requestedDisplayName = null,
+        string? requestedSubject = null)
     {
         if (string.IsNullOrWhiteSpace(identity.Subject))
         {
@@ -305,26 +383,102 @@ public sealed class ClassroomDatabase : IDisposable
             ? "firebase"
             : identity.Provider.Trim();
         var email = identity.Email.Trim().ToLowerInvariant();
-        var displayName = string.IsNullOrWhiteSpace(identity.DisplayName)
-            ? email
-            : identity.DisplayName.Trim();
+        var displayName = string.IsNullOrWhiteSpace(requestedDisplayName)
+            ? identity.DisplayName.Trim()
+            : requestedDisplayName.Trim();
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            displayName = email;
+        }
         if (string.IsNullOrWhiteSpace(displayName))
         {
             displayName = "새 교사";
         }
 
-        using var connection = OpenConnection();
-        using var transaction = connection.BeginTransaction();
-        var account = FindTeacherByIdentity(connection, transaction, provider, identity.Subject.Trim());
-        if (account is not null)
+        if (!string.IsNullOrWhiteSpace(requestedDisplayName))
         {
-            transaction.Commit();
-            return account;
+            displayName = requestedDisplayName.Trim();
+        }
+        if (displayName.Length > 80 || displayName.Any(char.IsControl))
+        {
+            throw new ArgumentException("Teacher display name is invalid.", nameof(requestedDisplayName));
         }
 
-        if (identity.EmailVerified && !string.IsNullOrWhiteSpace(email))
+        var subject = string.IsNullOrWhiteSpace(requestedSubject)
+            ? "정보"
+            : requestedSubject.Trim();
+        if (subject.Length > 128 || subject.Any(char.IsControl))
+        {
+            throw new ArgumentException("Teacher subject is invalid.", nameof(requestedSubject));
+        }
+
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        var organizationSchoolId = FindOrganizationSchoolId(
+            connection,
+            transaction,
+            "blossom0948");
+        var isAdmin = IsAdministratorIdentifier(email)
+            || (organizationSchoolId is Guid organizationId
+                && HasActiveAdminGrant(connection, transaction, email, organizationId));
+        var account = FindTeacherByIdentity(connection, transaction, provider, identity.Subject.Trim());
+        if (account is null && identity.EmailVerified && !string.IsNullOrWhiteSpace(email))
         {
             account = FindTeacherByLogin(connection, transaction, email);
+        }
+
+        if (account is not null)
+        {
+            var targetSchoolId = organizationSchoolId ?? account.SchoolId;
+            if (account.SchoolId != targetSchoolId)
+            {
+                ExecuteNonQuery(
+                    connection,
+                    transaction,
+                    "UPDATE Users SET SchoolId = @schoolId WHERE Id = @teacherId AND Role = 'Teacher';",
+                    ("@schoolId", ToDb(targetSchoolId)),
+                    ("@teacherId", ToDb(account.Id)));
+                ExecuteNonQuery(
+                    connection,
+                    transaction,
+                    "UPDATE Classes SET SchoolId = @schoolId WHERE TeacherId = @teacherId;",
+                    ("@schoolId", ToDb(targetSchoolId)),
+                    ("@teacherId", ToDb(account.Id)));
+                account = account with { SchoolId = targetSchoolId };
+            }
+
+            if (isAdmin)
+            {
+                ExecuteNonQuery(
+                    connection,
+                    transaction,
+                    "UPDATE Users SET IsAdmin = 1 WHERE Id = @teacherId AND Role = 'Teacher';",
+                    ("@teacherId", ToDb(account.Id)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(requestedDisplayName))
+            {
+                ExecuteNonQuery(
+                    connection,
+                    transaction,
+                    "UPDATE Users SET DisplayName = @displayName WHERE Id = @teacherId AND Role = 'Teacher';",
+                    ("@displayName", displayName),
+                    ("@teacherId", ToDb(account.Id)));
+                account = account with { DisplayName = displayName };
+            }
+
+            if (!string.IsNullOrWhiteSpace(requestedSubject))
+            {
+                ExecuteNonQuery(
+                    connection,
+                    transaction,
+                    "UPDATE Classes SET DefaultSubject = @subject WHERE TeacherId = @teacherId;",
+                    ("@subject", subject),
+                    ("@teacherId", ToDb(account.Id)));
+            }
+
+            transaction.Commit();
+            return account;
         }
 
         if (account is null)
@@ -335,7 +489,7 @@ public sealed class ClassroomDatabase : IDisposable
                 email,
                 identity.Subject.Trim());
             var teacherId = Guid.NewGuid();
-            var schoolId = Guid.NewGuid();
+            var schoolId = organizationSchoolId ?? Guid.NewGuid();
             var classId = Guid.NewGuid();
             account = new TeacherAccount(
                 teacherId,
@@ -350,15 +504,16 @@ public sealed class ClassroomDatabase : IDisposable
                 transaction,
                 """
                 INSERT INTO Users
-                    (Id, SchoolId, Role, LoginName, DisplayName, PasswordHash, IsActive, CreatedAtUtc)
+                    (Id, SchoolId, Role, LoginName, DisplayName, PasswordHash, IsActive, IsAdmin, CreatedAtUtc)
                 VALUES
-                    (@id, @schoolId, 'Teacher', @loginName, @displayName, @passwordHash, 1, @createdAtUtc);
+                    (@id, @schoolId, 'Teacher', @loginName, @displayName, @passwordHash, 1, @isAdmin, @createdAtUtc);
                 """,
                 ("@id", ToDb(account.Id)),
                 ("@schoolId", ToDb(account.SchoolId)),
                 ("@loginName", account.LoginName),
                 ("@displayName", account.DisplayName),
                 ("@passwordHash", account.PasswordHash),
+                ("@isAdmin", isAdmin ? 1 : 0),
                 ("@createdAtUtc", ToDb(DateTimeOffset.UtcNow)));
             ExecuteNonQuery(
                 connection,
@@ -371,7 +526,7 @@ public sealed class ClassroomDatabase : IDisposable
                 ("@schoolId", ToDb(schoolId)),
                 ("@teacherId", ToDb(teacherId)),
                 ("@name", "내 학급"),
-                ("@subject", "정보"));
+                ("@subject", subject));
         }
 
         ExecuteNonQuery(
@@ -410,6 +565,23 @@ public sealed class ClassroomDatabase : IDisposable
         return true;
     }
 
+    public bool TryGetClassSchoolId(Guid classId, out Guid schoolId)
+    {
+        schoolId = Guid.Empty;
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT SchoolId FROM Classes WHERE Id = @classId;";
+        command.Parameters.AddWithValue("@classId", ToDb(classId));
+        var value = command.ExecuteScalar();
+        if (value is not string schoolValue || !Guid.TryParse(schoolValue, out schoolId))
+        {
+            schoolId = Guid.Empty;
+            return false;
+        }
+
+        return true;
+    }
+
     public IReadOnlyList<TeacherClass> GetClassesForTeacher(Guid teacherId)
     {
         var result = new List<TeacherClass>();
@@ -435,20 +607,262 @@ public sealed class ClassroomDatabase : IDisposable
         return result;
     }
 
+    public bool GetTeacherSchoolId(Guid teacherId, out Guid schoolId)
+    {
+        schoolId = Guid.Empty;
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT SchoolId FROM Users WHERE Id = @teacherId AND Role = 'Teacher' AND IsActive = 1;";
+        command.Parameters.AddWithValue("@teacherId", ToDb(teacherId));
+        var value = command.ExecuteScalar();
+        if (value is not string schoolValue || !Guid.TryParse(schoolValue, out schoolId))
+        {
+            schoolId = Guid.Empty;
+            return false;
+        }
+
+        return true;
+    }
+
+    public bool IsTeacherAdmin(Guid teacherId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT IsAdmin FROM Users WHERE Id = @teacherId AND Role = 'Teacher' AND IsActive = 1;";
+        command.Parameters.AddWithValue("@teacherId", ToDb(teacherId));
+        return Convert.ToInt32(command.ExecuteScalar() ?? 0, CultureInfo.InvariantCulture) != 0;
+    }
+
+    public IReadOnlyList<StudentCodeView> GetStudentCodes(Guid schoolId)
+    {
+        var result = new List<StudentCodeView>();
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT tickets.DeviceId,
+                   tickets.SchoolId,
+                   tickets.ClassId,
+                   classes.Name,
+                   classes.DefaultSubject,
+                   tickets.StudentId,
+                   tickets.StudentDisplayName,
+                   tickets.JoinCode,
+                   COALESCE(tickets.JoinCodeCreatedAtUtc, tickets.ExpiresAtUtc),
+                   tickets.JoinCodeLastUsedAtUtc,
+                   COALESCE(users.DisplayName, '관리자')
+            FROM EnrollmentTickets AS tickets
+            INNER JOIN Classes AS classes ON classes.Id = tickets.ClassId
+            LEFT JOIN Users AS users ON users.Id = tickets.CreatedByTeacherId
+            WHERE tickets.SchoolId = @schoolId
+              AND tickets.JoinCode IS NOT NULL
+              AND tickets.JoinCode <> ''
+              AND tickets.JoinCodeHash IS NOT NULL
+            ORDER BY classes.Name, tickets.StudentDisplayName;
+            """;
+        command.Parameters.AddWithValue("@schoolId", ToDb(schoolId));
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add(new StudentCodeView(
+                ParseGuid(reader.GetString(0)),
+                ParseGuid(reader.GetString(1)),
+                ParseGuid(reader.GetString(2)),
+                reader.GetString(3),
+                reader.GetString(4),
+                ParseGuid(reader.GetString(5)),
+                reader.GetString(6),
+                reader.GetString(7),
+                ParseDate(reader.GetString(8)),
+                reader.IsDBNull(9) ? null : ParseDate(reader.GetString(9)),
+                reader.GetString(10)));
+        }
+
+        return result;
+    }
+
+    public IReadOnlyList<TeacherDirectoryEntry> GetTeacherDirectory(Guid schoolId)
+    {
+        var result = new List<TeacherDirectoryEntry>();
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT users.Id,
+                   users.LoginName,
+                   users.DisplayName,
+                   COALESCE((
+                       SELECT identities.Email
+                       FROM TeacherIdentities AS identities
+                       WHERE identities.TeacherId = users.Id
+                         AND identities.Email IS NOT NULL
+                         AND identities.Email <> ''
+                       ORDER BY identities.CreatedAtUtc
+                       LIMIT 1), ''),
+                   users.IsAdmin
+            FROM Users AS users
+            WHERE users.SchoolId = @schoolId
+              AND users.Role = 'Teacher'
+              AND users.IsActive = 1
+            ORDER BY users.DisplayName, users.LoginName;
+            """;
+        command.Parameters.AddWithValue("@schoolId", ToDb(schoolId));
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add(new TeacherDirectoryEntry(
+                ParseGuid(reader.GetString(0)),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetInt32(4) != 0));
+        }
+
+        return result;
+    }
+
+    public IReadOnlyList<AdministratorGrantView> GetActiveAdministratorGrants(Guid schoolId)
+    {
+        var result = new List<AdministratorGrantView>();
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Identifier, CreatedAtUtc
+            FROM AdminGrants
+            WHERE SchoolId = @schoolId AND IsActive = 1
+            ORDER BY Identifier;
+            """;
+        command.Parameters.AddWithValue("@schoolId", ToDb(schoolId));
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add(new AdministratorGrantView(
+                reader.GetString(0),
+                ParseDate(reader.GetString(1))));
+        }
+
+        return result;
+    }
+
+    public bool SetTeacherAdmin(Guid requesterId, string? identifier, bool isAdmin)
+    {
+        var normalizedIdentifier = NormalizeAdministratorIdentifier(identifier);
+        if (!isAdmin && IsBootstrapAdministrator(normalizedIdentifier))
+        {
+            throw new InvalidOperationException("기본 관리자 권한은 해제할 수 없습니다.");
+        }
+
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        Guid schoolId;
+        var requesterIsAdmin = false;
+        using (var requesterCommand = connection.CreateCommand())
+        {
+            requesterCommand.Transaction = transaction;
+            requesterCommand.CommandText = """
+                SELECT SchoolId, IsAdmin
+                FROM Users
+                WHERE Id = @teacherId AND Role = 'Teacher' AND IsActive = 1;
+                """;
+            requesterCommand.Parameters.AddWithValue("@teacherId", ToDb(requesterId));
+            using var requesterReader = requesterCommand.ExecuteReader();
+            if (!requesterReader.Read()
+                || !Guid.TryParse(requesterReader.GetString(0), out schoolId))
+            {
+                throw new InvalidOperationException("관리자 계정을 확인할 수 없습니다.");
+            }
+
+            requesterIsAdmin = requesterReader.GetInt32(1) != 0;
+        }
+
+        if (!requesterIsAdmin)
+        {
+            throw new InvalidOperationException("관리자만 다른 관리자 권한을 변경할 수 있습니다.");
+        }
+
+        Guid? targetTeacherId = null;
+        using (var targetCommand = connection.CreateCommand())
+        {
+            targetCommand.Transaction = transaction;
+            targetCommand.CommandText = """
+                SELECT users.Id
+                FROM Users AS users
+                WHERE users.SchoolId = @schoolId
+                  AND users.Role = 'Teacher'
+                  AND users.IsActive = 1
+                  AND (
+                      lower(users.LoginName) = @identifier
+                      OR EXISTS (
+                          SELECT 1
+                          FROM TeacherIdentities AS identities
+                          WHERE identities.TeacherId = users.Id
+                            AND lower(COALESCE(identities.Email, '')) = @identifier))
+                LIMIT 1;
+                """;
+            AddParameters(
+                targetCommand,
+                ("@schoolId", ToDb(schoolId)),
+                ("@identifier", normalizedIdentifier));
+            var targetValue = targetCommand.ExecuteScalar();
+            if (targetValue is string targetValueText && Guid.TryParse(targetValueText, out var parsedTargetId))
+            {
+                targetTeacherId = parsedTargetId;
+            }
+        }
+
+        if (!isAdmin && targetTeacherId == requesterId)
+        {
+            throw new InvalidOperationException("현재 로그인한 관리자 권한은 이 화면에서 해제할 수 없습니다.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        ExecuteNonQuery(
+            connection,
+            transaction,
+            """
+            INSERT INTO AdminGrants (Identifier, SchoolId, CreatedByTeacherId, CreatedAtUtc, IsActive)
+            VALUES (@identifier, @schoolId, @createdByTeacherId, @createdAtUtc, @isActive)
+            ON CONFLICT(Identifier, SchoolId) DO UPDATE SET
+                CreatedByTeacherId = excluded.CreatedByTeacherId,
+                CreatedAtUtc = excluded.CreatedAtUtc,
+                IsActive = excluded.IsActive;
+            """,
+            ("@identifier", normalizedIdentifier),
+            ("@schoolId", ToDb(schoolId)),
+            ("@createdByTeacherId", ToDb(requesterId)),
+            ("@createdAtUtc", ToDb(now)),
+            ("@isActive", isAdmin ? 1 : 0));
+        if (targetTeacherId is Guid resolvedTargetId)
+        {
+            ExecuteNonQuery(
+                connection,
+                transaction,
+                "UPDATE Users SET IsAdmin = @isAdmin WHERE Id = @teacherId AND SchoolId = @schoolId;",
+                ("@isAdmin", isAdmin ? 1 : 0),
+                ("@teacherId", ToDb(resolvedTargetId)),
+                ("@schoolId", ToDb(schoolId)));
+        }
+
+        transaction.Commit();
+        return targetTeacherId is not null;
+    }
+
     public void SaveEnrollmentTicket(PersistedEnrollmentTicket ticket)
     {
         ExecuteNonQuery(
             """
             INSERT INTO EnrollmentTickets
-                (DeviceId, SchoolId, ClassId, StudentId, StudentDisplayName, TokenHash, ExpiresAtUtc, CreatedByTeacherId, Consumed)
+                (DeviceId, SchoolId, ClassId, StudentId, StudentDisplayName, TokenHash, JoinCode, JoinCodeHash, JoinCodeCreatedAtUtc, JoinCodeLastUsedAtUtc, ExpiresAtUtc, CreatedByTeacherId, Consumed)
             VALUES
-                (@deviceId, @schoolId, @classId, @studentId, @studentDisplayName, @tokenHash, @expiresAtUtc, @createdByTeacherId, @consumed)
+                (@deviceId, @schoolId, @classId, @studentId, @studentDisplayName, @tokenHash, @joinCode, @joinCodeHash, @joinCodeCreatedAtUtc, @joinCodeLastUsedAtUtc, @expiresAtUtc, @createdByTeacherId, @consumed)
             ON CONFLICT(DeviceId) DO UPDATE SET
                 SchoolId = excluded.SchoolId,
                 ClassId = excluded.ClassId,
                 StudentId = excluded.StudentId,
                 StudentDisplayName = excluded.StudentDisplayName,
                 TokenHash = excluded.TokenHash,
+                JoinCode = excluded.JoinCode,
+                JoinCodeHash = excluded.JoinCodeHash,
+                JoinCodeCreatedAtUtc = excluded.JoinCodeCreatedAtUtc,
+                JoinCodeLastUsedAtUtc = excluded.JoinCodeLastUsedAtUtc,
                 ExpiresAtUtc = excluded.ExpiresAtUtc,
                 CreatedByTeacherId = excluded.CreatedByTeacherId,
                 Consumed = excluded.Consumed;
@@ -459,6 +873,10 @@ public sealed class ClassroomDatabase : IDisposable
             ("@studentId", ToDb(ticket.StudentId)),
             ("@studentDisplayName", ticket.StudentDisplayName),
             ("@tokenHash", ticket.TokenHash),
+            ("@joinCode", ticket.JoinCode),
+            ("@joinCodeHash", ticket.JoinCodeHash),
+            ("@joinCodeCreatedAtUtc", ToDbNullable(ticket.JoinCodeCreatedAtUtc)),
+            ("@joinCodeLastUsedAtUtc", ToDbNullable(ticket.JoinCodeLastUsedAtUtc)),
             ("@expiresAtUtc", ToDb(ticket.ExpiresAtUtc)),
             ("@createdByTeacherId", ToDb(ticket.CreatedByTeacherId)),
             ("@consumed", ticket.Consumed ? 1 : 0));
@@ -479,7 +897,7 @@ public sealed class ClassroomDatabase : IDisposable
         var result = new List<PersistedEnrollmentTicket>();
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT DeviceId, SchoolId, ClassId, StudentId, StudentDisplayName, TokenHash, ExpiresAtUtc, CreatedByTeacherId, Consumed FROM EnrollmentTickets;";
+        command.CommandText = "SELECT DeviceId, SchoolId, ClassId, StudentId, StudentDisplayName, TokenHash, JoinCode, JoinCodeHash, JoinCodeCreatedAtUtc, JoinCodeLastUsedAtUtc, ExpiresAtUtc, CreatedByTeacherId, Consumed FROM EnrollmentTickets;";
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
@@ -490,9 +908,13 @@ public sealed class ClassroomDatabase : IDisposable
                 ParseGuid(reader.GetString(3)),
                 reader.GetString(4),
                 reader.GetString(5),
-                ParseDate(reader.GetString(6)),
-                ParseGuid(reader.GetString(7)),
-                reader.GetInt32(8) != 0));
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.IsDBNull(8) ? null : ParseDate(reader.GetString(8)),
+                reader.IsDBNull(9) ? null : ParseDate(reader.GetString(9)),
+                ParseDate(reader.GetString(10)),
+                ParseGuid(reader.GetString(11)),
+                reader.GetInt32(12) != 0));
         }
 
         return result;
@@ -820,6 +1242,27 @@ public sealed class ClassroomDatabase : IDisposable
         command.ExecuteNonQuery();
     }
 
+    private static bool HasColumn(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string tableName,
+        string columnName)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = $"PRAGMA table_info({tableName});";
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static T? ExecuteScalar<T>(
         SqliteConnection connection,
         SqliteTransaction? transaction,
@@ -865,6 +1308,95 @@ public sealed class ClassroomDatabase : IDisposable
 
     private static DateTimeOffset ParseDate(string value) =>
         DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+
+    private static Guid? FindOrganizationSchoolId(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string bootstrapLogin)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT SchoolId
+            FROM Users
+            WHERE Role = 'Teacher' AND IsActive = 1
+            ORDER BY CASE
+                WHEN lower(LoginName) = lower(@bootstrapLogin) THEN 0
+                WHEN lower(LoginName) = 'blossom0948' THEN 1
+                WHEN lower(LoginName) = 'teacher' THEN 2
+                ELSE 3
+            END,
+            CreatedAtUtc
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("@bootstrapLogin", bootstrapLogin);
+        var value = command.ExecuteScalar();
+        return value is string schoolValue && Guid.TryParse(schoolValue, out var schoolId)
+            ? schoolId
+            : null;
+    }
+
+    private static bool HasActiveAdminGrant(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string identifier,
+        Guid schoolId)
+    {
+        if (string.IsNullOrWhiteSpace(identifier))
+        {
+            return false;
+        }
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT 1
+            FROM AdminGrants
+            WHERE Identifier = @identifier AND SchoolId = @schoolId AND IsActive = 1
+            LIMIT 1;
+            """;
+        AddParameters(
+            command,
+            ("@identifier", identifier.Trim().ToLowerInvariant()),
+            ("@schoolId", ToDb(schoolId)));
+        return command.ExecuteScalar() is not null;
+    }
+
+    private static bool IsAdministratorIdentifier(string? identifier) =>
+        string.Equals(identifier?.Trim(), "blossom0948@gmail.com", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsBootstrapAdministrator(string identifier) =>
+        string.Equals(identifier, "blossom0948", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(identifier, "blossom0948@gmail.com", StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeAdministratorIdentifier(string? identifier)
+    {
+        var normalized = identifier?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalized)
+            || normalized.Length > 254
+            || normalized.Any(char.IsControl)
+            || normalized.Any(char.IsWhiteSpace))
+        {
+            throw new ArgumentException("관리자 계정은 이메일 또는 아이디 형식으로 입력하세요.", nameof(identifier));
+        }
+
+        if (normalized.Contains('@'))
+        {
+            if (normalized.Count(character => character == '@') != 1
+                || normalized.StartsWith('@')
+                || normalized.EndsWith('@'))
+            {
+                throw new ArgumentException("관리자 이메일 형식이 올바르지 않습니다.", nameof(identifier));
+            }
+        }
+        else if (normalized.Length > 64
+            || normalized.Any(character => !char.IsLetterOrDigit(character) && character is not ('.' or '_' or '-')))
+        {
+            throw new ArgumentException("관리자 아이디 형식이 올바르지 않습니다.", nameof(identifier));
+        }
+
+        return normalized;
+    }
 
     private static TeacherAccount? FindTeacherByIdentity(
         SqliteConnection connection,
@@ -958,9 +1490,20 @@ public sealed record PersistedEnrollmentTicket(
     Guid StudentId,
     string StudentDisplayName,
     string TokenHash,
+    string? JoinCode,
+    string? JoinCodeHash,
+    DateTimeOffset? JoinCodeCreatedAtUtc,
+    DateTimeOffset? JoinCodeLastUsedAtUtc,
     DateTimeOffset ExpiresAtUtc,
     Guid CreatedByTeacherId,
     bool Consumed);
+
+public sealed record TeacherDirectoryEntry(
+    Guid TeacherId,
+    string LoginName,
+    string DisplayName,
+    string Email,
+    bool IsAdmin);
 
 public sealed record PersistedDevice(
     Guid DeviceId,

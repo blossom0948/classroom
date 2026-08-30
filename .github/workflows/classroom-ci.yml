@@ -63,6 +63,9 @@ jobs:
           dotnet publish src/Classroom.Student.Desktop/Classroom.Student.Desktop.csproj `
             -c Release -r win-x64 --self-contained true `
             -p:PublishSingleFile=true -o (Join-Path $package 'student-desktop')
+          dotnet publish src/Classroom.Student.Setup/Classroom.Student.Setup.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -o $package
 
           Copy-Item scripts/install/* $package -Force
           Copy-Item docs/CLASSROOM_MVP.md $package -Force

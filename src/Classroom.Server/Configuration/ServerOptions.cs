@@ -11,7 +11,7 @@ public sealed record ServerOptions(
     TimeSpan EnrollmentLifetime,
     string DatabasePath = "",
     bool DevelopmentMode = true,
-    string BootstrapTeacherLogin = "teacher",
+    string BootstrapTeacherLogin = "blossom0948",
     string BootstrapTeacherPassword = "ChangeMe!Classroom123",
     string BootstrapTeacherDisplayName = "담임 교사",
     string BootstrapClassName = "2학년 3반",
@@ -65,7 +65,7 @@ public sealed record ServerOptions(
 
         var bootstrapLogin = configuration["Classroom:BootstrapTeacherLogin"]
             ?? Environment.GetEnvironmentVariable("CLASSROOM_BOOTSTRAP_TEACHER_LOGIN")
-            ?? "teacher";
+            ?? "blossom0948";
         if (bootstrapLogin.Length is < 3 or > 64
             || bootstrapLogin.Any(character => !char.IsLetterOrDigit(character) && character is not ('.' or '_' or '-')))
         {

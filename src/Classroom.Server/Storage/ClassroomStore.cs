@@ -19,6 +19,8 @@ public sealed class ClassroomStore
     private readonly Dictionary<CommandKey, CommandRecord> commands = [];
     private readonly Queue<AuditEvent> auditEvents = [];
     private const int MaximumAuditEvents = 10_000;
+    private const int JoinCodeLength = 8;
+    private const string JoinCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
     public ClassroomStore(ServerOptions options, ClassroomDatabase? database = null)
     {
@@ -42,6 +44,10 @@ public sealed class ClassroomStore
                 ticket.StudentId,
                 ticket.StudentDisplayName,
                 ticket.TokenHash,
+                ticket.JoinCode,
+                ticket.JoinCodeHash,
+                ticket.JoinCodeCreatedAtUtc,
+                ticket.JoinCodeLastUsedAtUtc,
                 ticket.ExpiresAtUtc,
                 ticket.CreatedByTeacherId)
             {
@@ -99,41 +105,118 @@ public sealed class ClassroomStore
         Guid studentId,
         string studentDisplayName)
     {
-        var schoolId = GetClassSchoolId(teacherId, classId);
-        studentId = studentId == Guid.Empty ? Guid.NewGuid() : studentId;
+        var schoolId = GetEnrollmentClassSchoolId(teacherId, classId);
         RequireText(studentDisplayName, nameof(studentDisplayName), 128);
 
-        var deviceId = Guid.NewGuid();
-        var token = TokenSecurity.CreateToken();
-        var expiresAt = DateTimeOffset.UtcNow.Add(options.EnrollmentLifetime);
         lock (gate)
         {
-            enrollmentTickets[deviceId] = new EnrollmentTicketState(
-                deviceId,
-                schoolId,
-                classId,
-                studentId,
-                studentDisplayName,
-                TokenSecurity.HashToken(token),
-                expiresAt,
-                teacherId);
-            database?.SaveEnrollmentTicket(enrollmentTickets[deviceId].ToPersisted());
+            var existingTicket = studentId == Guid.Empty
+                ? null
+                : enrollmentTickets.Values
+                    .Where(ticket => ticket.SchoolId == schoolId
+                        && ticket.ClassId == classId
+                        && ticket.StudentId == studentId)
+                    .OrderByDescending(ticket => ticket.JoinCodeCreatedAtUtc ?? DateTimeOffset.MinValue)
+                    .FirstOrDefault();
+            var deviceId = existingTicket?.DeviceId ?? Guid.NewGuid();
+            var resolvedStudentId = existingTicket?.StudentId ?? (studentId == Guid.Empty ? Guid.NewGuid() : studentId);
+            var token = TokenSecurity.CreateToken();
+            var expiresAt = DateTimeOffset.UtcNow.Add(options.EnrollmentLifetime);
+            var joinCode = CreateUniqueJoinCodeLocked();
+            var joinCodeHash = TokenSecurity.HashToken(joinCode);
+            EnrollmentTicketState ticket;
+            if (existingTicket is null)
+            {
+                ticket = new EnrollmentTicketState(
+                    deviceId,
+                    schoolId,
+                    classId,
+                    resolvedStudentId,
+                    studentDisplayName,
+                    TokenSecurity.HashToken(token),
+                    joinCode,
+                    joinCodeHash,
+                    DateTimeOffset.UtcNow,
+                    null,
+                    expiresAt,
+                    teacherId);
+                enrollmentTickets[deviceId] = ticket;
+            }
+            else
+            {
+                existingTicket.StudentDisplayName = studentDisplayName;
+                existingTicket.TokenHash = TokenSecurity.HashToken(token);
+                existingTicket.JoinCode = joinCode;
+                existingTicket.JoinCodeHash = joinCodeHash;
+                existingTicket.JoinCodeCreatedAtUtc = DateTimeOffset.UtcNow;
+                existingTicket.JoinCodeLastUsedAtUtc = null;
+                existingTicket.ExpiresAtUtc = expiresAt;
+                existingTicket.CreatedByTeacherId = teacherId;
+                existingTicket.Consumed = false;
+                ticket = existingTicket;
+            }
+
+            database?.SaveEnrollmentTicket(ticket.ToPersisted());
             AddAuditLocked(AuditEvent.Create(
                 "DEVICE_ENROLLMENT_TICKET",
-                "ISSUED",
+                existingTicket is null ? "ISSUED" : "REISSUED",
                 schoolId: schoolId,
                 classId: classId,
                 teacherId: teacherId,
-                studentId: studentId));
+                studentId: resolvedStudentId));
+
+            return new DeviceEnrollmentTicket(
+                ticket.DeviceId,
+                ticket.SchoolId,
+                ticket.ClassId,
+                ticket.StudentId,
+                ticket.ExpiresAtUtc,
+                token,
+                ticket.JoinCode!);
+        }
+    }
+
+    public StoreResult<DeviceEnrollmentResponse> EnrollByJoinCode(
+        JoinCodeEnrollmentRequest request)
+    {
+        var joinCode = NormalizeJoinCode(request.JoinCode);
+        if (joinCode.Length != JoinCodeLength
+            || joinCode.Any(character => !JoinCodeAlphabet.Contains(character)))
+        {
+            return StoreResult<DeviceEnrollmentResponse>.Failure(
+                "ENROLLMENT_INVALID",
+                "학생 코드는 8자리 영문 대문자와 숫자로 입력해야 합니다.");
         }
 
-        return new DeviceEnrollmentTicket(
-            deviceId,
-            schoolId,
-            classId,
-            studentId,
-            expiresAt,
-            token);
+        try
+        {
+            RequireText(request.DeviceName, nameof(request.DeviceName), 128);
+            RequireText(request.AgentVersion, nameof(request.AgentVersion), 64);
+        }
+        catch (ClassroomStoreException exception)
+        {
+            return StoreResult<DeviceEnrollmentResponse>.Failure(exception.Code, exception.Message);
+        }
+
+        lock (gate)
+        {
+            var ticket = enrollmentTickets.Values.FirstOrDefault(candidate =>
+                candidate.JoinCodeHash is not null
+                && TokenSecurity.VerifyToken(joinCode, candidate.JoinCodeHash));
+            if (ticket is null)
+            {
+                return StoreResult<DeviceEnrollmentResponse>.Failure(
+                    "ENROLLMENT_INVALID",
+                    "학생 코드가 올바르지 않거나 재발급되어 사용할 수 없습니다. 선생님에게 코드를 확인하세요.");
+            }
+
+            return CompleteEnrollmentLocked(
+                ticket,
+                Guid.NewGuid(),
+                request.DeviceName,
+                request.AgentVersion,
+                consumeTicket: false);
+        }
     }
 
     public StoreResult<DeviceEnrollmentResponse> Enroll(DeviceEnrollmentRequest request)
@@ -186,39 +269,12 @@ public sealed class ClassroomStore
                     "The enrollment token is invalid.");
             }
 
-            ticket.Consumed = true;
-            database?.SaveEnrollmentTicket(ticket.ToPersisted());
-            var issuedAt = DateTimeOffset.UtcNow;
-            var deviceToken = TokenSecurity.CreateToken();
-            var device = new StudentDeviceState(
+            return CompleteEnrollmentLocked(
+                ticket,
                 request.DeviceId,
-                ticket.SchoolId,
-                ticket.ClassId,
-                ticket.StudentId,
-                ticket.StudentDisplayName,
                 request.DeviceName,
                 request.AgentVersion,
-                TokenSecurity.HashToken(deviceToken),
-                issuedAt);
-            devices[request.DeviceId] = device;
-            database?.SaveDevice(device.ToPersisted());
-
-            AddAuditLocked(AuditEvent.Create(
-                "DEVICE_ENROLLMENT",
-                "SUCCESS",
-                schoolId: ticket.SchoolId,
-                classId: ticket.ClassId,
-                studentId: ticket.StudentId,
-                studentDeviceId: request.DeviceId));
-
-            return StoreResult<DeviceEnrollmentResponse>.Success(
-                new DeviceEnrollmentResponse(
-                    request.DeviceId,
-                    ticket.SchoolId,
-                    ticket.ClassId,
-                    ticket.StudentId,
-                    deviceToken,
-                    issuedAt));
+                consumeTicket: true);
         }
     }
 
@@ -740,6 +796,42 @@ public sealed class ClassroomStore
             options.BootstrapClassSubject)];
     }
 
+    public IReadOnlyList<StudentCodeView> GetStudentCodes(Guid teacherId)
+    {
+        if (database is not null)
+        {
+            return database.GetTeacherSchoolId(teacherId, out var schoolId)
+                ? database.GetStudentCodes(schoolId)
+                : [];
+        }
+
+        if (teacherId != options.DevelopmentTeacherId)
+        {
+            return [];
+        }
+
+        lock (gate)
+        {
+            return enrollmentTickets.Values
+                .Where(ticket => ticket.JoinCode is not null && ticket.JoinCodeHash is not null)
+                .OrderBy(ticket => ticket.ClassId)
+                .ThenBy(ticket => ticket.StudentDisplayName, StringComparer.Ordinal)
+                .Select(ticket => new StudentCodeView(
+                    ticket.DeviceId,
+                    ticket.SchoolId,
+                    ticket.ClassId,
+                    options.BootstrapClassName,
+                    options.BootstrapClassSubject,
+                    ticket.StudentId,
+                    ticket.StudentDisplayName,
+                    ticket.JoinCode!,
+                    ticket.JoinCodeCreatedAtUtc ?? DateTimeOffset.UtcNow,
+                    ticket.JoinCodeLastUsedAtUtc,
+                    options.BootstrapTeacherDisplayName))
+                .ToArray();
+        }
+    }
+
     public ClassSessionSnapshot? GetActiveSession(Guid teacherId, Guid classId)
     {
         EnsureTeacherAccess(teacherId, classId);
@@ -828,6 +920,20 @@ public sealed class ClassroomStore
             "Teacher is not assigned to this class.");
     }
 
+    private Guid GetEnrollmentClassSchoolId(Guid teacherId, Guid classId)
+    {
+        if (database is not null
+            && database.IsTeacherAdmin(teacherId)
+            && database.TryGetClassSchoolId(classId, out var adminSchoolId)
+            && database.GetTeacherSchoolId(teacherId, out var teacherSchoolId)
+            && adminSchoolId == teacherSchoolId)
+        {
+            return adminSchoolId;
+        }
+
+        return GetClassSchoolId(teacherId, classId);
+    }
+
     private void EnsureTeacherAccess(Guid teacherId, Guid classId)
     {
         _ = GetClassSchoolId(teacherId, classId);
@@ -868,6 +974,116 @@ public sealed class ClassroomStore
         }
     }
 
+    private StoreResult<DeviceEnrollmentResponse> CompleteEnrollmentLocked(
+        EnrollmentTicketState ticket,
+        Guid deviceId,
+        string deviceName,
+        string agentVersion,
+        bool consumeTicket)
+    {
+        if (consumeTicket && ticket.ExpiresAtUtc <= DateTimeOffset.UtcNow)
+        {
+            enrollmentTickets.Remove(ticket.DeviceId);
+            return StoreResult<DeviceEnrollmentResponse>.Failure(
+                "ENROLLMENT_EXPIRED",
+                "The enrollment ticket has expired.");
+        }
+
+        if (consumeTicket && ticket.Consumed)
+        {
+            return StoreResult<DeviceEnrollmentResponse>.Failure(
+                "ENROLLMENT_USED",
+                "The enrollment ticket has already been used.");
+        }
+
+        if (consumeTicket)
+        {
+            ticket.Consumed = true;
+        }
+        else
+        {
+            ticket.JoinCodeLastUsedAtUtc = DateTimeOffset.UtcNow;
+        }
+
+        foreach (var existingDevice in devices.Values.Where(device =>
+                     device.ClassId == ticket.ClassId
+                     && device.StudentId == ticket.StudentId
+                     && string.Equals(device.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase)
+                     && !device.Revoked
+                     && device.DeviceId != deviceId))
+        {
+            existingDevice.Revoked = true;
+            existingDevice.ConnectionActive = false;
+            existingDevice.SessionId = null;
+            database?.SaveDevice(existingDevice.ToPersisted());
+        }
+
+        database?.SaveEnrollmentTicket(ticket.ToPersisted());
+        var issuedAt = DateTimeOffset.UtcNow;
+        var deviceToken = TokenSecurity.CreateToken();
+        var device = new StudentDeviceState(
+            deviceId,
+            ticket.SchoolId,
+            ticket.ClassId,
+            ticket.StudentId,
+            ticket.StudentDisplayName,
+            deviceName,
+            agentVersion,
+            TokenSecurity.HashToken(deviceToken),
+            issuedAt);
+        devices[deviceId] = device;
+        database?.SaveDevice(device.ToPersisted());
+
+        AddAuditLocked(AuditEvent.Create(
+            "DEVICE_ENROLLMENT",
+            "SUCCESS",
+            schoolId: ticket.SchoolId,
+            classId: ticket.ClassId,
+            studentId: ticket.StudentId,
+            studentDeviceId: deviceId));
+
+        return StoreResult<DeviceEnrollmentResponse>.Success(
+            new DeviceEnrollmentResponse(
+                deviceId,
+                ticket.SchoolId,
+                ticket.ClassId,
+                ticket.StudentId,
+                deviceToken,
+                issuedAt));
+    }
+
+    private static string CreateJoinCode()
+    {
+        var characters = new char[JoinCodeLength];
+        for (var index = 0; index < characters.Length; index++)
+        {
+            characters[index] = JoinCodeAlphabet[
+                System.Security.Cryptography.RandomNumberGenerator.GetInt32(JoinCodeAlphabet.Length)];
+        }
+
+        return new string(characters);
+    }
+
+    private string CreateUniqueJoinCodeLocked()
+    {
+        string joinCode;
+        do
+        {
+            joinCode = CreateJoinCode();
+        }
+        while (enrollmentTickets.Values.Any(ticket =>
+            ticket.JoinCodeHash is not null
+            && TokenSecurity.VerifyToken(joinCode, ticket.JoinCodeHash)));
+
+        return joinCode;
+    }
+
+    private static string NormalizeJoinCode(string? value) =>
+        new string((value ?? string.Empty)
+            .Where(character => !char.IsWhiteSpace(character) && character != '-')
+            .ToArray())
+        .ToUpperInvariant();
+
     private static void RequireGuid(Guid value, string name)
     {
         if (value == Guid.Empty)
@@ -893,6 +1109,10 @@ public sealed class ClassroomStore
         Guid studentId,
         string studentDisplayName,
         string tokenHash,
+        string? joinCode,
+        string? joinCodeHash,
+        DateTimeOffset? joinCodeCreatedAtUtc,
+        DateTimeOffset? joinCodeLastUsedAtUtc,
         DateTimeOffset expiresAtUtc,
         Guid createdByTeacherId)
     {
@@ -900,10 +1120,14 @@ public sealed class ClassroomStore
         public Guid SchoolId { get; } = schoolId;
         public Guid ClassId { get; } = classId;
         public Guid StudentId { get; } = studentId;
-        public string StudentDisplayName { get; } = studentDisplayName;
-        public string TokenHash { get; } = tokenHash;
-        public DateTimeOffset ExpiresAtUtc { get; } = expiresAtUtc;
-        public Guid CreatedByTeacherId { get; } = createdByTeacherId;
+        public string StudentDisplayName { get; set; } = studentDisplayName;
+        public string TokenHash { get; set; } = tokenHash;
+        public string? JoinCode { get; set; } = joinCode;
+        public string? JoinCodeHash { get; set; } = joinCodeHash;
+        public DateTimeOffset? JoinCodeCreatedAtUtc { get; set; } = joinCodeCreatedAtUtc;
+        public DateTimeOffset? JoinCodeLastUsedAtUtc { get; set; } = joinCodeLastUsedAtUtc;
+        public DateTimeOffset ExpiresAtUtc { get; set; } = expiresAtUtc;
+        public Guid CreatedByTeacherId { get; set; } = createdByTeacherId;
         public bool Consumed { get; set; }
 
         public PersistedEnrollmentTicket ToPersisted() =>
@@ -914,6 +1138,10 @@ public sealed class ClassroomStore
                 StudentId,
                 StudentDisplayName,
                 TokenHash,
+                JoinCode,
+                JoinCodeHash,
+                JoinCodeCreatedAtUtc,
+                JoinCodeLastUsedAtUtc,
                 ExpiresAtUtc,
                 CreatedByTeacherId,
                 Consumed);

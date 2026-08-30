@@ -20,7 +20,7 @@ Unlock의 Credential Provider/Windows 암호 저장 경로는 이 제품에서 �
 - `Classroom.Student.Desktop`: 학생에게 보이는 WinForms UI, foreground 앱·배터리·
   네트워크 상태 제공, 메시지/URL/집중 overlay/승인 앱 실행
 - `tests/*`: Core, Protocol, Server SQLite, Student Service/Desktop IPC self-test
-- `scripts/install`: 학생 Service와 Desktop을 별도 권한으로 설치하는 PowerShell
+- `scripts/install`: 학생 코드 설치 앱과 Service/Desktop을 설치하는 PowerShell
   스크립트
 
 학생에게 보이는 Desktop이 수집하는 상태는 현재 foreground process 이름,
@@ -81,7 +81,7 @@ Teacher Console에서 할 수 있는 일:
 3. 학생 장치 온라인/오프라인, 현재 앱, 배터리, 네트워크, Agent 버전 확인
 4. 선택 학생 또는 전체 학급에 메시지, HTTPS URL, 집중 모드, 승인 앱 전송
 5. 각 명령의 장치별 ACK/result와 감사 기록 확인
-6. 학생 이름으로 일회용 등록 파일 생성·다운로드
+6. 학생 이름으로 8자리 일회용 학생 코드 생성
 7. 등록 장치 연결 해제(revoke)
 
 학생 Desktop이 연결된 경우 명령 결과가 `APPLIED`가 되고, 연결되지 않은
@@ -96,18 +96,18 @@ Teacher Console에서 할 수 있는 일:
 
 ### 2. 장치 등록
 
-Teacher Console에서 `장치 등록`을 누르고 학생 이름을 입력해 등록 파일을
+Teacher Console에서 `학생 등록`을 누르고 학생 이름을 입력해 8자리 학생 코드를
 발급한다. 학생 ID를 비워두면 서버가 새 ID를 생성한다. API를 직접 사용할
 때의 순서는 다음과 같다.
 
 ```text
 POST /api/classes/{classId}/enrollment-tickets
-POST /api/devices/enroll
+POST /api/devices/enroll-code
 POST /api/classes/{classId}/sessions
 ```
 
-학생 설치 스크립트가 등록 파일의 일회용 token을 `/api/devices/enroll`에
-제출하고 device token을 서비스 설정에만 저장한다. 서버는 device token
+학생 설치 앱이 교사가 전달한 코드를 `/api/devices/enroll-code`에 제출하고
+device token을 서비스 설정에만 저장한다. 서버는 학생 코드와 device token
 원문이 아니라 SHA-256 해시만 저장한다.
 
 ### 3. 학생 프로그램 설치
@@ -120,19 +120,19 @@ GitHub Actions의 `Classroom-Windows` artifact를 내려받아 압축을 풀거�
 & $dotnet publish src\Classroom.Student.Desktop\Classroom.Student.Desktop.csproj -c Release -r win-x64 --self-contained false -o artifacts\student-desktop
 ```
 
-그 다음 패키지 폴더에 등록 JSON을 넣고 `Install-ClassroomStudent.cmd`를
-두 번 클릭한다. 래퍼가 관리자 권한 PowerShell을 자동으로 열고 설치 후
-서비스를 시작한다.
+그 다음 학생 PC에서 압축을 푼 패키지의 `Classroom.Student.Setup.exe`를
+실행하고 교사 화면의 학생 코드를 입력한다. 앱이 관리자 권한 PowerShell을
+자동으로 열고 설치 후 서비스를 시작한다.
 
 ```text
-학생용 패키지\Install-ClassroomStudent.cmd
+학생용 패키지\Classroom.Student.Setup.exe
 ```
 
 표준 사용자 계정만 허용되는 학교 노트북은 학생이 권한을 우회할 수 없다.
 학교 IT 관리자가 Intune, 그룹 정책 또는 학교 소프트웨어 배포 도구로 같은
-패키지를 관리자 권한으로 배포해야 한다. 고급 자동화에서는 기존
-`Install-ClassroomStudent.ps1 -PackageRoot ... -EnrollmentFile ...` 인자를
-직접 사용할 수 있다.
+패키지를 관리자 권한으로 배포해야 한다. 기존 JSON 방식과
+`Install-ClassroomStudent.ps1 -PackageRoot ... -EnrollmentFile ...` 인자는
+관리형 배포·복구를 위해 계속 지원한다.
 
 설치 스크립트는 `ClassroomStudentService`를 Automatic 서비스로 등록하고,
 현재 사용자의 로그인 시 `Classroom.Student.Desktop.exe`를 실행한다. 서버
@@ -167,7 +167,7 @@ Development가 아닌 환경에서는 개발 token fallback과 평문 HTTP를 �
 ```powershell
 $env:ASPNETCORE_ENVIRONMENT = "Production"
 $env:CLASSROOM_DATABASE_PATH = "D:\Classroom\data\classroom.db"
-$env:CLASSROOM_BOOTSTRAP_TEACHER_LOGIN = "teacher-2-3"
+$env:CLASSROOM_BOOTSTRAP_TEACHER_LOGIN = "blossom0948"
 $env:CLASSROOM_BOOTSTRAP_TEACHER_PASSWORD = "use-a-long-random-initial-password"
 $env:CLASSROOM_TLS_CERT_PATH = "D:\Classroom\secrets\classroom.pfx"
 $env:CLASSROOM_TLS_CERT_PASSWORD = "certificate-password"
@@ -184,7 +184,7 @@ $env:CLASSROOM_TLS_PORT = "443"
 $env:ASPNETCORE_ENVIRONMENT = "Production"
 $env:CLASSROOM_TLS_TERMINATED_BY_PROXY = "true"
 $env:CLASSROOM_DATABASE_PATH = "D:\Classroom\data\classroom.db"
-$env:CLASSROOM_BOOTSTRAP_TEACHER_LOGIN = "teacher-2-3"
+$env:CLASSROOM_BOOTSTRAP_TEACHER_LOGIN = "blossom0948"
 $env:CLASSROOM_BOOTSTRAP_TEACHER_PASSWORD = "use-a-long-random-initial-password"
 ```
 
@@ -209,7 +209,8 @@ rate limit은 IP/계정 조합별로 적용된다. 운영에서는 초기 bootst
 | `GET /api/classes` | 교사에게 배정된 학급 |
 | `GET /api/classes/{classId}/session` | 활성 수업 세션 |
 | `POST /api/classes/{classId}/enrollment-tickets` | 장치 등록 ticket |
-| `POST /api/devices/enroll` | 일회성 ticket 소비 및 device token 발급 |
+| `POST /api/devices/enroll-code` | 학생 코드 소비 및 device token 발급 |
+| `POST /api/devices/enroll` | 기존 JSON ticket 호환용 장치 등록 |
 | `POST /api/classes/{classId}/sessions` | 수업 시작 |
 | `DELETE /api/classes/{classId}/sessions/{sessionId}` | 수업 종료 |
 | `GET /api/classes/{classId}/students` | 제한된 학생 상태 snapshot |

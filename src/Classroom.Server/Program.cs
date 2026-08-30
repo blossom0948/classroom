@@ -218,7 +218,8 @@ app.MapPost("/auth/login", (
         DateTimeOffset.UtcNow.Add(lifetime),
         account.Id,
         account.DisplayName,
-        classes));
+        classes,
+        database.IsTeacherAdmin(account.Id)));
 });
 
 app.MapPost("/auth/firebase-login", async (
@@ -264,7 +265,20 @@ app.MapPost("/auth/firebase-login", async (
     }
 
     rateLimiter.Reset(rateLimitKey);
-    var account = database.CreateOrGetFirebaseTeacher(identity);
+    TeacherAccount account;
+    try
+    {
+        account = database.CreateOrGetFirebaseTeacher(
+            identity,
+            request.DisplayName,
+            request.Subject);
+    }
+    catch (ArgumentException exception)
+    {
+        return Results.Json(
+            new { code = "INVALID_PROFILE", message = exception.Message },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
     var lifetime = serverOptions.TeacherSessionLifetime ?? TimeSpan.FromHours(8);
     var accessToken = database.CreateTeacherSession(account.Id, lifetime);
     var classes = database.GetClassesForTeacher(account.Id);
@@ -273,7 +287,8 @@ app.MapPost("/auth/firebase-login", async (
         DateTimeOffset.UtcNow.Add(lifetime),
         account.Id,
         account.DisplayName,
-        classes));
+        classes,
+        database.IsTeacherAdmin(account.Id)));
 });
 
 app.MapGet("/auth/me", (
@@ -292,7 +307,11 @@ app.MapGet("/auth/me", (
         && account is not null
         ? account.DisplayName
         : "담임 교사";
-    return Results.Ok(new TeacherSessionResponse(teacherId, displayName, classes));
+    return Results.Ok(new TeacherSessionResponse(
+        teacherId,
+        displayName,
+        classes,
+        database.IsTeacherAdmin(teacherId)));
 });
 
 app.MapPost("/auth/logout", (
@@ -422,6 +441,13 @@ app.MapPost("/api/classes/{classId:guid}/enrollment-tickets", (
         return Results.Unauthorized();
     }
 
+    if (!database.IsTeacherAdmin(teacherId))
+    {
+        return Results.Json(
+            new { code = "ADMIN_REQUIRED", message = "학생 코드는 관리자만 발급할 수 있습니다." },
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+
     try
     {
         var ticket = store.CreateEnrollmentTicket(
@@ -435,7 +461,95 @@ app.MapPost("/api/classes/{classId:guid}/enrollment-tickets", (
     {
         return Results.Json(
             new { code = exception.Code, message = exception.Message },
-            statusCode: exception.Code == "FORBIDDEN" ? StatusCodes.Status403Forbidden : StatusCodes.Status400BadRequest);
+        statusCode: exception.Code == "FORBIDDEN" ? StatusCodes.Status403Forbidden : StatusCodes.Status400BadRequest);
+    }
+});
+
+app.MapGet("/api/student-codes", (
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database,
+    ClassroomStore store) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    return Results.Ok(store.GetStudentCodes(teacherId));
+});
+
+app.MapGet("/api/admin/teachers", (
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!database.IsTeacherAdmin(teacherId)
+        || !database.GetTeacherSchoolId(teacherId, out var schoolId))
+    {
+        return Results.Json(
+            new { code = "ADMIN_REQUIRED", message = "관리자만 관리자 목록을 확인할 수 있습니다." },
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    return Results.Ok(new
+    {
+        teachers = database.GetTeacherDirectory(schoolId),
+        grants = database.GetActiveAdministratorGrants(schoolId)
+    });
+});
+
+app.MapPost("/api/admin/teachers", (
+    AdministratorRequest? request,
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!database.IsTeacherAdmin(teacherId))
+    {
+        return Results.Json(
+            new { code = "ADMIN_REQUIRED", message = "관리자만 권한을 변경할 수 있습니다." },
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    if (request is null)
+    {
+        return Results.Json(
+            new { code = "INVALID_REQUEST", message = "관리자 이메일 또는 아이디가 필요합니다." },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    try
+    {
+        var accountFound = database.SetTeacherAdmin(teacherId, request.Identifier, request.IsAdmin);
+        return Results.Ok(new
+        {
+            identifier = request.Identifier.Trim().ToLowerInvariant(),
+            isAdmin = request.IsAdmin,
+            accountFound
+        });
+    }
+    catch (ArgumentException exception)
+    {
+        return Results.Json(
+            new { code = "INVALID_IDENTIFIER", message = exception.Message },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Json(
+            new { code = "ADMIN_CHANGE_REJECTED", message = exception.Message },
+            statusCode: StatusCodes.Status409Conflict);
     }
 });
 
@@ -451,6 +565,47 @@ app.MapPost("/api/devices/enroll", (
             statusCode: result.Code is "ENROLLMENT_INVALID" or "ENROLLMENT_NOT_FOUND"
                 ? StatusCodes.Status401Unauthorized
                 : StatusCodes.Status409Conflict);
+});
+
+app.MapPost("/api/devices/enroll-code", (
+    HttpContext context,
+    JoinCodeEnrollmentRequest? request,
+    ClassroomStore store,
+    TeacherLoginRateLimiter rateLimiter) =>
+{
+    var normalizedCode = request?.JoinCode?.Trim().ToUpperInvariant() ?? string.Empty;
+    var rateLimitKey = $"{context.Connection.RemoteIpAddress}|STUDENT-CODE|{normalizedCode}";
+    if (!rateLimiter.TryAcquire(rateLimitKey))
+    {
+        context.Response.Headers.RetryAfter = "60";
+        return Results.Json(
+            new { code = "ENROLLMENT_RATE_LIMITED", message = "잠시 후 다시 시도해 주세요." },
+            statusCode: StatusCodes.Status429TooManyRequests);
+    }
+
+    if (request is null)
+    {
+        return Results.Json(
+            new { code = "INVALID_REQUEST", message = "학생 코드와 장치 정보가 필요합니다." },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var result = store.EnrollByJoinCode(request);
+    if (result.Succeeded)
+    {
+        rateLimiter.Reset(rateLimitKey);
+        return Results.Ok(result.Value);
+    }
+
+    var statusCode = result.Code switch
+    {
+        "ENROLLMENT_USED" or "ENROLLMENT_EXPIRED" => StatusCodes.Status409Conflict,
+        "INVALID_REQUEST" => StatusCodes.Status400BadRequest,
+        _ => StatusCodes.Status401Unauthorized
+    };
+    return Results.Json(
+        new { code = result.Code, message = result.Message },
+        statusCode: statusCode);
 });
 
 app.MapPost("/api/classes/{classId:guid}/sessions", (

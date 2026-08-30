@@ -6,7 +6,8 @@ public sealed record DeviceEnrollmentTicket(
     Guid ClassId,
     Guid StudentId,
     DateTimeOffset ExpiresAtUtc,
-    string EnrollmentToken);
+    string EnrollmentToken,
+    string JoinCode = "");
 
 public sealed record DeviceEnrollmentRequest(
     Guid DeviceId,

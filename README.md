@@ -9,7 +9,7 @@
 
 - 교사 로그인, 세션 만료·로그아웃·비밀번호 변경, 학급별 서버 권한 검증
 - SQLite 영속 DB와 서버 재시작 후 장치·수업·명령·감사 기록 복구
-- 일회용 학생 등록 파일 발급과 학생 PC 원클릭 등록·설치 흐름
+- 선생님이 발급한 8자리 학생 코드와 학생 PC 원클릭 등록·설치 흐름
 - Windows Student Service의 인증된 WSS 재연결, heartbeat, 동적 수업 참여
 - 학생에게 보이는 Student Desktop과 알림 영역 상태, 앱·배터리·네트워크 제공
 - 학생 선택/전체 대상 메시지, HTTPS URL, 집중 모드, 승인 앱 실행
@@ -51,7 +51,7 @@ functions/                      Pages에서 Classroom 서버로 보내는 API/WS
 ```
 
 [http://127.0.0.1:48240/](http://127.0.0.1:48240/)에서 개발 콘솔을 열 수
-있습니다. 개발 DB의 최초 계정은 `teacher` / `ChangeMe!Classroom123`이며,
+있습니다. 개발 DB의 최초 계정은 `blossom0948` / `ChangeMe!Classroom123`이며,
 외부 운영 환경에서는 이 기본값이 허용되지 않습니다.
 
 모든 Classroom self-test 실행:
@@ -70,19 +70,26 @@ foreach ($test in $tests) {
 
 ## 학생 PC 등록
 
-1. 교사 콘솔에서 `학생 등록`을 눌러 학생 이름만 입력합니다.
-2. 생성된 `classroom-enrollment-학생이름.json`을 다운로드합니다.
-3. GitHub Actions의 `Classroom-Windows` 패키지와 등록 파일을 학생 PC에 옮깁니다.
-4. 패키지 폴더에 등록 파일을 넣고 `Install-ClassroomStudent.cmd`를 두 번 클릭합니다.
-   관리자 권한 확인은 Windows 서비스 등록에 필요한 한 번의 승인입니다.
+학생 PC에서 JSON 파일을 만들거나 설치 폴더를 직접 만들 필요가 없다.
+
+1. 교사 콘솔에서 `학생 등록`을 누르고 학생 이름을 입력한다.
+2. 화면에 표시된 8자리 학생 코드를 학생에게 전달한다. 코드는 관리자가 새로 발급하기 전까지 계속 사용할 수 있다.
+3. GitHub Actions의 `Classroom-Windows` 패키지 압축을 학생 PC에서 한 번만 푼다.
+4. 압축 폴더의 `Classroom.Student.Setup.exe`를 실행하고, 학생 코드만 입력한다. 이 코드는 여러 학생 PC에서 사용할 수 있다.
+5. Windows 관리자 권한 확인을 한 번 승인하면 서버 등록·서비스 설치·학생 화면 실행이 자동으로 끝난다.
 
 ```text
-학생용 패키지\Install-ClassroomStudent.cmd
+학생용 패키지\Classroom.Student.Setup.exe
 ```
 
-스크립트가 일회용 token으로 서버에 PC를 등록하고, 장치 token과 IPC token을
-분리해 저장한 뒤 Service와 보이는 Desktop을 시작합니다. 수업 ID는 서버가
-매 heartbeat마다 결정하므로 수업이 바뀌어도 재설치하지 않습니다.
+설치 앱이 서버와 코드로 장치를 등록한 뒤 임시 설정 파일을 자동으로 전달하고
+삭제한다. 학생이 JSON 파일을 옮기거나 PowerShell 명령을 입력하지 않는다.
+수업 ID는 서버가 매 heartbeat마다 결정하므로 수업이 바뀌어도 재설치하지 않는다.
+기존 `Install-ClassroomStudent.cmd`와 JSON 흐름은 관리형 배포·복구를 위해 호환용으로 남아 있다.
+
+학생 코드는 학교 관리자만 발급·재발급할 수 있고, 모든 선생님은 왼쪽 `학생 코드`
+탭에서 학년·반별 코드를 확인할 수 있다. 코드가 외부에 노출되었거나 학생 PC를
+교체할 때는 관리자 화면에서 해당 학생의 `새 코드 발급`을 눌러 이전 코드를 즉시 폐기한다.
 
 ## 운영 배포
 

@@ -4,6 +4,8 @@ param(
 
     [string]$EnrollmentFile,
 
+    [string]$DeviceConfigFile,
+
     [uri]$ServerUrl,
 
     [guid]$DeviceId,
@@ -109,7 +111,10 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 
 $resolvedPackageRoot = (Resolve-Path -LiteralPath $PackageRoot).Path
-if (-not $EnrollmentFile -and -not $UpgradeOnly) {
+if ($EnrollmentFile -and $DeviceConfigFile) {
+    throw "-EnrollmentFile과 -DeviceConfigFile은 함께 사용할 수 없습니다."
+}
+if (-not $EnrollmentFile -and -not $DeviceConfigFile -and -not $UpgradeOnly) {
     $enrollmentCandidates = @(Get-ChildItem -LiteralPath $resolvedPackageRoot -Filter "classroom-enrollment-*.json" -File -ErrorAction SilentlyContinue)
     if ($enrollmentCandidates.Count -eq 1) {
         $EnrollmentFile = $enrollmentCandidates[0].FullName
@@ -143,7 +148,7 @@ if (-not $desktopExecutable) {
 
 $serviceName = "ClassroomStudentService"
 if ($UpgradeOnly) {
-    if ($EnrollmentFile -or $ServerUrl -or $DeviceId -ne [guid]::Empty -or $DeviceToken) {
+    if ($EnrollmentFile -or $DeviceConfigFile -or $ServerUrl -or $DeviceId -ne [guid]::Empty -or $DeviceToken) {
         throw "-UpgradeOnly은 새 등록 옵션과 함께 사용할 수 없습니다."
     }
 
@@ -162,7 +167,22 @@ if ($UpgradeOnly) {
     $IpcToken = [string]$existingValues["CLASSROOM_IPC_TOKEN"]
 }
 
-if ($EnrollmentFile) {
+if ($DeviceConfigFile) {
+    if ($UpgradeOnly) {
+        throw "-UpgradeOnly은 새 장치 등록 옵션과 함께 사용할 수 없습니다."
+    }
+
+    $resolvedDeviceConfigFile = (Resolve-Path -LiteralPath $DeviceConfigFile).Path
+    $deviceConfig = Get-Content -LiteralPath $resolvedDeviceConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($deviceConfig.format -ne "BLOSSOM-CLASSROOM-DEVICE-V1") {
+        throw "지원하지 않는 장치 설정 파일입니다. Classroom 학생 등록 앱에서 다시 등록해 주세요."
+    }
+
+    $ServerUrl = [uri][string]$deviceConfig.serverUrl
+    $DeviceId = [guid][string]$deviceConfig.deviceId
+    $DeviceToken = [string]$deviceConfig.deviceToken
+}
+elseif ($EnrollmentFile) {
     $resolvedEnrollmentFile = (Resolve-Path -LiteralPath $EnrollmentFile).Path
     $bundle = Get-Content -LiteralPath $resolvedEnrollmentFile -Raw -Encoding UTF8 | ConvertFrom-Json
 
@@ -206,7 +226,7 @@ if ($EnrollmentFile) {
 }
 
 if (-not $ServerUrl) {
-    throw "-EnrollmentFile 또는 -ServerUrl을 지정해야 합니다."
+    throw "-DeviceConfigFile, -EnrollmentFile 또는 -ServerUrl을 지정해야 합니다."
 }
 if ($ServerUrl.Scheme -notin @("ws", "wss")) {
     throw "학생 에이전트 서버 URL은 ws:// 또는 wss:// 형식이어야 합니다."
