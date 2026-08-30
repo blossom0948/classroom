@@ -1,4 +1,5 @@
 (() => {
+  const APP_VERSION = "0.5.13";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const state = {
@@ -25,7 +26,10 @@
     schoolSearchTimers: new Map(),
     weatherLoaded: false,
     passwordVerificationId: null,
-    studentRosterClassId: null
+    studentRosterClassId: null,
+    screenWallTimer: null,
+    screenShareTargetIds: null,
+    stoppingScreenShare: false
   };
 
   const $ = (id) => document.getElementById(id);
@@ -82,6 +86,10 @@
     sessionStorage.removeItem("classroom.onboardingDismissed");
     if (state.pollTimer) clearInterval(state.pollTimer);
     state.pollTimer = null;
+    if (state.screenWallTimer) clearInterval(state.screenWallTimer);
+    state.screenWallTimer = null;
+    state.screenShareTargetIds = null;
+    if ($("screen-wall-dialog")?.open) $("screen-wall-dialog").close("session-cleared");
     landingView.hidden = false;
     loginView.hidden = true;
     appView.hidden = true;
@@ -274,7 +282,7 @@
     const risk = student.activityRisk;
     const riskMarkup = risk?.level === "warning"
       ? `<div class="risk-callout"><strong>확인 필요</strong><span>${escapeHtml(risk.reason || "활동 신호를 확인해 주세요.")}</span></div>`
-      : `<div class="privacy-note">현재 앱과 창 제목을 상태 요약으로 표시합니다. 화면 캡처·키 입력·원격 셸은 수집하지 않습니다.</div>`;
+      : `<div class="privacy-note">현재 앱과 창 제목을 상태 요약으로 표시합니다. 화면 보기는 교사가 수업 중 직접 켠 동안만 저화질로 전송되며 학생 앱에 공유 중 표시가 나타납니다. 키 입력·오디오·원격 셸은 수집하지 않습니다.</div>`;
     $("detail-content").innerHTML = `<div class="eyebrow">STUDENT DEVICE</div><h2 class="detail-title">${escapeHtml(student.studentDisplayName)}</h2><div class="detail-status"><span class="status-dot ${detailStatusClass}">${detailStatusText}</span></div>${riskMarkup}<div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>학급 / 번호</span><strong>${student.grade ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번` : "학급 정보 없음"}</strong></div><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>현재 창</span><strong>${escapeHtml(activity?.windowTitle || "창 정보 미연결")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "확인 필요" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 연결</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div><div class="detail-section"><h3>장치 식별자</h3><div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div><div class="detail-row"><span>Agent</span><strong>${escapeHtml(student.agentVersion)}</strong></div><div class="detail-row"><span>원격 제어</span><strong>허용 목록 작업만 사용</strong></div></div><div class="detail-section stack"><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>`;
     $("detail-message-button").addEventListener("click", () => openCommandDialog("message", [deviceId]));
     $("detail-revoke-button").addEventListener("click", () => revokeDevice(student).catch((error) => showToast(error.message)));
@@ -778,6 +786,90 @@
     return result;
   }
 
+  function screenShareTargets() {
+    const selected = commandTargets();
+    const candidates = selected?.length
+      ? selected
+      : state.students.filter((student) => student.online).map((student) => student.deviceId);
+    return candidates.slice(0, 30);
+  }
+
+  function renderScreenWall(frames = []) {
+    const grid = $("screen-wall-grid");
+    const targetIds = state.screenShareTargetIds || [];
+    const framesByDevice = new Map(frames.map((item) => [item.deviceId, item]));
+    const students = targetIds.map((deviceId) => state.students.find((student) => student.deviceId === deviceId))
+      .filter(Boolean);
+    if (!students.length) {
+      grid.innerHTML = '<div class="empty-state"><strong>화면을 볼 온라인 학생이 없습니다.</strong><p>학생 앱 연결을 확인한 뒤 다시 시도해 주세요.</p></div>';
+      $("screen-wall-caption").textContent = "연결된 학생 화면이 없습니다.";
+      return;
+    }
+    let received = 0;
+    grid.innerHTML = students.map((student) => {
+      const frame = framesByDevice.get(student.deviceId);
+      const validFrame = frame?.screenFrame?.mimeType === "image/jpeg"
+        && typeof frame.screenFrame.base64Data === "string"
+        && /^[A-Za-z0-9+/=]+$/.test(frame.screenFrame.base64Data);
+      if (validFrame) received += 1;
+      const image = validFrame
+        ? `<img src="data:image/jpeg;base64,${frame.screenFrame.base64Data}" alt="${escapeHtml(student.studentDisplayName)} 학생 화면">`
+        : '<div class="screen-frame-empty">화면 응답 대기 중…</div>';
+      const activity = activityForClassroom(student);
+      return `<article class="screen-tile"><div class="screen-frame-wrap">${image}</div><div class="screen-tile-footer"><div><strong>${escapeHtml(student.studentDisplayName)}</strong><small>${escapeHtml(activity.applicationDisplayName)} · ${escapeHtml(student.computerName)}</small></div><span class="screen-live-dot">● ${validFrame ? "공유 중" : "대기"}</span></div></article>`;
+    }).join("");
+    $("screen-wall-caption").textContent = `${students.length}명 중 ${received}명 화면 수신 · 약 3초마다 갱신`;
+  }
+
+  async function refreshScreenWall() {
+    if (!state.classId || !state.screenShareTargetIds?.length || !$("screen-wall-dialog").open) return;
+    const result = await api(`/api/classes/${state.classId}/screens`);
+    renderScreenWall(Array.isArray(result) ? result : result?.screens || []);
+  }
+
+  async function openScreenWall() {
+    if (!state.session) {
+      showToast("먼저 수업을 시작하세요.");
+      return;
+    }
+    const targets = screenShareTargets();
+    if (!targets.length) {
+      showToast("화면을 볼 온라인 학생이 없습니다.");
+      return;
+    }
+    state.screenShareTargetIds = targets;
+    renderScreenWall([]);
+    $("screen-wall-dialog").showModal();
+    try {
+      await sendCommand("screenShare", targets, { screenShareEnabled: true });
+      await refreshScreenWall();
+      if (state.screenWallTimer) clearInterval(state.screenWallTimer);
+      state.screenWallTimer = setInterval(() => refreshScreenWall().catch(() => {}), 3000);
+    } catch (error) {
+      showToast(error.message);
+      await stopScreenSharing(false);
+    }
+  }
+
+  async function stopScreenSharing(closeDialog = true) {
+    if (state.stoppingScreenShare) return;
+    state.stoppingScreenShare = true;
+    const targets = state.screenShareTargetIds ? [...state.screenShareTargetIds] : [];
+    if (state.screenWallTimer) clearInterval(state.screenWallTimer);
+    state.screenWallTimer = null;
+    state.screenShareTargetIds = null;
+    try {
+      if (targets.length && state.session) {
+        await sendCommand("screenShare", targets, { screenShareEnabled: false });
+      }
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      if (closeDialog && $("screen-wall-dialog").open) $("screen-wall-dialog").close("stopped");
+      state.stoppingScreenShare = false;
+    }
+  }
+
   async function monitorCommand(requestId) {
     for (let attempt = 0; attempt < 15; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -804,6 +896,7 @@
 
   async function endSession() {
     if (!state.session || !confirm("현재 수업을 종료할까요?")) return;
+    if (state.screenShareTargetIds?.length) await stopScreenSharing(true);
     await api(`/api/classes/${state.classId}/sessions/${state.session.sessionId}`, { method: "DELETE" });
     showToast("수업을 종료했습니다.");
     await refreshClass();
@@ -996,12 +1089,12 @@
     terms: {
       kicker: "TERMS OF SERVICE",
       title: "Classroom 이용약관",
-      html: `<p>시행일: 2026년 8월 30일</p><h3>1. 서비스 목적</h3><p>Classroom은 학교 수업에서 학생 PC의 연결 상태를 확인하고, 수업 안내·집중 모드·승인된 링크 및 앱 실행을 전달하기 위한 교사용 운영 도구입니다.</p><h3>2. 계정과 권한</h3><p>교사 계정은 본인만 사용해야 하며, 관리자는 학교 운영에 필요한 범위에서 다른 교사의 관리자 권한을 지정하거나 해제할 수 있습니다. 학생 코드는 학생 PC 등록 목적으로만 사용해야 하며, 노출된 코드는 즉시 재발급해야 합니다.</p><h3>3. 허용되는 기능 범위</h3><p>서비스는 수업 운영에 필요한 상태 확인과 명령 전달만 제공합니다. 화면 캡처, 임의 원격 셸 실행, 개인 파일 열람 기능은 제공하지 않습니다.</p><h3>4. 학교의 책임</h3><p>학교·교육기관은 학생과 보호자에게 서비스 사용 사실, 관리 범위, 자체 운영 기준을 알리고 필요한 동의 절차를 갖추어야 합니다.</p><h3>5. 이용 제한</h3><p>타인의 계정을 사용하거나, 학생의 교육 목적과 무관한 감시·통제에 서비스를 이용해서는 안 됩니다. 보안상 우려가 있는 이용은 제한될 수 있습니다.</p>`
+      html: `<p>시행일: 2026년 8월 30일</p><h3>1. 서비스 목적</h3><p>Classroom은 학교 수업에서 학생 PC의 연결 상태를 확인하고, 수업 안내·집중 모드·승인된 링크 및 앱 실행을 전달하기 위한 교사용 운영 도구입니다.</p><h3>2. 계정과 권한</h3><p>교사 계정은 본인만 사용해야 하며, 관리자는 학교 운영에 필요한 범위에서 다른 교사의 관리자 권한을 지정하거나 해제할 수 있습니다. 학생 코드는 학생 PC 등록 목적으로만 사용해야 하며, 노출된 코드는 즉시 재발급해야 합니다.</p><h3>3. 허용되는 기능 범위</h3><p>서비스는 수업 운영에 필요한 상태 확인과 명령 전달을 제공합니다. 교사가 수업 중 화면 보기를 직접 켠 경우에만 학생 PC의 저화질 화면이 표시되며, 학생 앱에도 화면 공유 중임을 표시합니다. 키 입력, 오디오 수집, 임의 원격 셸 실행, 개인 파일 열람 기능은 제공하지 않습니다.</p><h3>4. 학교의 책임</h3><p>학교·교육기관은 학생과 보호자에게 서비스 사용 사실, 관리 범위, 자체 운영 기준을 알리고 필요한 동의 절차를 갖추어야 합니다.</p><h3>5. 이용 제한</h3><p>타인의 계정을 사용하거나, 학생의 교육 목적과 무관한 감시·통제에 서비스를 이용해서는 안 됩니다. 보안상 우려가 있는 이용은 제한될 수 있습니다.</p>`
     },
     privacy: {
       kicker: "PRIVACY NOTICE",
       title: "개인정보처리방침",
-      html: `<p>시행일: 2026년 8월 30일</p><h3>1. 수집하는 정보</h3><p>교사 계정의 이메일·이름·담당 과목, 학급명, 학생 표시 이름, 학생 PC 이름·연결 시각·현재 앱·창 제목·설정된 웹 도메인·배터리·네트워크 상태, 수업 명령 및 감사 기록을 처리합니다.</p><h3>2. 이용 목적</h3><p>교사 인증, 학급 운영, 학생 PC 등록, 수업 안내 전달, 연결 상태 확인, 보안 감사 및 장애 대응에만 사용합니다.</p><h3>3. 보관 기간</h3><p>교사·학생·수업 데이터는 학교 관리자가 삭제하거나 서비스 운영 목적이 종료될 때까지 보관합니다. 세부 보관 기간은 학교의 정보보호·기록 관리 규정에 맞춰 운영해야 합니다.</p><h3>4. 안전성</h3><p>인증 토큰은 서버에 해시 형태로 보관하며, 전송은 HTTPS/WSS로 보호합니다. 학생 화면에 상태 공유 사실을 표시하고, 서비스는 화면 캡처·키 입력·개인 파일·임의 원격 셸을 수집하거나 실행하지 않습니다.</p><h3>5. 이용자 권리와 문의</h3><p>정보 주체는 학교 관리자에게 열람·정정·삭제 요청을 할 수 있습니다. 실제 학교 도입 전에는 해당 학교의 개인정보 보호책임자와 연락처를 별도로 고지해야 합니다.</p>`
+      html: `<p>시행일: 2026년 8월 30일</p><h3>1. 수집하는 정보</h3><p>교사 계정의 이메일·이름·담당 과목, 학급명, 학생 표시 이름, 학생 PC 이름·연결 시각·현재 앱·창 제목·설정된 웹 도메인·배터리·네트워크 상태, 수업 명령 및 감사 기록을 처리합니다. 교사가 수업 중 화면 보기를 켠 동안에는 저화질 화면 프레임을 일시 처리합니다.</p><h3>2. 이용 목적</h3><p>교사 인증, 학급 운영, 학생 PC 등록, 수업 안내 전달, 연결 상태와 수업 참여 화면 확인, 보안 감사 및 장애 대응에만 사용합니다.</p><h3>3. 보관 기간</h3><p>교사·학생·수업 데이터는 학교 관리자가 삭제하거나 서비스 운영 목적이 종료될 때까지 보관합니다. 화면 프레임은 데이터베이스나 감사 기록에 저장하지 않고 메모리에서 약 15초 이내에 만료합니다. 세부 보관 기간은 학교의 정보보호·기록 관리 규정에 맞춰 운영해야 합니다.</p><h3>4. 안전성</h3><p>인증 토큰은 서버에 해시 형태로 보관하며, 전송은 HTTPS/WSS로 보호합니다. 화면 공유 중에는 학생 앱에 이를 명확히 표시하고, 서비스는 키 입력·오디오·개인 파일·임의 원격 셸을 수집하거나 실행하지 않습니다.</p><h3>5. 이용자 권리와 문의</h3><p>정보 주체는 학교 관리자에게 열람·정정·삭제 요청을 할 수 있습니다. 실제 학교 도입 전에는 해당 학교의 개인정보 보호책임자와 연락처를 별도로 고지해야 합니다.</p>`
     }
   };
 
@@ -1188,7 +1281,18 @@
         window.location.reload();
       });
       navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" })
-        .then((registration) => registration.update())
+        .then((registration) => {
+          const activateWaitingWorker = () => registration.waiting?.postMessage({ type: "SKIP_WAITING" });
+          activateWaitingWorker();
+          registration.addEventListener("updatefound", () => {
+            const installing = registration.installing;
+            installing?.addEventListener("statechange", () => {
+              if (installing.state === "installed" && navigator.serviceWorker.controller) activateWaitingWorker();
+            });
+          });
+          registration.update().catch(() => {});
+          window.setInterval(() => registration.update().catch(() => {}), 5 * 60 * 1000);
+        })
         .catch(() => {});
     }
     window.addEventListener("beforeinstallprompt", (event) => {
@@ -1202,6 +1306,20 @@
       syncInstallUi();
       showToast("Classroom 앱이 설치되었습니다.");
     });
+  }
+
+  async function checkForAppUpdate() {
+    try {
+      const response = await fetch(`/version.json?now=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) return;
+      const version = await response.json();
+      if (version?.version && version.version !== APP_VERSION) {
+        const registration = await navigator.serviceWorker?.getRegistration();
+        await registration?.update().catch(() => {});
+        registration?.waiting?.postMessage({ type: "SKIP_WAITING" });
+        window.setTimeout(() => window.location.reload(), 600);
+      }
+    } catch (_) { /* offline use keeps the current app shell */ }
   }
 
   function firebaseClient() {
@@ -1420,11 +1538,13 @@
   });
 
   $("logout-button").addEventListener("click", async () => {
+    if (state.screenShareTargetIds?.length) await stopScreenSharing(true);
     try { await api("/auth/logout", { method: "POST" }); } catch (_) { /* local logout still clears the token */ }
     try { await window.ClassroomFirebaseAuth?.signOut(); } catch (_) { /* local logout still clears the token */ }
     clearSession();
   });
   $("class-select").addEventListener("change", async (event) => {
+    if (state.screenShareTargetIds?.length) await stopScreenSharing(true);
     state.classId = event.target.value;
     state.session = null;
     state.selectedDeviceIds.clear();
@@ -1441,6 +1561,11 @@
   $("message-button").addEventListener("click", () => openCommandDialog("message", commandTargets()));
   $("url-button").addEventListener("click", () => openCommandDialog("url", commandTargets()));
   $("app-button").addEventListener("click", () => openCommandDialog("app", commandTargets()));
+  $("screen-wall-button").addEventListener("click", () => openScreenWall().catch((error) => showToast(error.message)));
+  $("screen-wall-stop").addEventListener("click", () => stopScreenSharing(true));
+  $("screen-wall-dialog").addEventListener("close", () => {
+    if (state.screenShareTargetIds?.length) stopScreenSharing(false);
+  });
   $("clear-selection-button").addEventListener("click", () => {
     state.selectedDeviceIds.clear();
     renderStudents();
@@ -1668,6 +1793,11 @@
 
   applyTheme(state.theme);
   registerPwa();
+  checkForAppUpdate();
+  window.setInterval(checkForAppUpdate, 5 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") checkForAppUpdate();
+  });
   syncInstallUi();
 
   if (!refreshFirebaseAvailability()) {

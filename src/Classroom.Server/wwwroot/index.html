@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-  <link rel="stylesheet" href="/styles.css?v=0.5.12">
+  <link rel="stylesheet" href="/styles.css?v=0.5.13">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -55,7 +55,7 @@
         <div class="feature-grid"><article class="feature-card"><span class="feature-number">01</span><span class="feature-icon blue-icon">◉</span><h3>한눈에 보는 수업 상태</h3><p>학생별 온라인 상태, 현재 앱, 네트워크와 배터리를 학급 단위로 확인합니다.</p><a href="#principles">자세히 보기 <span>→</span></a></article><article class="feature-card highlighted"><span class="feature-number">02</span><span class="feature-icon violet-icon">✦</span><h3>필요한 순간의 안내</h3><p>메시지, 집중 모드, 안전한 URL과 승인 앱을 수업 흐름에 맞춰 보냅니다.</p><a href="#principles">자세히 보기 <span>→</span></a></article><article class="feature-card"><span class="feature-number">03</span><span class="feature-icon green-icon">↗</span><h3>기록으로 남는 운영</h3><p>장치 등록부터 명령 결과까지 서버 감사 기록으로 남겨 다음 수업을 준비합니다.</p><a href="#principles">자세히 보기 <span>→</span></a></article></div>
       </section>
 
-      <section id="principles" class="principles-section"><div class="principles-copy"><span class="eyebrow">BUILT FOR TRUST</span><h2>보여주고, 확인하고,<br><em>안전하게</em> 연결합니다.</h2><p>Classroom은 학생 화면을 몰래 수집하거나 임의의 원격 셸을 실행하지 않습니다. 학생에게 보이는 상태와 교사가 보낸 명령만 관리합니다.</p><button id="principles-login-button" class="secondary">교사 콘솔 시작하기 <span>→</span></button></div><div class="principles-list"><div><span class="principle-check">✓</span><div><strong>최소한의 상태 데이터</strong><p>수업에 필요한 앱·도메인·연결 상태만 표시합니다.</p></div></div><div><span class="principle-check">✓</span><div><strong>학급 범위 권한</strong><p>교사는 배정된 학급의 장치만 조회하고 제어합니다.</p></div></div><div><span class="principle-check">✓</span><div><strong>기록 가능한 명령</strong><p>메시지와 집중 모드의 전달·결과를 감사 이벤트로 남깁니다.</p></div></div></div></section>
+      <section id="principles" class="principles-section"><div class="principles-copy"><span class="eyebrow">BUILT FOR TRUST</span><h2>보여주고, 확인하고,<br><em>안전하게</em> 연결합니다.</h2><p>Classroom은 수업에 필요한 장치 상태만 수집하며, 화면 보기는 교사가 요청한 동안 학생 앱에 공유 상태를 분명히 표시하는 방식으로 작동합니다.</p><button id="principles-login-button" class="secondary">교사 콘솔 시작하기 <span>→</span></button></div><div class="principles-list"><div><span class="principle-check">✓</span><div><strong>수업에 필요한 정보만</strong><p>앱·창·도메인·연결 상태와 요청 중인 저화질 화면만 표시하며, 화면 프레임은 저장하지 않습니다.</p></div></div><div><span class="principle-check">✓</span><div><strong>학급 범위 권한</strong><p>교사는 배정된 학급의 장치만 조회하고 제어합니다.</p></div></div><div><span class="principle-check">✓</span><div><strong>기록 가능한 명령</strong><p>메시지와 집중 모드의 전달·결과를 감사 이벤트로 남깁니다.</p></div></div></div></section>
 
       <section class="landing-cta"><div><span class="eyebrow">READY WHEN YOU ARE</span><h2>다음 수업을 더 가볍게 시작하세요.</h2></div><button id="landing-cta-button" class="primary">Classroom 시작하기 <span>→</span></button></section>
     </main>
@@ -145,7 +145,7 @@
         <div class="toolbar">
           <div class="filters" role="tablist"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="online">온라인</button><button class="filter" data-filter="offline">오프라인</button><button class="filter" data-filter="attention">확인 필요</button></div>
           <label class="student-search"><span class="sr-only">학생 이름 검색</span><input id="student-search" type="search" placeholder="학생 이름 검색"></label>
-          <div class="bulk-actions"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">집중 해제</button><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL 열기</button><button id="app-button" class="secondary">앱 실행</button></div>
+          <div class="bulk-actions"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button><button id="screen-wall-button" class="secondary screen-wall-open">화면 보기</button><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">집중 해제</button><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL 열기</button><button id="app-button" class="secondary">앱 실행</button></div>
         </div>
         <div id="student-grid" class="student-grid" aria-live="polite"></div>
       </section>
@@ -206,7 +206,6 @@
           <div id="profile-consent-fields" class="stack consent-stack" hidden><label class="consent-check"><input id="profile-terms" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="terms">이용약관</button>에 동의합니다.</span></label><label class="consent-check"><input id="profile-privacy" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="privacy">개인정보처리방침</button>에 동의합니다.</span></label></div>
           <button class="primary" type="submit">프로필 저장</button><p id="profile-message" class="error" hidden></p>
         </form>
-         <div class="settings-grid"><article class="settings-card"><span class="settings-icon">●</span><h3>연결 보안</h3><p id="security-setting">Teacher session bearer token으로 연결됨</p></article><article class="settings-card"><span class="settings-icon">▣</span><h3>학생 개인정보</h3><p>교실 대시보드에는 현재 앱과 창 제목을 상태 요약으로 표시합니다. 화면 캡처·키 입력·원격 셸은 사용하지 않습니다.</p></article><article class="settings-card"><span class="settings-icon">◷</span><h3>상태 갱신</h3><p>학생 상태는 약 10초마다 서버에 전송되고 콘솔은 2초 간격으로 갱신합니다. 학생 순서는 이름 기준으로 고정됩니다.</p></article><article class="settings-card appearance-card"><span class="settings-icon">◐</span><h3>화면 모드</h3><p>교실 조명과 수업 환경에 맞춰 콘솔 화면을 바꿉니다.</p><div class="theme-options" role="group" aria-label="화면 모드"><button type="button" data-theme-choice="light" class="secondary">라이트</button><button type="button" data-theme-choice="dark" class="secondary">다크</button></div></article></div>
         <article class="settings-card password-card compact-setting">
           <div><span class="settings-icon">🔐</span><h3 id="password-card-title">교사 비밀번호</h3><p id="password-card-copy">이메일 확인 후 교사 아이디 로그인용 비밀번호를 관리합니다.</p></div>
           <button id="password-open-button" class="secondary" type="button">비밀번호 설정</button>
@@ -293,6 +292,16 @@
   <dialog id="legal-dialog" class="command-dialog legal-dialog">
     <form method="dialog" class="stack"><div class="dialog-heading"><span id="legal-kicker" class="eyebrow">CLASSROOM</span><h2 id="legal-title">이용약관</h2></div><div id="legal-content" class="legal-content"></div><div class="dialog-actions"><button class="primary" type="submit" value="default">확인</button></div></form>
   </dialog>
+  <dialog id="screen-wall-dialog" class="command-dialog screen-wall-dialog">
+    <form method="dialog" class="screen-wall-shell">
+      <div class="screen-wall-heading">
+        <div><span class="eyebrow">LIVE SCREENS</span><h2>학생 화면</h2><p id="screen-wall-caption" class="muted">저화질 화면을 불러오는 중입니다.</p></div>
+        <button class="icon-button screen-wall-close" type="button" data-dialog-cancel aria-label="학생 화면 닫기">×</button>
+      </div>
+      <div id="screen-wall-grid" class="screen-wall-grid" aria-live="polite"></div>
+      <div class="screen-wall-actions"><span class="screen-sharing-notice">학생 앱에 ‘화면 공유 중’이 표시되며, 창을 닫으면 공유가 종료됩니다.</span><button id="screen-wall-stop" class="danger-outline" type="button">화면 공유 종료</button></div>
+    </form>
+  </dialog>
   <dialog id="password-dialog" class="command-dialog password-dialog">
     <form method="dialog" id="password-form" class="stack">
       <div class="dialog-heading"><span class="eyebrow">ACCOUNT SECURITY</span><h2>비밀번호 설정</h2></div>
@@ -319,6 +328,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.5.12" defer></script>
+  <script src="/app.js?v=0.5.13" defer></script>
 </body>
 </html>

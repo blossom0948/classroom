@@ -107,9 +107,14 @@ public sealed class ClassroomServerClient(
                     status.Activity,
                     status.BatteryPercent,
                     status.NetworkStatus,
-                    status.PolicyApplied),
+                    status.PolicyApplied,
+                    status.ScreenFrame,
+                    status.ScreenSharingEnabled),
                 cancellationToken);
-            await Task.Delay(options.HeartbeatInterval, cancellationToken);
+            var nextHeartbeat = status.ScreenSharingEnabled
+                ? TimeSpan.FromSeconds(3)
+                : options.HeartbeatInterval;
+            await Task.Delay(nextHeartbeat, cancellationToken);
         }
     }
 

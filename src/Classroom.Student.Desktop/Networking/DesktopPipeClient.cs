@@ -147,7 +147,9 @@ public sealed class DesktopPipeClient(
                     status.Activity,
                     status.BatteryPercent,
                     status.NetworkStatus,
-                    status.PolicyApplied));
+                    status.PolicyApplied,
+                    status.ScreenFrame,
+                    status.ScreenSharingEnabled));
             await Task.Delay(options.StatusInterval, cancellationToken);
         }
     }
@@ -243,7 +245,9 @@ public sealed class DesktopPipeClient(
         ActivitySnapshot? Activity,
         int? BatteryPercent,
         string? NetworkStatus,
-        bool PolicyApplied);
+        bool PolicyApplied,
+        ScreenFrame? ScreenFrame,
+        bool ScreenSharingEnabled);
 
     private sealed record DesktopServerStatusMessage(
         string Kind,

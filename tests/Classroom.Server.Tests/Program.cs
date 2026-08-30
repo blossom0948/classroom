@@ -165,6 +165,13 @@ static void HeartbeatUpdatesStatus()
         new ActivitySnapshot("Chrome", "chrome.exe", "classroom.google.com", null, DateTimeOffset.UtcNow),
         72,
         "wifi",
+        true,
+        new ScreenFrame(
+            "image/jpeg",
+            Convert.ToBase64String([0xff, 0xd8, 0xff, 0xd9]),
+            480,
+            270,
+            DateTimeOffset.UtcNow),
         true);
     var result = fixture.Store.RecordHeartbeat(identity!, heartbeat);
     Assert(result.Succeeded, $"{result.Code}: {result.Message}");
@@ -173,6 +180,9 @@ static void HeartbeatUpdatesStatus()
     var status = fixture.Store.GetClassStatuses(fixture.TeacherId, fixture.ClassId).Single();
     Assert(status.Online, "Heartbeat did not make the device online.");
     Assert(status.StudentId == fixture.StudentId, "Status exposed a client-claimed student identity.");
+    Assert(status.ScreenSharingAvailable, "Student status did not advertise screen sharing support.");
+    var screens = fixture.Store.GetClassScreenFrames(fixture.TeacherId, fixture.ClassId);
+    Assert(screens.Count == 1 && screens[0].DeviceId == fixture.DeviceId, "Current screen frame was not available to the teacher.");
     Assert(status.Activity?.BrowserDomain == "classroom.google.com", "Activity domain was not retained.");
 
     fixture.Store.EndSession(fixture.TeacherId, fixture.ClassId, session.SessionId);

@@ -684,6 +684,30 @@ app.MapGet("/api/classes/{classId:guid}/students", (
     }
 });
 
+app.MapGet("/api/classes/{classId:guid}/screens", (
+    Guid classId,
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database,
+    ClassroomStore store) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    try
+    {
+        return Results.Ok(store.GetClassScreenFrames(teacherId, classId));
+    }
+    catch (ClassroomStoreException exception)
+    {
+        return Results.Json(
+            new { code = exception.Code, message = exception.Message },
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+});
+
 app.MapDelete("/api/classes/{classId:guid}/devices/{deviceId:guid}", (
     Guid classId,
     Guid deviceId,

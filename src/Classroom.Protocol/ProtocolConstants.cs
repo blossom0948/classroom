@@ -7,6 +7,9 @@ public static class ProtocolConstants
     public const int MaxTargetDevices = 30;
     public const int MaxTextLength = 2_000;
     public const int MaxDisplaySeconds = 3_600;
+    public const int MaxScreenFrameBytes = 36 * 1024;
+    public const int MaxScreenFrameWidth = 640;
+    public const int MaxScreenFrameHeight = 480;
     public const int HeartbeatIntervalSeconds = 10;
 
     public const string DeviceEnrollmentRequest = "DEVICE_ENROLLMENT_REQUEST";

@@ -41,9 +41,11 @@ public sealed record StudentAgentOptions(
             throw new InvalidOperationException("CLASSROOM_IPC_TOKEN is invalid.");
         }
 
-        var agentVersion = configuration["Classroom:AgentVersion"]
+        var configuredAgentVersion = configuration["Classroom:AgentVersion"]
             ?? Environment.GetEnvironmentVariable("CLASSROOM_AGENT_VERSION")
             ?? "0.1.0-dev";
+        var executableVersion = typeof(StudentAgentOptions).Assembly.GetName().Version;
+        var agentVersion = PreferExecutableVersion(configuredAgentVersion, executableVersion);
         if (string.IsNullOrWhiteSpace(agentVersion) || agentVersion.Length > 64)
         {
             throw new InvalidOperationException("CLASSROOM_AGENT_VERSION is missing or too long.");
@@ -97,5 +99,17 @@ public sealed record StudentAgentOptions(
             Port = value.IsDefaultPort ? -1 : value.Port
         };
         return builder.Uri;
+    }
+
+    private static string PreferExecutableVersion(string configured, Version? executable)
+    {
+        var normalized = configured.Trim().TrimStart('v', 'V');
+        var separator = normalized.IndexOfAny(['-', '+']);
+        if (separator >= 0) normalized = normalized[..separator];
+        return executable is not null
+            && Version.TryParse(normalized, out var parsed)
+            && executable > parsed
+                ? executable.ToString(3)
+                : configured;
     }
 }

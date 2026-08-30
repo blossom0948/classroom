@@ -10,9 +10,11 @@ var tests = new (string Name, Action Run)[]
     ("malformed and unsupported envelopes are rejected", InvalidEnvelopeIsRejected),
     ("hello and heartbeat can wait for a server-selected session", HeartbeatValidationWorks),
     ("activity keeps browser data to a hostname", ActivityValidationWorks),
+    ("screen frames are bounded and require visible sharing", ScreenFrameValidationWorks),
     ("message command validates and canonicalizes", MessageCommandWorks),
     ("open URL rejects non-HTTPS and arbitrary targets", OpenUrlIsConstrained),
     ("approved app command has no shell field", ApprovedAppIsConstrained),
+    ("screen sharing command requires an explicit state", ScreenShareCommandWorks),
     ("commands reject duplicate or oversized targets", TargetLimitsAreEnforced),
     ("protocol codec rejects oversized JSON", OversizedMessageIsRejected)
 };
@@ -105,6 +107,33 @@ static void ActivityValidationWorks()
             DateTimeOffset.UtcNow)));
 }
 
+static void ScreenFrameValidationWorks()
+{
+    var frame = new ScreenFrame(
+        "image/jpeg",
+        Convert.ToBase64String([0xff, 0xd8, 0xff, 0xd9]),
+        480,
+        270,
+        DateTimeOffset.UtcNow);
+    ProtocolValidation.ValidateScreenFrame(frame);
+    var heartbeat = new DeviceHeartbeat(
+        Guid.NewGuid(),
+        Guid.Empty,
+        "0.4.0",
+        DateTimeOffset.UtcNow,
+        null,
+        80,
+        "wifi",
+        false,
+        frame,
+        true);
+    ProtocolValidation.ValidateHeartbeat(heartbeat);
+    AssertThrows<ProtocolValidationException>(() =>
+        ProtocolValidation.ValidateHeartbeat(heartbeat with { ScreenSharingEnabled = false }));
+    AssertThrows<ProtocolValidationException>(() =>
+        ProtocolValidation.ValidateScreenFrame(frame with { Width = ProtocolConstants.MaxScreenFrameWidth + 1 }));
+}
+
 static void MessageCommandWorks()
 {
     var command = new CommandRequest(
@@ -152,6 +181,19 @@ static void ApprovedAppIsConstrained()
     ProtocolValidation.ValidateCommand(command);
     AssertThrows<ProtocolValidationException>(() =>
         ProtocolValidation.ValidateCommand(command with { ApprovedAppId = "powershell -Command whoami" }));
+}
+
+static void ScreenShareCommandWorks()
+{
+    var command = new CommandRequest(
+        Guid.NewGuid(),
+        Guid.NewGuid(),
+        new[] { Guid.NewGuid() },
+        ClassroomCommandKind.ScreenShare,
+        ScreenShareEnabled: true);
+    ProtocolValidation.ValidateCommand(command);
+    AssertThrows<ProtocolValidationException>(() =>
+        ProtocolValidation.ValidateCommand(command with { ScreenShareEnabled = null }));
 }
 
 static void TargetLimitsAreEnforced()

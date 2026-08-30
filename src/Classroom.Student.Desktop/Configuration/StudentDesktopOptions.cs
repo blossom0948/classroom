@@ -24,8 +24,10 @@ public sealed record StudentDesktopOptions(
                 "CLASSROOM_IPC_TOKEN must contain 16 to 256 printable characters.");
         }
 
-        var agentVersion = Environment.GetEnvironmentVariable("CLASSROOM_AGENT_VERSION")
+        var configuredAgentVersion = Environment.GetEnvironmentVariable("CLASSROOM_AGENT_VERSION")
             ?? "0.1.0-dev";
+        var executableVersion = typeof(StudentDesktopOptions).Assembly.GetName().Version;
+        var agentVersion = PreferExecutableVersion(configuredAgentVersion, executableVersion);
         if (agentVersion.Length is < 1 or > 64 || agentVersion.Any(char.IsControl))
         {
             throw new InvalidOperationException("CLASSROOM_AGENT_VERSION is invalid.");
@@ -33,7 +35,7 @@ public sealed record StudentDesktopOptions(
 
         var intervalValue = Environment.GetEnvironmentVariable("CLASSROOM_DESKTOP_STATUS_INTERVAL_SECONDS");
         var intervalSeconds = string.IsNullOrWhiteSpace(intervalValue)
-            ? 5
+            ? 3
             : int.TryParse(intervalValue, out var parsed) && parsed is >= 3 and <= 60
                 ? parsed
                 : throw new InvalidOperationException(
@@ -76,5 +78,17 @@ public sealed record StudentDesktopOptions(
         }
 
         return result;
+    }
+
+    private static string PreferExecutableVersion(string configured, Version? executable)
+    {
+        var normalized = configured.Trim().TrimStart('v', 'V');
+        var separator = normalized.IndexOfAny(['-', '+']);
+        if (separator >= 0) normalized = normalized[..separator];
+        return executable is not null
+            && Version.TryParse(normalized, out var parsed)
+            && executable > parsed
+                ? executable.ToString(3)
+                : configured;
     }
 }

@@ -41,7 +41,22 @@ public sealed record DeviceHeartbeat(
     ActivitySnapshot? Activity,
     int? BatteryPercent,
     string? NetworkStatus,
-    bool PolicyApplied);
+    bool PolicyApplied,
+    ScreenFrame? ScreenFrame = null,
+    bool ScreenSharingEnabled = false);
+
+public sealed record ScreenFrame(
+    string MimeType,
+    string Base64Data,
+    int Width,
+    int Height,
+    DateTimeOffset CapturedAtUtc);
+
+public sealed record DeviceScreenFrameStatus(
+    Guid DeviceId,
+    string StudentDisplayName,
+    ScreenFrame ScreenFrame,
+    DateTimeOffset ReceivedAtUtc);
 
 public sealed record DeviceStatus(
     Guid DeviceId,

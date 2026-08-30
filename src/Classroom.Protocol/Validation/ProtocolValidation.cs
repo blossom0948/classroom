@@ -36,6 +36,34 @@ public static class ProtocolValidation
         {
             ValidateActivity(heartbeat.Activity);
         }
+
+        if (heartbeat.ScreenFrame is not null)
+        {
+            ValidateScreenFrame(heartbeat.ScreenFrame);
+            if (!heartbeat.ScreenSharingEnabled)
+            {
+                throw new ProtocolValidationException("A screen frame requires screen sharing to be enabled.");
+            }
+        }
+    }
+
+    public static void ValidateScreenFrame(ScreenFrame frame)
+    {
+        if (!string.Equals(frame.MimeType, "image/jpeg", StringComparison.Ordinal)
+            || frame.Width is < 1 or > ProtocolConstants.MaxScreenFrameWidth
+            || frame.Height is < 1 or > ProtocolConstants.MaxScreenFrameHeight
+            || string.IsNullOrWhiteSpace(frame.Base64Data)
+            || frame.Base64Data.Length > ((ProtocolConstants.MaxScreenFrameBytes + 2) / 3) * 4)
+        {
+            throw new ProtocolValidationException("Screen frame metadata is invalid.");
+        }
+
+        var buffer = new byte[ProtocolConstants.MaxScreenFrameBytes + 1];
+        if (!Convert.TryFromBase64String(frame.Base64Data, buffer, out var bytesWritten)
+            || bytesWritten is < 1 or > ProtocolConstants.MaxScreenFrameBytes)
+        {
+            throw new ProtocolValidationException("Screen frame data is invalid.");
+        }
     }
 
     public static void ValidateActivity(ActivitySnapshot activity)
@@ -104,6 +132,12 @@ public static class ProtocolValidation
                 break;
             case ClassroomCommandKind.LaunchApprovedApp:
                 RequireApprovedAppId(command.ApprovedAppId);
+                break;
+            case ClassroomCommandKind.ScreenShare:
+                if (command.ScreenShareEnabled is null)
+                {
+                    throw new ProtocolValidationException("ScreenShareEnabled is required.");
+                }
                 break;
             default:
                 throw new ProtocolValidationException("Unknown Classroom command kind.");

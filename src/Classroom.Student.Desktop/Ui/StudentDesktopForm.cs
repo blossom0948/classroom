@@ -14,9 +14,11 @@ public sealed class StudentDesktopForm : Form
     private readonly Label connectionLabel = CreateLabel("● 서비스 연결 대기 중", 11, Color.DarkOrange);
     private readonly Label serverLabel = CreateLabel("● Classroom 서버 재연결 중", 11, Color.DarkOrange);
     private readonly Label activityLabel = CreateLabel("현재 앱: 확인 중", 11, Color.FromArgb(35, 44, 58));
+    private readonly Label screenSharingLabel = CreateLabel("● 화면 공유 중 · 교사 콘솔에 저화질 화면이 표시됩니다", 11, Color.FromArgb(188, 42, 52));
     private readonly Label deviceLabel;
     private readonly NotifyIcon trayIcon = new();
     private readonly System.Windows.Forms.Timer disconnectFailsafeTimer = new() { Interval = 60_000 };
+    private bool screenSharingActive;
     private FocusOverlayForm? focusOverlay;
 
     public StudentDesktopForm(
@@ -31,8 +33,8 @@ public sealed class StudentDesktopForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = true;
-        ClientSize = new Size(520, 335);
-        MinimumSize = new Size(520, 335);
+        ClientSize = new Size(560, 380);
+        MinimumSize = new Size(560, 380);
         BackColor = Color.White;
         Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
 
@@ -46,19 +48,25 @@ public sealed class StudentDesktopForm : Form
         serverLabel.Location = new Point(30, 101);
         serverLabel.AutoSize = true;
         activityLabel.Location = new Point(30, 151);
-        activityLabel.AutoSize = true;
+        activityLabel.AutoSize = false;
+        activityLabel.Size = new Size(500, 48);
+
+        screenSharingLabel.Location = new Point(30, 204);
+        screenSharingLabel.AutoSize = true;
+        screenSharingLabel.Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold, GraphicsUnit.Point);
+        screenSharingLabel.Visible = false;
 
         var transparency = CreateLabel(
-            "현재 앱·창 제목·연결 상태만 이 화면과 학교 콘솔에 표시됩니다.\n화면 캡처·키 입력·임의 원격 셸은 사용하지 않습니다.",
+            "평소에는 현재 앱·창 제목·연결 상태만 학교 콘솔에 표시됩니다.\n교사가 수업 중 ‘화면 보기’를 켜면 이 화면에 공유 중 표시가 나타납니다.\n키 입력·오디오·임의 원격 셸은 수집하지 않습니다.",
             10,
             Color.FromArgb(92, 102, 118));
-        transparency.Location = new Point(30, 200);
+        transparency.Location = new Point(30, 240);
         transparency.AutoSize = true;
 
-        deviceLabel.Location = new Point(30, 285);
+        deviceLabel.Location = new Point(30, 337);
         deviceLabel.AutoSize = true;
 
-        Controls.AddRange([title, connectionLabel, serverLabel, activityLabel, transparency, deviceLabel]);
+        Controls.AddRange([title, connectionLabel, serverLabel, activityLabel, screenSharingLabel, transparency, deviceLabel]);
 
         var trayMenu = new ContextMenuStrip();
         trayMenu.Items.Add("상태 열기", null, (_, _) => ShowMainWindow());
@@ -80,6 +88,16 @@ public sealed class StudentDesktopForm : Form
             if (eventArgs.CloseReason == CloseReason.UserClosing)
             {
                 eventArgs.Cancel = true;
+                if (screenSharingActive)
+                {
+                    ShowMainWindow();
+                    trayIcon.ShowBalloonTip(
+                        2_000,
+                        "Classroom Student",
+                        "교사가 화면 보기를 종료할 때까지 공유 상태 창이 표시됩니다.",
+                        ToolTipIcon.Info);
+                    return;
+                }
                 Hide();
                 trayIcon.ShowBalloonTip(
                     2_000,
@@ -114,17 +132,24 @@ public sealed class StudentDesktopForm : Form
         {
             if (connected)
             {
+                if (sessionId == Guid.Empty)
+                {
+                    ApplyScreenSharingState(false);
+                }
                 serverLabel.Text = sessionId == Guid.Empty
                     ? "● Classroom 서버 연결됨 · 수업 대기 중"
                     : $"● Classroom 서버 연결됨 · 수업 참여 {sessionId.ToString("N")[..8]}";
                 serverLabel.ForeColor = Color.SeaGreen;
                 trayIcon.Text = sessionId == Guid.Empty
                     ? "Classroom Student · 수업 대기"
-                    : "Classroom Student · 수업 참여 중";
+                    : screenSharingActive
+                        ? "Classroom Student · 화면 공유 중"
+                        : "Classroom Student · 수업 참여 중";
                 disconnectFailsafeTimer.Stop();
             }
             else
             {
+                ApplyScreenSharingState(false);
                 serverLabel.Text = "● Classroom 서버 재연결 중";
                 serverLabel.ForeColor = Color.DarkOrange;
                 trayIcon.Text = "Classroom Student · 서버 재연결 중";
@@ -193,6 +218,8 @@ public sealed class StudentDesktopForm : Form
                     Task.FromResult(SetFocusMode(command)),
                 ClassroomCommandKind.LaunchApprovedApp =>
                     Task.FromResult(LaunchApprovedApp(command)),
+                ClassroomCommandKind.ScreenShare =>
+                    Task.FromResult(SetScreenSharing(command)),
                 _ => Task.FromResult(new DesktopCommandApplyResult(false, "COMMAND_UNSUPPORTED", "Unsupported command."))
             };
         }
@@ -246,6 +273,29 @@ public sealed class StudentDesktopForm : Form
         focusOverlay?.Dismiss();
         focusOverlay = null;
         statusProvider.SetPolicyApplied(false);
+    }
+
+    private DesktopCommandApplyResult SetScreenSharing(CommandRequest command)
+    {
+        var enabled = command.ScreenShareEnabled is true;
+        ApplyScreenSharingState(enabled);
+        if (enabled)
+        {
+            ShowMainWindow();
+            return new DesktopCommandApplyResult(true, "SCREEN_SHARE_ENABLED", "Low-resolution screen sharing enabled.");
+        }
+
+        return new DesktopCommandApplyResult(true, "SCREEN_SHARE_DISABLED", "Screen sharing disabled.");
+    }
+
+    private void ApplyScreenSharingState(bool enabled)
+    {
+        screenSharingActive = enabled;
+        statusProvider.SetScreenSharing(enabled);
+        screenSharingLabel.Visible = enabled;
+        trayIcon.Text = enabled
+            ? "Classroom Student · 화면 공유 중"
+            : "Classroom Student · 학교 관리 활성화";
     }
 
     private void ShowMainWindow()

@@ -1,7 +1,10 @@
 using System.Diagnostics;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Text;
+using Blossom.Classroom.Protocol;
 using Blossom.Classroom.Protocol.Models;
 
 namespace Blossom.Classroom.Student.Desktop.Status;
@@ -10,22 +13,105 @@ public sealed record DesktopStatusData(
     ActivitySnapshot? Activity,
     int? BatteryPercent,
     string? NetworkStatus,
-    bool PolicyApplied);
+    bool PolicyApplied,
+    ScreenFrame? ScreenFrame = null,
+    bool ScreenSharingEnabled = false);
 
 public sealed class WindowsStudentStatusProvider
 {
     private int policyApplied;
+    private int screenSharingEnabled;
 
     public void SetPolicyApplied(bool applied) =>
         Interlocked.Exchange(ref policyApplied, applied ? 1 : 0);
 
+    public void SetScreenSharing(bool enabled) =>
+        Interlocked.Exchange(ref screenSharingEnabled, enabled ? 1 : 0);
+
     public DesktopStatusData GetCurrent()
     {
+        var sharing = Volatile.Read(ref screenSharingEnabled) == 1;
         return new DesktopStatusData(
             GetForegroundActivity(),
             GetBatteryPercent(),
             GetNetworkStatus(),
-            Volatile.Read(ref policyApplied) == 1);
+            Volatile.Read(ref policyApplied) == 1,
+            sharing ? CapturePrimaryScreen() : null,
+            sharing);
+    }
+
+    private static ScreenFrame? CapturePrimaryScreen()
+    {
+        try
+        {
+            var bounds = Screen.PrimaryScreen?.Bounds ?? SystemInformation.VirtualScreen;
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return null;
+            }
+
+            using var source = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format24bppRgb);
+            using (var graphics = Graphics.FromImage(source))
+            {
+                graphics.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size, CopyPixelOperation.SourceCopy);
+            }
+
+            foreach (var targetWidth in new[] { 480, 400, 320 })
+            {
+                var width = Math.Min(targetWidth, source.Width);
+                var height = Math.Max(1, (int)Math.Round(source.Height * (width / (double)source.Width)));
+                if (height > ProtocolConstants.MaxScreenFrameHeight)
+                {
+                    height = ProtocolConstants.MaxScreenFrameHeight;
+                    width = Math.Max(1, (int)Math.Round(source.Width * (height / (double)source.Height)));
+                }
+
+                using var thumbnail = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+                using (var graphics = Graphics.FromImage(thumbnail))
+                {
+                    graphics.CompositingQuality = CompositingQuality.HighSpeed;
+                    graphics.InterpolationMode = InterpolationMode.Low;
+                    graphics.SmoothingMode = SmoothingMode.HighSpeed;
+                    graphics.DrawImage(source, new Rectangle(0, 0, width, height));
+                }
+
+                foreach (var quality in new long[] { 36, 28, 20 })
+                {
+                    var bytes = EncodeJpeg(thumbnail, quality);
+                    if (bytes.Length <= ProtocolConstants.MaxScreenFrameBytes)
+                    {
+                        return new ScreenFrame(
+                            "image/jpeg",
+                            Convert.ToBase64String(bytes),
+                            width,
+                            height,
+                            DateTimeOffset.UtcNow);
+                    }
+                }
+            }
+        }
+        catch (Exception exception) when (
+            exception is ExternalException
+            or ArgumentException
+            or InvalidOperationException
+            or System.ComponentModel.Win32Exception)
+        {
+            // Secure desktop, display transitions, and disconnected sessions
+            // can temporarily make CopyFromScreen unavailable.
+        }
+
+        return null;
+    }
+
+    private static byte[] EncodeJpeg(Image image, long quality)
+    {
+        var codec = ImageCodecInfo.GetImageEncoders()
+            .First(item => item.FormatID == ImageFormat.Jpeg.Guid);
+        using var parameters = new EncoderParameters(1);
+        parameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, quality);
+        using var stream = new MemoryStream();
+        image.Save(stream, codec, parameters);
+        return stream.ToArray();
     }
 
     private static ActivitySnapshot GetForegroundActivity()

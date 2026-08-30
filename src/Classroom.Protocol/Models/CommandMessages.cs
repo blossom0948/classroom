@@ -5,7 +5,8 @@ public enum ClassroomCommandKind
     Message,
     OpenUrl,
     FocusMode,
-    LaunchApprovedApp
+    LaunchApprovedApp,
+    ScreenShare
 }
 
 public sealed record CommandRequest(
@@ -18,7 +19,8 @@ public sealed record CommandRequest(
     string? ApprovedAppId = null,
     int? DisplaySeconds = null,
     bool RequiresAcknowledgement = true,
-    bool? FocusEnabled = null);
+    bool? FocusEnabled = null,
+    bool? ScreenShareEnabled = null);
 
 public sealed record CommandAck(
     Guid RequestId,

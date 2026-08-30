@@ -14,6 +14,7 @@ builder.Services.AddSingleton<IStudentCommandSink>(services =>
     services.GetRequiredService<DesktopStatusBridge>());
 builder.Services.AddSingleton<ClassroomServerClient>();
 builder.Services.AddHostedService<StudentAgentWorker>();
+builder.Services.AddHostedService<StudentUpdateWorker>();
 
 if (OperatingSystem.IsWindows())
 {

@@ -756,6 +756,30 @@ public sealed class ClassroomStore
         }
     }
 
+    public IReadOnlyList<DeviceScreenFrameStatus> GetClassScreenFrames(Guid teacherId, Guid classId)
+    {
+        EnsureTeacherAccess(teacherId, classId);
+        lock (gate)
+        {
+            var now = DateTimeOffset.UtcNow;
+            return devices.Values
+                .Where(device => device.ClassId == classId
+                    && !device.Revoked
+                    && device.ConnectionActive
+                    && device.LatestHeartbeat?.ScreenSharingEnabled == true
+                    && device.LatestHeartbeat.ScreenFrame is not null
+                    && device.LastHeartbeatUtc is not null
+                    && now - device.LastHeartbeatUtc <= TimeSpan.FromSeconds(15))
+                .OrderBy(device => device.StudentDisplayName, StringComparer.Ordinal)
+                .Select(device => new DeviceScreenFrameStatus(
+                    device.DeviceId,
+                    device.StudentDisplayName,
+                    device.LatestHeartbeat!.ScreenFrame!,
+                    device.LastHeartbeatUtc!.Value))
+                .ToArray();
+        }
+    }
+
     public DeviceActionResponse RevokeDevice(
         Guid teacherId,
         Guid classId,
@@ -1213,7 +1237,15 @@ public sealed class ClassroomStore
         public AuthenticatedDevice ToIdentity() =>
             new(DeviceId, SchoolId, ClassId, StudentId, StudentDisplayName, DeviceName);
 
-        public PersistedDevice ToPersisted() =>
+        public PersistedDevice ToPersisted()
+        {
+            // Screen frames are intentionally memory-only and expire quickly.
+            // Persisting the latest heartbeat must never write a classroom
+            // screenshot to SQLite.
+            var persistedHeartbeat = LatestHeartbeat is null
+                ? null
+                : LatestHeartbeat with { ScreenFrame = null, ScreenSharingEnabled = false };
+            return
             new(
                 DeviceId,
                 SchoolId,
@@ -1225,10 +1257,11 @@ public sealed class ClassroomStore
                 DeviceTokenHash,
                 EnrolledAtUtc,
                 LastHeartbeatUtc,
-                LatestHeartbeat,
+                persistedHeartbeat,
                 ConnectionActive,
                 SessionId,
                 Revoked);
+        }
 
         public DeviceStatus ToStatus(
             Guid activeSessionId,
@@ -1254,7 +1287,7 @@ public sealed class ClassroomStore
                 latest?.BatteryPercent,
                 latest?.NetworkStatus,
                 latest?.PolicyApplied ?? false,
-                false);
+                true);
         }
     }
 

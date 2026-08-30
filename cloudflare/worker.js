@@ -32,6 +32,7 @@ export class ClassroomState {
     this.ctx = ctx;
     this.env = env;
     this.sql = ctx.storage.sql;
+    this.screenFrames = new Map();
     this.ready = ctx.blockConcurrencyWhile(async () => this.initialize());
   }
 
@@ -303,6 +304,8 @@ export class ClassroomState {
       if (sessionEndMatch && request.method === "DELETE") return this.endSession(request, sessionEndMatch[1], sessionEndMatch[2], cors);
       const studentsMatch = path.match(/^\/api\/classes\/([^/]+)\/students$/);
       if (studentsMatch && request.method === "GET") return this.getStudents(request, studentsMatch[1], cors);
+      const screensMatch = path.match(/^\/api\/classes\/([^/]+)\/screens$/);
+      if (screensMatch && request.method === "GET") return this.getScreens(request, screensMatch[1], cors);
       const revokeMatch = path.match(/^\/api\/classes\/([^/]+)\/devices\/([^/]+)$/);
       if (revokeMatch && request.method === "DELETE") return this.revokeDevice(request, revokeMatch[1], revokeMatch[2], cors);
       const commandMatch = path.match(/^\/api\/classes\/([^/]+)\/commands$/);
@@ -544,7 +547,7 @@ export class ClassroomState {
         configured: true,
         mode: "visible-status",
         heartbeatSeconds: 10,
-        screenSharingAvailable: false,
+        screenSharingAvailable: true,
         remoteControlMode: "allow-listed"
       }
     }, 200, cors);
@@ -701,6 +704,7 @@ export class ClassroomState {
     const now = isoNow();
     this.exec("UPDATE ClassSessions SET ended_at_utc = ? WHERE session_id = ?", now, sessionId);
     this.exec("UPDATE Devices SET policy_applied = 0, active_session_id = NULL WHERE class_id = ?", classId);
+    for (const device of this.all("SELECT device_id FROM Devices WHERE class_id = ?", classId)) this.screenFrames.delete(device.device_id);
     this.audit({ schoolId: session.school_id, classId, sessionId, teacherId: user.id, action: "CLASS_SESSION", result: "ENDED", reason: session.subject });
     this.notifyClassSession(classId, "00000000-0000-0000-0000-000000000000");
     return responseJson({ ...serializeSession({ ...session, ended_at_utc: now }) }, 200, cors);
@@ -717,6 +721,32 @@ export class ClassroomState {
     return responseJson(devices.map((device) => serializeDevice(device, active?.session_id || null, now)), 200, cors);
   }
 
+  async getScreens(request, classId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    const now = Date.now();
+    const devices = new Map(this.all("SELECT device_id, student_display_name FROM Devices WHERE class_id = ? AND revoked_at_utc IS NULL", classId)
+      .map((device) => [device.device_id, device]));
+    const screens = [];
+    for (const [deviceId, value] of this.screenFrames.entries()) {
+      if (now - value.receivedAt > 15_000) {
+        this.screenFrames.delete(deviceId);
+        continue;
+      }
+      const device = devices.get(deviceId);
+      if (!device) continue;
+      screens.push({
+        deviceId,
+        studentDisplayName: device.student_display_name,
+        screenFrame: value.screenFrame,
+        receivedAtUtc: new Date(value.receivedAt).toISOString()
+      });
+    }
+    screens.sort((left, right) => left.studentDisplayName.localeCompare(right.studentDisplayName, "ko"));
+    return responseJson(screens, 200, cors);
+  }
+
   async revokeDevice(request, classId, deviceId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
@@ -725,6 +755,7 @@ export class ClassroomState {
     if (!device) return responseError("DEVICE_NOT_FOUND", "학생 장치를 찾지 못했습니다.", 404, cors);
     const now = isoNow();
     this.exec("UPDATE Devices SET revoked_at_utc = ? WHERE device_id = ?", now, deviceId);
+    this.screenFrames.delete(deviceId);
     this.closeDeviceSockets(deviceId, 1008, "Device revoked");
     this.audit({ schoolId: device.school_id, classId, teacherId: user.id, studentId: device.student_id, deviceId, action: "DEVICE", result: "REVOKED", reason: "Teacher removed device" });
     return responseJson({ deviceId, status: "revoked", updatedAtUtc: now }, 200, cors);
@@ -888,7 +919,7 @@ export class ClassroomState {
     const activeSession = this.one("SELECT * FROM ClassSessions WHERE class_id = ? AND ended_at_utc IS NULL ORDER BY started_at_utc DESC LIMIT 1", classId);
     if (!activeSession) return responseError("SESSION_NOT_ACTIVE", "수업을 시작한 후 명령을 보낼 수 있습니다.", 409, cors);
     const kind = text(body?.kind, 64);
-    if (!new Set(["message", "openUrl", "focusMode", "launchApprovedApp"]).has(kind)) {
+    if (!new Set(["message", "openUrl", "focusMode", "launchApprovedApp", "screenShare"]).has(kind)) {
       return responseError("INVALID_COMMAND", "지원하지 않는 수업 명령입니다.", 400, cors);
     }
     const requestId = validId(body?.requestId) ? body.requestId : crypto.randomUUID();
@@ -910,11 +941,13 @@ export class ClassroomState {
       approvedAppId: text(body?.approvedAppId, 128) || null,
       displaySeconds: numberInRange(body?.displaySeconds, 1, 3600) || null,
       requiresAcknowledgement: body?.requiresAcknowledgement !== false,
-      focusEnabled: typeof body?.focusEnabled === "boolean" ? body.focusEnabled : null
+      focusEnabled: typeof body?.focusEnabled === "boolean" ? body.focusEnabled : null,
+      screenShareEnabled: typeof body?.screenShareEnabled === "boolean" ? body.screenShareEnabled : null
     };
     if (kind === "message" && !payload.message) return responseError("INVALID_COMMAND", "보낼 메시지를 입력해 주세요.", 400, cors);
     if (kind === "openUrl" && (!payload.url || !isSafeHttpsUrl(payload.url))) return responseError("INVALID_COMMAND", "HTTPS 주소를 입력해 주세요.", 400, cors);
     if (kind === "launchApprovedApp" && !payload.approvedAppId) return responseError("INVALID_COMMAND", "실행할 앱을 선택해 주세요.", 400, cors);
+    if (kind === "screenShare" && payload.screenShareEnabled === null) return responseError("INVALID_COMMAND", "화면 공유 상태를 확인해 주세요.", 400, cors);
 
     const now = isoNow();
     this.exec(`INSERT INTO Commands (request_id, school_id, class_id, session_id, kind, payload_json, created_by_teacher_id, created_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, requestId, activeSession.school_id, classId, activeSession.session_id, kind, JSON.stringify(payload), user.id, now);
@@ -1095,6 +1128,12 @@ export class ClassroomState {
       const active = this.activeSessionForClass(device.class_id);
       const now = isoNow();
       const activity = normalizeActivity(incoming.payload.activity);
+      const screenFrame = normalizeScreenFrame(incoming.payload.screenFrame);
+      if (incoming.payload.screenSharingEnabled === true && screenFrame) {
+        this.screenFrames.set(device.device_id, { screenFrame, receivedAt: Date.now() });
+      } else if (incoming.payload.screenSharingEnabled !== true) {
+        this.screenFrames.delete(device.device_id);
+      }
       this.exec(`UPDATE Devices SET last_heartbeat_utc = ?, agent_version = ?, activity_json = ?, battery_percent = ?, network_status = ?, policy_applied = ?, active_session_id = ? WHERE device_id = ?`,
         now,
         text(incoming.payload.agentVersion, 128) || device.agent_version,
@@ -1436,7 +1475,7 @@ function serializeDevice(device, activeSessionId, now) {
     batteryPercent: device.battery_percent ?? null,
     networkStatus: device.network_status || null,
     policyApplied: Boolean(device.policy_applied),
-    screenSharingAvailable: false,
+    screenSharingAvailable: true,
     statusSharingMode: "visible-status"
   };
 }
@@ -1458,6 +1497,25 @@ function normalizeActivity(value) {
     browserDomain,
     windowTitle,
     observedAtUtc: parsedObservedAt
+  };
+}
+
+function normalizeScreenFrame(value) {
+  if (!value || typeof value !== "object" || value.mimeType !== "image/jpeg") return null;
+  const base64Data = typeof value.base64Data === "string" ? value.base64Data : "";
+  const width = numberInRange(value.width, 1, 640);
+  const height = numberInRange(value.height, 1, 480);
+  if (!width || !height || !base64Data || base64Data.length > 49_152 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64Data)) return null;
+  try {
+    if (atob(base64Data).length > 36 * 1024) return null;
+  } catch (_) { return null; }
+  const capturedAt = Date.parse(value.capturedAtUtc);
+  return {
+    mimeType: "image/jpeg",
+    base64Data,
+    width,
+    height,
+    capturedAtUtc: Number.isFinite(capturedAt) ? new Date(capturedAt).toISOString() : isoNow()
   };
 }
 

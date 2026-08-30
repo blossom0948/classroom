@@ -6,7 +6,9 @@ public sealed record StudentStatusData(
     ActivitySnapshot? Activity,
     int? BatteryPercent,
     string? NetworkStatus,
-    bool PolicyApplied)
+    bool PolicyApplied,
+    ScreenFrame? ScreenFrame = null,
+    bool ScreenSharingEnabled = false)
 {
     public static StudentStatusData Empty { get; } = new(null, null, "unknown", false);
 }
