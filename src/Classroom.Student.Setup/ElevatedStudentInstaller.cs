@@ -567,13 +567,13 @@ internal static class ElevatedStudentInstaller
 
     private sealed record ServiceQuery(bool Exists, int Code);
 
-    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [DllImport("advapi32.dll", EntryPoint = "OpenSCManagerW", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr OpenScManager(
         string? machineName,
         string? databaseName,
         uint desiredAccess);
 
-    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [DllImport("advapi32.dll", EntryPoint = "OpenServiceW", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr OpenService(
         IntPtr serviceControlManager,
         string serviceName,
