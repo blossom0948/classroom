@@ -12,10 +12,20 @@ public sealed class StudentDesktopForm : Form
     private readonly StudentDesktopOptions options;
     private readonly WindowsStudentStatusProvider statusProvider;
     private readonly Func<string, CancellationToken, Task<DesktopExitPinVerificationResult>> exitPinVerifier;
+    private readonly Func<CancellationToken, Task<DesktopUpdateCheckResult>> updateChecker;
     private readonly Label connectionLabel = CreateLabel("● 서비스 연결 대기 중", 11, Color.DarkOrange);
     private readonly Label serverLabel = CreateLabel("● Classroom 서버 재연결 중", 11, Color.DarkOrange);
     private readonly Label activityLabel = CreateLabel("현재 앱: 확인 중", 11, Color.FromArgb(35, 44, 58));
     private readonly Label screenSharingLabel = CreateLabel("● 화면 공유 중 · 교사 콘솔에 저화질 화면이 표시됩니다", 11, Color.FromArgb(188, 42, 52));
+    private readonly Button updateButton = new()
+    {
+        Text = "업데이트 확인",
+        BackColor = Color.FromArgb(56, 91, 223),
+        FlatStyle = FlatStyle.Flat,
+        ForeColor = Color.White,
+        UseVisualStyleBackColor = false
+    };
+    private readonly Label updateLabel = CreateLabel("자동 업데이트: 6시간마다 확인", 9, Color.DimGray);
     private readonly Label deviceLabel;
     private readonly NotifyIcon trayIcon = new();
     private readonly System.Windows.Forms.Timer disconnectFailsafeTimer = new() { Interval = 60_000 };
@@ -27,19 +37,21 @@ public sealed class StudentDesktopForm : Form
     public StudentDesktopForm(
         StudentDesktopOptions options,
         WindowsStudentStatusProvider statusProvider,
-        Func<string, CancellationToken, Task<DesktopExitPinVerificationResult>> exitPinVerifier)
+        Func<string, CancellationToken, Task<DesktopExitPinVerificationResult>> exitPinVerifier,
+        Func<CancellationToken, Task<DesktopUpdateCheckResult>> updateChecker)
     {
         this.options = options;
         this.statusProvider = statusProvider;
         this.exitPinVerifier = exitPinVerifier;
+        this.updateChecker = updateChecker;
         deviceLabel = CreateLabel($"장치: {options.DeviceId:D}", 9, Color.DimGray);
         Text = "Classroom Student";
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = true;
-        ClientSize = new Size(560, 380);
-        MinimumSize = new Size(560, 380);
+        ClientSize = new Size(560, 420);
+        MinimumSize = new Size(560, 420);
         BackColor = Color.White;
         Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
 
@@ -57,7 +69,8 @@ public sealed class StudentDesktopForm : Form
         activityLabel.Size = new Size(500, 48);
 
         screenSharingLabel.Location = new Point(30, 204);
-        screenSharingLabel.AutoSize = true;
+        screenSharingLabel.AutoSize = false;
+        screenSharingLabel.Size = new Size(500, 32);
         screenSharingLabel.Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold, GraphicsUnit.Point);
         screenSharingLabel.Visible = false;
 
@@ -68,10 +81,20 @@ public sealed class StudentDesktopForm : Form
         transparency.Location = new Point(30, 240);
         transparency.AutoSize = true;
 
-        deviceLabel.Location = new Point(30, 337);
+        updateButton.Location = new Point(30, 307);
+        updateButton.Size = new Size(145, 34);
+        updateButton.FlatAppearance.BorderSize = 0;
+        updateButton.Click += async (_, _) => await CheckForUpdatesAsync();
+
+        updateLabel.Location = new Point(187, 307);
+        updateLabel.AutoSize = false;
+        updateLabel.Size = new Size(333, 40);
+        updateLabel.TextAlign = ContentAlignment.MiddleLeft;
+
+        deviceLabel.Location = new Point(30, 367);
         deviceLabel.AutoSize = true;
 
-        Controls.AddRange([title, connectionLabel, serverLabel, activityLabel, screenSharingLabel, transparency, deviceLabel]);
+        Controls.AddRange([title, connectionLabel, serverLabel, activityLabel, screenSharingLabel, transparency, updateButton, updateLabel, deviceLabel]);
 
         var trayMenu = new ContextMenuStrip();
         trayMenu.Items.Add("상태 열기", null, (_, _) => ShowMainWindow());
@@ -353,6 +376,47 @@ public sealed class StudentDesktopForm : Form
         finally
         {
             exitPromptOpen = false;
+        }
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        if (updateButton.Enabled is false)
+        {
+            return;
+        }
+
+        updateButton.Enabled = false;
+        updateLabel.ForeColor = Color.FromArgb(92, 102, 118);
+        updateLabel.Text = "업데이트를 확인하는 중입니다…";
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(50));
+            var result = await updateChecker(timeout.Token);
+            updateLabel.Text = result.Message;
+            updateLabel.ForeColor = !result.Success
+                ? Color.FromArgb(188, 42, 52)
+                : result.RestartRequired
+                    ? Color.DarkOrange
+                    : Color.SeaGreen;
+            if (result.RestartRequired)
+            {
+                trayIcon.ShowBalloonTip(2_500, "Classroom Student", result.Message, ToolTipIcon.Info);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            updateLabel.ForeColor = Color.FromArgb(188, 42, 52);
+            updateLabel.Text = "업데이트 확인 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.";
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException)
+        {
+            updateLabel.ForeColor = Color.FromArgb(188, 42, 52);
+            updateLabel.Text = exception.Message;
+        }
+        finally
+        {
+            updateButton.Enabled = true;
         }
     }
 

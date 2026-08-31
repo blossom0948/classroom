@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Blossom.Classroom.Student.Service.Commands;
 using Blossom.Classroom.Student.Service.Configuration;
 
 namespace Blossom.Classroom.Student.Service;
@@ -20,6 +21,7 @@ public sealed class StudentUpdateWorker(
     private const string ManifestUrl = "https://classroom-2en.pages.dev/classroom-update.json";
     private const long MaximumPackageBytes = 500L * 1024 * 1024;
     private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(6);
+    private readonly SemaphoreSlim checkGate = new(1, 1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -33,11 +35,57 @@ public sealed class StudentUpdateWorker(
         {
             try
             {
-                await CheckAndStageAsync(stoppingToken);
+                var result = await CheckNowAsync(stoppingToken);
+                if (!result.Success)
+                {
+                    logger.LogWarning("Classroom automatic update check failed: {Message}", result.Message);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 return;
+            }
+
+            await Task.Delay(CheckInterval, stoppingToken);
+        }
+    }
+
+    public async Task<StudentUpdateCheckResult> CheckNowAsync(CancellationToken cancellationToken)
+    {
+        var currentVersion = ParseVersion(options.AgentVersion) ?? new Version(0, 0);
+        var currentVersionText = currentVersion.ToString(3);
+        if (!OperatingSystem.IsWindows())
+        {
+            return new StudentUpdateCheckResult(
+                false,
+                "WINDOWS_REQUIRED",
+                "학생 앱 업데이트는 Windows에서만 사용할 수 있습니다.",
+                currentVersionText,
+                null,
+                false);
+        }
+
+        if (!TryGetInstallRoot(out _))
+        {
+            return new StudentUpdateCheckResult(
+                false,
+                "INSTALL_ROOT_NOT_FOUND",
+                "설치된 Classroom 학생 앱의 업데이트 위치를 찾을 수 없습니다.",
+                currentVersionText,
+                null,
+                false);
+        }
+
+        await checkGate.WaitAsync(cancellationToken);
+        try
+        {
+            try
+            {
+                return await CheckAndStageAsync(currentVersion, currentVersionText, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception exception) when (
                 exception is HttpRequestException
@@ -47,18 +95,36 @@ public sealed class StudentUpdateWorker(
                 or UnauthorizedAccessException
                 or System.ComponentModel.Win32Exception)
             {
-                logger.LogWarning("Classroom automatic update check failed: {Message}", exception.Message);
+                logger.LogWarning("Classroom update check failed: {Message}", exception.Message);
+                return new StudentUpdateCheckResult(
+                    false,
+                    "UPDATE_CHECK_FAILED",
+                    "업데이트를 확인하지 못했습니다. 네트워크 연결 후 다시 시도해 주세요.",
+                    currentVersionText,
+                    null,
+                    false);
             }
-
-            await Task.Delay(CheckInterval, stoppingToken);
+        }
+        finally
+        {
+            checkGate.Release();
         }
     }
 
-    private async Task CheckAndStageAsync(CancellationToken cancellationToken)
+    private async Task<StudentUpdateCheckResult> CheckAndStageAsync(
+        Version currentVersion,
+        string currentVersionText,
+        CancellationToken cancellationToken)
     {
         if (!TryGetInstallRoot(out var installRoot))
         {
-            return;
+            return new StudentUpdateCheckResult(
+                false,
+                "INSTALL_ROOT_NOT_FOUND",
+                "설치된 Classroom 학생 앱의 업데이트 위치를 찾을 수 없습니다.",
+                currentVersionText,
+                null,
+                false);
         }
 
         using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
@@ -67,20 +133,42 @@ public sealed class StudentUpdateWorker(
             $"{ManifestUrl}?deviceUpdate={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
             cancellationToken);
         var availableVersion = ParseVersion(manifest?.Version);
-        var currentVersion = ParseVersion(options.AgentVersion) ?? new Version(0, 0);
-        if (availableVersion is null
-            || availableVersion <= currentVersion
-            || manifest is null
+        if (manifest is null
+            || availableVersion is null
             || !IsAllowedPackageUrl(manifest.PackageUrl))
         {
-            return;
+            return new StudentUpdateCheckResult(
+                false,
+                "UPDATE_MANIFEST_INVALID",
+                "업데이트 정보가 올바르지 않습니다.",
+                currentVersionText,
+                null,
+                false);
         }
 
-        var updateRoot = Path.Combine(installRoot, ".updates", availableVersion.ToString(3));
+        var availableVersionText = availableVersion.ToString(3);
+        if (availableVersion <= currentVersion)
+        {
+            return new StudentUpdateCheckResult(
+                true,
+                "UP_TO_DATE",
+                $"최신 버전입니다 · v{currentVersionText}",
+                currentVersionText,
+                availableVersionText,
+                false);
+        }
+
+        var updateRoot = Path.Combine(installRoot, ".updates", availableVersionText);
         var markerPath = Path.Combine(updateRoot, "pending.json");
         if (File.Exists(markerPath))
         {
-            return;
+            return new StudentUpdateCheckResult(
+                true,
+                "UPDATE_PENDING",
+                $"v{availableVersionText} 업데이트가 준비되어 있습니다. Windows를 다시 시작하면 적용됩니다.",
+                currentVersionText,
+                availableVersionText,
+                true);
         }
 
         Directory.CreateDirectory(updateRoot);
@@ -102,7 +190,14 @@ public sealed class StudentUpdateWorker(
         TryDelete(zipPath);
         logger.LogInformation(
             "Classroom Student {Version} is staged and will activate automatically at the next Windows start.",
-            availableVersion.ToString(3));
+            availableVersionText);
+        return new StudentUpdateCheckResult(
+            true,
+            "UPDATE_STAGED",
+            $"v{availableVersionText} 업데이트를 준비했습니다. Windows를 다시 시작하면 적용됩니다.",
+            currentVersionText,
+            availableVersionText,
+            true);
     }
 
     private static async Task DownloadPackageAsync(

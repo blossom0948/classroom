@@ -4,6 +4,7 @@ using System.Text.Json;
 using Blossom.Classroom.Core.Desktop;
 using Blossom.Classroom.Core.Serialization;
 using Blossom.Classroom.Protocol.Models;
+using Blossom.Classroom.Student.Service;
 using Blossom.Classroom.Student.Service.Commands;
 using Blossom.Classroom.Student.Service.Configuration;
 using Blossom.Classroom.Student.Service.Desktop;
@@ -19,9 +20,13 @@ var options = new StudentAgentOptions(
     "0.1.0-dev",
     TimeSpan.FromSeconds(5));
 
+using var updateWorker = new StudentUpdateWorker(
+    options,
+    Microsoft.Extensions.Logging.Abstractions.NullLogger<StudentUpdateWorker>.Instance);
 await using var bridge = new DesktopStatusBridge(
     options,
-    Microsoft.Extensions.Logging.Abstractions.NullLogger<DesktopStatusBridge>.Instance);
+    Microsoft.Extensions.Logging.Abstractions.NullLogger<DesktopStatusBridge>.Instance,
+    updateWorker);
 _ = await bridge.GetAsync(CancellationToken.None);
 
 using var pipe = new NamedPipeClientStream(
@@ -60,6 +65,22 @@ await Task.Delay(100);
 var status = await bridge.GetAsync(CancellationToken.None);
 Assert(status.Activity?.BrowserDomain == "classroom.google.com", "Desktop activity was not forwarded to the service.");
 Assert(status.BatteryPercent == 84 && status.NetworkStatus == "wifi", "Desktop status values were not forwarded.");
+
+var updateRequestId = Guid.NewGuid();
+await WriteAsync(writer, new
+{
+    kind = "update-check",
+    requestId = updateRequestId
+});
+var updateJson = await reader.ReadLineAsync()
+    ?? throw new InvalidOperationException("Student update response was not sent.");
+using var updateDocument = JsonDocument.Parse(updateJson);
+Assert(updateDocument.RootElement.GetProperty("kind").GetString() == "update-result",
+    "IPC update response type was invalid.");
+Assert(updateDocument.RootElement.GetProperty("requestId").GetGuid() == updateRequestId,
+    "IPC update response was not correlated.");
+Assert(updateDocument.RootElement.GetProperty("code").GetString() == "INSTALL_ROOT_NOT_FOUND",
+    "Student update worker did not report its test installation boundary.");
 
 var command = new CommandRequest(
     Guid.NewGuid(),

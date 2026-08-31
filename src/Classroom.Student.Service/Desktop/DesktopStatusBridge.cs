@@ -17,7 +17,8 @@ namespace Blossom.Classroom.Student.Service.Desktop;
 
 public sealed class DesktopStatusBridge(
     StudentAgentOptions options,
-    ILogger<DesktopStatusBridge> logger) : IStudentStatusSource, IStudentCommandSink, IAsyncDisposable
+    ILogger<DesktopStatusBridge> logger,
+    StudentUpdateWorker? updateWorker = null) : IStudentStatusSource, IStudentCommandSink, IAsyncDisposable
 {
     public const int MaxIpcMessageBytes = StudentDesktopIpc.MaxMessageBytes;
 
@@ -414,6 +415,29 @@ public sealed class DesktopStatusBridge(
                             exitPinResult.Code,
                             exitPinResult.Message));
                     break;
+                case "update-check":
+                    var updateRequest = ClassroomJson.Deserialize<DesktopUpdateCheckRequest>(json);
+                    var updateResult = updateWorker is null
+                        ? new StudentUpdateCheckResult(
+                            false,
+                            "UPDATE_UNAVAILABLE",
+                            "학생 서비스 업데이트 기능을 사용할 수 없습니다.",
+                            "알 수 없음",
+                            null,
+                            false)
+                        : await updateWorker.CheckNowAsync(cancellationToken);
+                    await WriteAsync(
+                        writer,
+                        new DesktopUpdateCheckResponse(
+                            "update-result",
+                            updateRequest.RequestId,
+                            updateResult.Success,
+                            updateResult.Code,
+                            updateResult.Message,
+                            updateResult.CurrentVersion,
+                            updateResult.AvailableVersion,
+                            updateResult.RestartRequired));
+                    break;
                 default:
                     throw new ProtocolValidationException("Unknown Student Desktop IPC message kind.");
             }
@@ -552,6 +576,20 @@ public sealed class DesktopStatusBridge(
         bool Approved,
         string Code,
         string Message);
+
+    private sealed record DesktopUpdateCheckRequest(
+        string Kind,
+        Guid RequestId);
+
+    private sealed record DesktopUpdateCheckResponse(
+        string Kind,
+        Guid RequestId,
+        bool Success,
+        string Code,
+        string Message,
+        string CurrentVersion,
+        string? AvailableVersion,
+        bool RestartRequired);
 
     private sealed record DesktopCommandResult(
         string Kind,

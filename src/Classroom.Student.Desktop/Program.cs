@@ -24,7 +24,11 @@ if (!ownsSingleInstance)
 var statusProvider = new WindowsStudentStatusProvider();
 using var cancellation = new CancellationTokenSource();
 var client = new DesktopPipeClient(options, statusProvider, message => Console.Error.WriteLine(message));
-using var form = new StudentDesktopForm(options, statusProvider, client.VerifyExitPinAsync);
+using var form = new StudentDesktopForm(
+    options,
+    statusProvider,
+    client.VerifyExitPinAsync,
+    client.CheckForUpdateAsync);
 
 form.FormClosed += (_, _) => cancellation.Cancel();
 var connectionTask = client.RunAsync(

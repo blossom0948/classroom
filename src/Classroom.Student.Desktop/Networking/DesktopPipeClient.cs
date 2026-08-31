@@ -19,6 +19,7 @@ public sealed class DesktopPipeClient(
     private const int MaxMessageBytes = StudentDesktopIpc.MaxMessageBytes;
     private readonly object exitPinGate = new();
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<DesktopExitPinVerificationResult>> pendingExitPinVerifications = [];
+    private readonly ConcurrentDictionary<Guid, TaskCompletionSource<DesktopUpdateCheckResult>> pendingUpdateChecks = [];
     private ExitPinConnection? exitPinConnection;
 
     public async Task<DesktopExitPinVerificationResult> VerifyExitPinAsync(
@@ -85,6 +86,73 @@ public sealed class DesktopPipeClient(
         finally
         {
             pendingExitPinVerifications.TryRemove(requestId, out _);
+        }
+    }
+
+    public async Task<DesktopUpdateCheckResult> CheckForUpdateAsync(CancellationToken cancellationToken)
+    {
+        ExitPinConnection? connection;
+        lock (exitPinGate)
+        {
+            connection = exitPinConnection;
+        }
+
+        if (connection is null)
+        {
+            return new DesktopUpdateCheckResult(
+                false,
+                "STUDENT_SERVICE_OFFLINE",
+                "학생 서비스에 연결한 뒤 다시 시도해 주세요.",
+                "알 수 없음",
+                null,
+                false);
+        }
+
+        var requestId = Guid.NewGuid();
+        var completion = new TaskCompletionSource<DesktopUpdateCheckResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!pendingUpdateChecks.TryAdd(requestId, completion))
+        {
+            return new DesktopUpdateCheckResult(
+                false,
+                "UPDATE_REQUEST_DUPLICATE",
+                "업데이트 확인을 다시 시도해 주세요.",
+                "알 수 없음",
+                null,
+                false);
+        }
+
+        try
+        {
+            await WriteAsync(
+                connection.Writer,
+                connection.WriteGate,
+                new DesktopUpdateCheckRequest("update-check", requestId));
+            return await completion.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            return new DesktopUpdateCheckResult(
+                false,
+                "UPDATE_CHECK_TIMEOUT",
+                "업데이트 확인 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.",
+                "알 수 없음",
+                null,
+                false);
+        }
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+        {
+            return new DesktopUpdateCheckResult(
+                false,
+                "STUDENT_SERVICE_OFFLINE",
+                "학생 서비스 연결이 끊겼습니다. 잠시 후 다시 시도해 주세요.",
+                "알 수 없음",
+                null,
+                false);
+        }
+        finally
+        {
+            pendingUpdateChecks.TryRemove(requestId, out _);
         }
     }
 
@@ -279,6 +347,23 @@ public sealed class DesktopPipeClient(
                 continue;
             }
 
+            if (string.Equals(kind, "update-result", StringComparison.Ordinal))
+            {
+                var updateResult = ClassroomJson.Deserialize<DesktopUpdateCheckResponse>(json);
+                if (pendingUpdateChecks.TryGetValue(updateResult.RequestId, out var completion))
+                {
+                    completion.TrySetResult(new DesktopUpdateCheckResult(
+                        updateResult.Success,
+                        updateResult.Code,
+                        updateResult.Message,
+                        updateResult.CurrentVersion,
+                        updateResult.AvailableVersion,
+                        updateResult.RestartRequired));
+                }
+
+                continue;
+            }
+
             if (!string.Equals(kind, "command", StringComparison.Ordinal))
             {
                 throw new InvalidDataException("Unexpected Student Service IPC message.");
@@ -340,6 +425,11 @@ public sealed class DesktopPipeClient(
         {
             completion.TrySetException(exception);
         }
+
+        foreach (var completion in pendingUpdateChecks.Values)
+        {
+            completion.TrySetException(exception);
+        }
     }
 
     private sealed record DesktopHello(string Kind, string Token);
@@ -365,12 +455,26 @@ public sealed class DesktopPipeClient(
         Guid RequestId,
         string Pin);
 
+    private sealed record DesktopUpdateCheckRequest(
+        string Kind,
+        Guid RequestId);
+
     private sealed record DesktopExitPinVerificationResponse(
         string Kind,
         Guid RequestId,
         bool Approved,
         string Code,
         string Message);
+
+    private sealed record DesktopUpdateCheckResponse(
+        string Kind,
+        Guid RequestId,
+        bool Success,
+        string Code,
+        string Message,
+        string CurrentVersion,
+        string? AvailableVersion,
+        bool RestartRequired);
 
     private sealed record DesktopCommandMessage(
         string Kind,

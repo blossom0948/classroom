@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.15";
+  const APP_VERSION = "0.5.16";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const state = {

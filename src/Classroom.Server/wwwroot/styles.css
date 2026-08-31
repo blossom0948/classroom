@@ -1371,7 +1371,7 @@ html[data-theme="dark"] .student-activity { border-color: #2d3a50; }
   }
 }
 
-/* 0.5.15 — a single student screen stays inside the existing detail area,
+/* 0.5.16 — a single student screen stays inside the existing detail area,
    while the admin-only exit-password setting remains compact and readable. */
 .message-font-note {
   color: var(--blue);
