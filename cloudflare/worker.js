@@ -904,7 +904,6 @@ export class ClassroomState {
   async getStudentCodes(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 학생 코드를 확인할 수 없습니다.", 403, cors);
     const rows = this.all(`SELECT sc.*, c.name AS class_name, c.default_subject AS class_subject, c.grade AS class_grade, c.class_number AS class_class_number, u.display_name AS created_by_display_name
       FROM StudentCodes sc
       JOIN Classes c ON c.id = sc.class_id

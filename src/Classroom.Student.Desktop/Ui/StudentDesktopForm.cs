@@ -25,7 +25,7 @@ public sealed class StudentDesktopForm : Form
         ForeColor = Color.White,
         UseVisualStyleBackColor = false
     };
-    private readonly Label updateLabel = CreateLabel("자동 업데이트: 6시간마다 확인", 9, Color.DimGray);
+    private readonly Label updateLabel = CreateLabel("자동 업데이트: 시작 후 확인 · 15분마다 재확인", 9, Color.DimGray);
     private readonly Label deviceLabel;
     private readonly NotifyIcon trayIcon = new();
     private readonly System.Windows.Forms.Timer disconnectFailsafeTimer = new() { Interval = 60_000 };

@@ -11,8 +11,9 @@ namespace Blossom.Classroom.Student.Service;
 /// <summary>
 /// Stages signed-in-school-device updates without interrupting a lesson. Files
 /// are replaced by Windows during the next boot, before the automatic service
-/// and per-user desktop watchdog start. No student action or reinstall is
-/// required and running binaries are never overwritten in place.
+/// and per-user desktop watchdog start. The service checks on startup and at a
+/// short interval, so no student action or reinstall is required; running
+/// binaries are never overwritten in place.
 /// </summary>
 public sealed class StudentUpdateWorker(
     StudentAgentOptions options,
@@ -20,7 +21,8 @@ public sealed class StudentUpdateWorker(
 {
     private const string ManifestUrl = "https://classroom-2en.pages.dev/classroom-update.json";
     private const long MaximumPackageBytes = 500L * 1024 * 1024;
-    private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(6);
+    private static readonly TimeSpan InitialCheckDelay = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(15);
     private readonly SemaphoreSlim checkGate = new(1, 1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -30,7 +32,7 @@ public sealed class StudentUpdateWorker(
             return;
         }
 
-        await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+        await Task.Delay(InitialCheckDelay, stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
             try

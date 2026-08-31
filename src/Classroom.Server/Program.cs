@@ -561,6 +561,11 @@ app.MapGet("/api/student-codes", (
     ClassroomDatabase database,
     ClassroomStore store) =>
 {
+    if (TeacherAuthentication.TryGetGuestSchoolId(context.Request, database, out var guestSchoolId))
+    {
+        return Results.Ok(database.GetStudentCodes(guestSchoolId));
+    }
+
     if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
     {
         return Results.Unauthorized();

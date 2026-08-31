@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.17";
+  const APP_VERSION = "0.5.18";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const state = {
@@ -132,14 +132,14 @@
     $("teacher-role").classList.toggle("guest-badge", isGuest);
     $("teacher-role").hidden = !session.isAdmin && !isGuest;
     $("admins-nav").hidden = !session.isAdmin;
-    $("student-codes-nav").hidden = isGuest;
+    $("student-codes-nav").hidden = false;
     $("history-nav").hidden = isGuest;
     $("settings-nav").hidden = isGuest;
     $("admin-enroll-button").disabled = !session.isAdmin || !state.classes.length;
     $("admin-enroll-button").hidden = isGuest;
     $("admin-enroll-button").title = state.classes.length ? "학생 코드 발급" : "먼저 관리자 메뉴에서 학급을 만들어 주세요";
     $("student-code-permission").textContent = isGuest
-      ? "게스트 · 수업 현황과 학생 활동만 읽을 수 있습니다"
+      ? "게스트 · 수업 현황, 학생 활동과 학생 코드를 읽을 수 있습니다"
       : session.isAdmin
       ? "관리자: 코드 발급 및 재발급 가능"
       : "조회 전용 · 코드는 관리자에게 요청하세요";
