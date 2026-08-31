@@ -373,7 +373,8 @@ public sealed class DesktopStatusBridge(
                             status.NetworkStatus,
                             status.PolicyApplied,
                             status.ScreenFrame,
-                            status.ScreenSharingEnabled);
+                            status.ScreenSharingEnabled,
+                            status.NeedsHelp);
                     }
 
                     break;
@@ -558,7 +559,8 @@ public sealed class DesktopStatusBridge(
         string? NetworkStatus,
         bool PolicyApplied,
         ScreenFrame? ScreenFrame,
-        bool ScreenSharingEnabled);
+        bool ScreenSharingEnabled,
+        bool NeedsHelp = false);
 
     private sealed record DesktopServerStatusMessage(
         string Kind,

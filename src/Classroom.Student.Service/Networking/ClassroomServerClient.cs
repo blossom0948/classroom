@@ -204,7 +204,8 @@ public sealed class ClassroomServerClient(
                     status.NetworkStatus,
                     status.PolicyApplied,
                     status.ScreenFrame,
-                    status.ScreenSharingEnabled),
+                    status.ScreenSharingEnabled,
+                    status.NeedsHelp),
                 cancellationToken);
             var nextHeartbeat = status.ScreenSharingEnabled
                 ? TimeSpan.FromSeconds(1)

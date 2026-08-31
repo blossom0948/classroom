@@ -801,6 +801,16 @@ public sealed class ClassroomStore
             foreach (var device in devices.Values.Where(device => device.ClassId == classId))
             {
                 device.SessionId = null;
+                if (device.LatestHeartbeat is { } latestHeartbeat)
+                {
+                    device.LatestHeartbeat = latestHeartbeat with
+                    {
+                        NeedsHelp = false,
+                        PolicyApplied = false,
+                        ScreenFrame = null,
+                        ScreenSharingEnabled = false
+                    };
+                }
                 database?.SaveDevice(device.ToPersisted());
             }
 
@@ -1399,7 +1409,8 @@ public sealed class ClassroomStore
                 latest?.BatteryPercent,
                 latest?.NetworkStatus,
                 latest?.PolicyApplied ?? false,
-                true);
+                true,
+                latest?.NeedsHelp ?? false);
         }
     }
 

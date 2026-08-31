@@ -10,7 +10,8 @@
     "check:worker": "node --check cloudflare/worker.js",
     "dev:worker": "wrangler dev --config cloudflare/wrangler.jsonc",
     "deploy:worker": "wrangler deploy --config cloudflare/wrangler.jsonc",
-    "test:pages": "node tests/pages-proxy.test.mjs"
+    "test:pages": "node tests/pages-proxy.test.mjs",
+    "test:quality": "node tests/web-quality.test.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.127.1"

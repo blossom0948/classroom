@@ -52,7 +52,8 @@ static void EnvelopeSerializationWorks()
             null,
             72,
             "wifi",
-            true),
+            true,
+            NeedsHelp: true),
         DateTimeOffset.Parse("2026-08-28T00:00:00Z"));
 
     var json = ProtocolCodec.Serialize(envelope);
@@ -61,7 +62,7 @@ static void EnvelopeSerializationWorks()
     Assert(json.Contains("\"deviceId\":\"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\""), "Device identity was not serialized.");
     Assert(!json.Contains("password", StringComparison.OrdinalIgnoreCase), "Credential field leaked into protocol.");
     var parsed = ProtocolCodec.Deserialize<DeviceHeartbeat>(json);
-    Assert(parsed.Payload.DeviceId == deviceId && parsed.Payload.BatteryPercent == 72, "Heartbeat did not round trip.");
+    Assert(parsed.Payload.DeviceId == deviceId && parsed.Payload.BatteryPercent == 72 && parsed.Payload.NeedsHelp, "Heartbeat did not round trip.");
 }
 
 static void InvalidEnvelopeIsRejected()

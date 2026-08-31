@@ -43,7 +43,8 @@ public sealed record DeviceHeartbeat(
     string? NetworkStatus,
     bool PolicyApplied,
     ScreenFrame? ScreenFrame = null,
-    bool ScreenSharingEnabled = false);
+    bool ScreenSharingEnabled = false,
+    bool NeedsHelp = false);
 
 /// <summary>
 /// A visible Student Desktop asks its already-authenticated local service to
@@ -87,4 +88,5 @@ public sealed record DeviceStatus(
     int? BatteryPercent,
     string? NetworkStatus,
     bool PolicyApplied,
-    bool ScreenSharingAvailable);
+    bool ScreenSharingAvailable,
+    bool NeedsHelp = false);

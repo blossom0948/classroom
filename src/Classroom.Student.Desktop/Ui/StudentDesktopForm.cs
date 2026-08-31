@@ -17,6 +17,15 @@ public sealed class StudentDesktopForm : Form
     private readonly Label serverLabel = CreateLabel("● Classroom 서버 재연결 중", 11, Color.DarkOrange);
     private readonly Label activityLabel = CreateLabel("현재 앱: 확인 중", 11, Color.FromArgb(35, 44, 58));
     private readonly Label screenSharingLabel = CreateLabel("● 화면 공유 중 · 교사 콘솔에 저화질 화면이 표시됩니다", 11, Color.FromArgb(188, 42, 52));
+    private readonly Button helpButton = new()
+    {
+        Text = "도움 요청",
+        BackColor = Color.FromArgb(238, 243, 255),
+        FlatStyle = FlatStyle.Flat,
+        ForeColor = Color.FromArgb(49, 87, 213),
+        UseVisualStyleBackColor = false
+    };
+    private readonly Label helpLabel = CreateLabel("도움이 필요하면 선생님께 요청을 보낼 수 있습니다.", 9, Color.DimGray);
     private readonly Button updateButton = new()
     {
         Text = "업데이트 확인",
@@ -30,6 +39,7 @@ public sealed class StudentDesktopForm : Form
     private readonly NotifyIcon trayIcon = new();
     private readonly System.Windows.Forms.Timer disconnectFailsafeTimer = new() { Interval = 60_000 };
     private bool screenSharingActive;
+    private bool helpRequested;
     private bool approvedExit;
     private bool exitPromptOpen;
     private FocusOverlayForm? focusOverlay;
@@ -50,8 +60,9 @@ public sealed class StudentDesktopForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = true;
-        ClientSize = new Size(560, 420);
-        MinimumSize = new Size(560, 420);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        ClientSize = new Size(620, 468);
+        MinimumSize = new Size(620, 468);
         BackColor = Color.White;
         Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
 
@@ -66,11 +77,14 @@ public sealed class StudentDesktopForm : Form
         serverLabel.AutoSize = true;
         activityLabel.Location = new Point(30, 151);
         activityLabel.AutoSize = false;
-        activityLabel.Size = new Size(500, 48);
+        activityLabel.AutoEllipsis = true;
+        activityLabel.Size = new Size(560, 54);
+        activityLabel.TextAlign = ContentAlignment.TopLeft;
 
-        screenSharingLabel.Location = new Point(30, 204);
+        screenSharingLabel.Location = new Point(30, 211);
         screenSharingLabel.AutoSize = false;
-        screenSharingLabel.Size = new Size(500, 32);
+        screenSharingLabel.AutoEllipsis = true;
+        screenSharingLabel.Size = new Size(560, 34);
         screenSharingLabel.Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold, GraphicsUnit.Point);
         screenSharingLabel.Visible = false;
 
@@ -78,23 +92,35 @@ public sealed class StudentDesktopForm : Form
             "평소에는 현재 앱·창 제목·연결 상태만 학교 콘솔에 표시됩니다.\n교사가 수업 중 ‘화면 보기’를 켜면 이 화면에 공유 중 표시가 나타납니다.\n키 입력·오디오·임의 원격 셸은 수집하지 않습니다.",
             10,
             Color.FromArgb(92, 102, 118));
-        transparency.Location = new Point(30, 240);
+        transparency.Location = new Point(30, 253);
         transparency.AutoSize = true;
 
-        updateButton.Location = new Point(30, 307);
+        updateButton.Location = new Point(30, 330);
         updateButton.Size = new Size(145, 34);
         updateButton.FlatAppearance.BorderSize = 0;
         updateButton.Click += async (_, _) => await CheckForUpdatesAsync();
 
-        updateLabel.Location = new Point(187, 307);
+        helpButton.Location = new Point(185, 330);
+        helpButton.Size = new Size(126, 34);
+        helpButton.Enabled = false;
+        helpButton.FlatAppearance.BorderColor = Color.FromArgb(187, 201, 246);
+        helpButton.FlatAppearance.BorderSize = 1;
+        helpButton.Click += (_, _) => SetHelpRequested(!helpRequested, announce: true);
+
+        updateLabel.Location = new Point(323, 326);
         updateLabel.AutoSize = false;
-        updateLabel.Size = new Size(333, 40);
+        updateLabel.Size = new Size(267, 40);
         updateLabel.TextAlign = ContentAlignment.MiddleLeft;
 
-        deviceLabel.Location = new Point(30, 367);
+        helpLabel.Text = "수업에 참여하면 선생님께 도움 요청을 보낼 수 있습니다.";
+        helpLabel.Location = new Point(30, 373);
+        helpLabel.AutoEllipsis = true;
+        helpLabel.Size = new Size(560, 22);
+
+        deviceLabel.Location = new Point(30, 414);
         deviceLabel.AutoSize = true;
 
-        Controls.AddRange([title, connectionLabel, serverLabel, activityLabel, screenSharingLabel, transparency, updateButton, updateLabel, deviceLabel]);
+        Controls.AddRange([title, connectionLabel, serverLabel, activityLabel, screenSharingLabel, transparency, updateButton, helpButton, updateLabel, helpLabel, deviceLabel]);
 
         var trayMenu = new ContextMenuStrip();
         trayMenu.Items.Add("상태 열기", null, (_, _) => ShowMainWindow());
@@ -155,9 +181,16 @@ public sealed class StudentDesktopForm : Form
         {
             if (connected)
             {
+                helpButton.Enabled = sessionId != Guid.Empty;
                 if (sessionId == Guid.Empty)
                 {
                     ApplyScreenSharingState(false);
+                    SetHelpRequested(false, announce: false);
+                    helpLabel.Text = "수업에 참여하면 선생님께 도움 요청을 보낼 수 있습니다.";
+                }
+                else if (!helpRequested)
+                {
+                    helpLabel.Text = "도움이 필요하면 선생님께 요청을 보낼 수 있습니다.";
                 }
                 serverLabel.Text = sessionId == Guid.Empty
                     ? "● Classroom 서버 연결됨 · 수업 대기 중"
@@ -172,6 +205,7 @@ public sealed class StudentDesktopForm : Form
             }
             else
             {
+                helpButton.Enabled = false;
                 ApplyScreenSharingState(false);
                 serverLabel.Text = "● Classroom 서버 재연결 중";
                 serverLabel.ForeColor = Color.DarkOrange;
@@ -195,7 +229,7 @@ public sealed class StudentDesktopForm : Form
             var windowTitle = string.IsNullOrWhiteSpace(activity?.WindowTitle)
                 ? "현재 창 확인 필요"
                 : activity.WindowTitle;
-            activityLabel.Text = $"현재 앱: {activity?.ApplicationDisplayName ?? "확인 필요"} · 창: {windowTitle} · {battery} · 네트워크 {network}";
+            activityLabel.Text = $"현재 앱  {activity?.ApplicationDisplayName ?? "확인 필요"}\n현재 창  {windowTitle}\n{battery} · 네트워크 {network}";
         });
     }
 
@@ -319,6 +353,32 @@ public sealed class StudentDesktopForm : Form
         trayIcon.Text = enabled
             ? "Classroom Student · 화면 공유 중"
             : "Classroom Student · 학교 관리 활성화";
+    }
+
+    private void SetHelpRequested(bool requested, bool announce)
+    {
+        helpRequested = requested;
+        statusProvider.SetHelpRequested(requested);
+        helpButton.Text = requested ? "요청 취소" : "도움 요청";
+        helpButton.BackColor = requested
+            ? Color.FromArgb(196, 72, 63)
+            : Color.FromArgb(238, 243, 255);
+        helpButton.ForeColor = requested ? Color.White : Color.FromArgb(49, 87, 213);
+        helpButton.FlatAppearance.BorderColor = requested
+            ? Color.FromArgb(196, 72, 63)
+            : Color.FromArgb(187, 201, 246);
+        helpLabel.ForeColor = requested ? Color.FromArgb(170, 56, 49) : Color.DimGray;
+        helpLabel.Text = requested
+            ? "● 선생님께 도움 요청을 보냈습니다. 해결되면 요청 취소를 눌러 주세요."
+            : "도움이 필요하면 선생님께 요청을 보낼 수 있습니다.";
+        if (announce)
+        {
+            trayIcon.ShowBalloonTip(
+                2_500,
+                "Classroom Student",
+                requested ? "선생님께 도움 요청을 보냈습니다." : "도움 요청을 취소했습니다.",
+                ToolTipIcon.Info);
+        }
     }
 
     private void ShowMainWindow()

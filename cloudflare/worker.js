@@ -147,6 +147,7 @@ export class ClassroomState {
       battery_percent INTEGER,
       network_status TEXT,
       policy_applied INTEGER NOT NULL DEFAULT 0,
+      needs_help INTEGER NOT NULL DEFAULT 0,
       active_session_id TEXT,
       revoked_at_utc TEXT
     )`);
@@ -242,6 +243,7 @@ export class ClassroomState {
     this.ensureColumn("Devices", "grade", "INTEGER");
     this.ensureColumn("Devices", "class_number", "INTEGER");
     this.ensureColumn("Devices", "student_number", "INTEGER");
+    this.ensureColumn("Devices", "needs_help", "INTEGER NOT NULL DEFAULT 0");
     // Older releases created a new device row every time a persistent
     // student code was entered again. Reconcile those rows before adding the
     // invariant that one student has one active device per class.
@@ -770,7 +772,7 @@ export class ClassroomState {
     if (!session) return responseError("SESSION_NOT_FOUND", "진행 중인 수업을 찾지 못했습니다.", 404, cors);
     const now = isoNow();
     this.exec("UPDATE ClassSessions SET ended_at_utc = ? WHERE session_id = ?", now, sessionId);
-    this.exec("UPDATE Devices SET policy_applied = 0, active_session_id = NULL WHERE class_id = ?", classId);
+    this.exec("UPDATE Devices SET policy_applied = 0, needs_help = 0, active_session_id = NULL WHERE class_id = ?", classId);
     for (const device of this.all("SELECT device_id FROM Devices WHERE class_id = ?", classId)) this.screenFrames.delete(device.device_id);
     this.audit({ schoolId: session.school_id, classId, sessionId, teacherId: user.id, action: "CLASS_SESSION", result: "ENDED", reason: session.subject });
     this.notifyClassSession(classId, "00000000-0000-0000-0000-000000000000");
@@ -959,7 +961,7 @@ export class ClassroomState {
       this.exec(`UPDATE Devices SET
         school_id = ?, class_id = ?, student_id = ?, student_display_name = ?, grade = ?, class_number = ?, student_number = ?, computer_name = ?,
         agent_version = ?, device_token_hash = ?, issued_at_utc = ?, last_heartbeat_utc = NULL, activity_json = NULL,
-        battery_percent = NULL, network_status = NULL, policy_applied = 0, active_session_id = NULL, revoked_at_utc = NULL
+        battery_percent = NULL, network_status = NULL, policy_applied = 0, needs_help = 0, active_session_id = NULL, revoked_at_utc = NULL
         WHERE device_id = ?`, code.school_id, code.class_id, code.student_id, code.student_display_name, code.grade, code.class_number, code.student_number, deviceName, agentVersion, await sha256Text(token), now, deviceId);
     } else {
       this.exec(`INSERT INTO Devices (
@@ -1274,13 +1276,14 @@ export class ClassroomState {
       } else if (incoming.payload.screenSharingEnabled !== true) {
         this.screenFrames.delete(device.device_id);
       }
-      this.exec(`UPDATE Devices SET last_heartbeat_utc = ?, agent_version = ?, activity_json = ?, battery_percent = ?, network_status = ?, policy_applied = ?, active_session_id = ? WHERE device_id = ?`,
+      this.exec(`UPDATE Devices SET last_heartbeat_utc = ?, agent_version = ?, activity_json = ?, battery_percent = ?, network_status = ?, policy_applied = ?, needs_help = ?, active_session_id = ? WHERE device_id = ?`,
         now,
         text(incoming.payload.agentVersion, 128) || device.agent_version,
         activity ? JSON.stringify(activity) : null,
         numberInRange(incoming.payload.batteryPercent, 0, 100),
         text(incoming.payload.networkStatus, 64) || null,
         incoming.payload.policyApplied === true ? 1 : 0,
+        incoming.payload.needsHelp === true ? 1 : 0,
         active?.session_id || null,
         device.device_id);
       if (incoming.payload.sessionId !== (active?.session_id || "00000000-0000-0000-0000-000000000000")) this.sendSessionAccepted(socket, device.device_id, active?.session_id || "00000000-0000-0000-0000-000000000000");
@@ -1777,6 +1780,7 @@ function serializeDevice(device, activeSessionId, now) {
     batteryPercent: device.battery_percent ?? null,
     networkStatus: device.network_status || null,
     policyApplied: Boolean(device.policy_applied),
+    needsHelp: Boolean(device.needs_help),
     screenSharingAvailable: true,
     statusSharingMode: "visible-status"
   };

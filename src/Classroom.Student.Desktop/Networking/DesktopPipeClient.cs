@@ -301,7 +301,8 @@ public sealed class DesktopPipeClient(
                     status.NetworkStatus,
                     status.PolicyApplied,
                     status.ScreenFrame,
-                    status.ScreenSharingEnabled));
+                    status.ScreenSharingEnabled,
+                    status.NeedsHelp));
             await Task.Delay(options.StatusInterval, cancellationToken);
         }
     }
@@ -443,7 +444,8 @@ public sealed class DesktopPipeClient(
         string? NetworkStatus,
         bool PolicyApplied,
         ScreenFrame? ScreenFrame,
-        bool ScreenSharingEnabled);
+        bool ScreenSharingEnabled,
+        bool NeedsHelp = false);
 
     private sealed record DesktopServerStatusMessage(
         string Kind,

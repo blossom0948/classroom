@@ -59,12 +59,14 @@ await WriteAsync(writer, new
     activity,
     batteryPercent = 84,
     networkStatus = "wifi",
-    policyApplied = false
+    policyApplied = false,
+    needsHelp = true
 });
 await Task.Delay(100);
 var status = await bridge.GetAsync(CancellationToken.None);
 Assert(status.Activity?.BrowserDomain == "classroom.google.com", "Desktop activity was not forwarded to the service.");
 Assert(status.BatteryPercent == 84 && status.NetworkStatus == "wifi", "Desktop status values were not forwarded.");
+Assert(status.NeedsHelp, "Desktop help request was not forwarded to the service.");
 
 var updateRequestId = Guid.NewGuid();
 await WriteAsync(writer, new

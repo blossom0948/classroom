@@ -15,18 +15,23 @@ public sealed record DesktopStatusData(
     string? NetworkStatus,
     bool PolicyApplied,
     ScreenFrame? ScreenFrame = null,
-    bool ScreenSharingEnabled = false);
+    bool ScreenSharingEnabled = false,
+    bool NeedsHelp = false);
 
 public sealed class WindowsStudentStatusProvider
 {
     private int policyApplied;
     private int screenSharingEnabled;
+    private int helpRequested;
 
     public void SetPolicyApplied(bool applied) =>
         Interlocked.Exchange(ref policyApplied, applied ? 1 : 0);
 
     public void SetScreenSharing(bool enabled) =>
         Interlocked.Exchange(ref screenSharingEnabled, enabled ? 1 : 0);
+
+    public void SetHelpRequested(bool requested) =>
+        Interlocked.Exchange(ref helpRequested, requested ? 1 : 0);
 
     public DesktopStatusData GetCurrent()
     {
@@ -37,7 +42,8 @@ public sealed class WindowsStudentStatusProvider
             GetNetworkStatus(),
             Volatile.Read(ref policyApplied) == 1,
             sharing ? CapturePrimaryScreen() : null,
-            sharing);
+            sharing,
+            Volatile.Read(ref helpRequested) == 1);
     }
 
     private static ScreenFrame? CapturePrimaryScreen()

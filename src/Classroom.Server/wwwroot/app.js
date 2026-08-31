@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.20";
+  const APP_VERSION = "0.5.21";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const state = {
@@ -9,6 +9,11 @@
     classId: null,
     session: null,
     students: [],
+    refreshInFlight: false,
+    refreshQueued: false,
+    refreshFailureCount: 0,
+    lastSuccessfulRefreshAt: null,
+    lastRefreshError: "",
     studentCodes: [],
     adminDirectory: null,
     operationsStatus: null,
@@ -36,7 +41,13 @@
     detailView: "status",
     screenFrames: new Map(),
     studentExitPinStatus: null,
-    guestPasswordStatus: null
+    guestPasswordStatus: null,
+    studentSort: ["number", "name", "status"].includes(localStorage.getItem("classroom.studentSort"))
+      ? localStorage.getItem("classroom.studentSort")
+      : "number",
+    studentDensity: ["comfortable", "compact"].includes(localStorage.getItem("classroom.studentDensity"))
+      ? localStorage.getItem("classroom.studentDensity")
+      : "comfortable"
   };
 
   const $ = (id) => document.getElementById(id);
@@ -84,6 +95,11 @@
     state.classId = null;
     state.session = null;
     state.students = [];
+    state.refreshInFlight = false;
+    state.refreshQueued = false;
+    state.refreshFailureCount = 0;
+    state.lastSuccessfulRefreshAt = null;
+    state.lastRefreshError = "";
     state.studentCodes = [];
     state.adminDirectory = null;
     state.studentExitPinStatus = null;
@@ -93,7 +109,7 @@
     state.passwordVerificationId = null;
     sessionStorage.removeItem("classroom.teacherToken");
     sessionStorage.removeItem("classroom.onboardingDismissed");
-    if (state.pollTimer) clearInterval(state.pollTimer);
+    if (state.pollTimer) clearTimeout(state.pollTimer);
     state.pollTimer = null;
     if (state.screenWallTimer) clearInterval(state.screenWallTimer);
     state.screenWallTimer = null;
@@ -120,10 +136,64 @@
     return state.classes.find((item) => item.id === state.classId) || null;
   }
 
+  function displayText(value, fallback = "확인 필요") {
+    return typeof value === "string" && value.trim() ? value.trim() : fallback;
+  }
+
+  function normalizeActivity(activity) {
+    if (!activity || typeof activity !== "object") return null;
+    const applicationDisplayName = displayText(activity.applicationDisplayName, "");
+    const processName = displayText(activity.processName, "");
+    if (!applicationDisplayName && !processName) return null;
+    return {
+      applicationDisplayName: applicationDisplayName || "현재 앱 확인 필요",
+      processName: processName || "unknown.exe",
+      browserDomain: displayText(activity.browserDomain, "") || null,
+      windowTitle: displayText(activity.windowTitle, "") || null,
+      observedAtUtc: displayText(activity.observedAtUtc, "") || null
+    };
+  }
+
+  function normalizeStudent(student) {
+    if (!student || typeof student !== "object" || typeof student.deviceId !== "string" || !student.deviceId) return null;
+    const asInteger = (value) => value === null || value === undefined || value === ""
+      ? null
+      : Number.isInteger(Number(value)) ? Number(value) : null;
+    const risk = student.activityRisk && typeof student.activityRisk === "object"
+      ? {
+        level: displayText(student.activityRisk.level, "unknown"),
+        label: displayText(student.activityRisk.label, "확인 필요"),
+        reason: displayText(student.activityRisk.reason, "")
+      }
+      : null;
+    return {
+      ...student,
+      deviceId: student.deviceId,
+      studentDisplayName: displayText(student.studentDisplayName, "이름 미확인"),
+      computerName: displayText(student.computerName, "장치 이름 미확인"),
+      agentVersion: displayText(student.agentVersion, "확인 필요"),
+      online: student.online === true,
+      activity: normalizeActivity(student.activity),
+      activityRisk: risk,
+      batteryPercent: (() => {
+        if (student.batteryPercent === null || student.batteryPercent === undefined || student.batteryPercent === "") return null;
+        const value = Number(student.batteryPercent);
+        return Number.isInteger(value) && value >= 0 && value <= 100 ? value : null;
+      })(),
+      networkStatus: displayText(student.networkStatus, "") || null,
+      policyApplied: student.policyApplied === true,
+      needsHelp: student.needsHelp === true,
+      grade: asInteger(student.grade),
+      classNumber: asInteger(student.classNumber),
+      studentNumber: asInteger(student.studentNumber),
+      lastHeartbeatUtc: displayText(student.lastHeartbeatUtc, "") || null
+    };
+  }
+
   async function loadTeacher() {
     const session = await api("/auth/me");
     state.teacher = session;
-    state.classes = session.classes || [];
+    state.classes = Array.isArray(session.classes) ? session.classes : [];
     const isGuest = session.isGuest === true;
     state.classId = state.classId && state.classes.some((item) => item.id === state.classId)
       ? state.classId
@@ -177,19 +247,73 @@
     renderTodayInfo();
     loadWeather();
     await refreshClass();
-    if (state.pollTimer) clearInterval(state.pollTimer);
-    state.pollTimer = setInterval(() => refreshClass().catch((error) => showToast(error.message)), 2000);
+    startClassPolling();
     window.setTimeout(() => maybeOpenOnboarding(session), 150);
   }
 
   async function refreshClass() {
+    if (state.refreshInFlight) {
+      state.refreshQueued = true;
+      return;
+    }
+    state.refreshInFlight = true;
+    try {
+      await refreshClassOnce();
+      state.refreshFailureCount = 0;
+      state.lastRefreshError = "";
+      state.lastSuccessfulRefreshAt = new Date().toISOString();
+    } catch (error) {
+      state.refreshFailureCount += 1;
+      state.lastRefreshError = "학생 상태를 새로 받지 못했습니다.";
+      renderRefreshStatus();
+      throw error;
+    } finally {
+      state.refreshInFlight = false;
+      if (state.refreshQueued) {
+        state.refreshQueued = false;
+        window.queueMicrotask(() => refreshClass().catch(() => {}));
+      }
+    }
+  }
+
+  // Use one scheduled request at a time. An interval can stack requests when
+  // a school network is slow, which made a later error overwrite a perfectly
+  // usable roster. Failed refreshes now back off while the last good cards
+  // stay visible.
+  function startClassPolling() {
+    if (state.pollTimer) clearTimeout(state.pollTimer);
+    state.pollTimer = null;
+    scheduleNextClassRefresh();
+  }
+
+  function scheduleNextClassRefresh() {
+    if (!state.token) return;
+    if (state.pollTimer) clearTimeout(state.pollTimer);
+    const baseDelay = document.visibilityState === "visible" ? 2_000 : 12_000;
+    const retryDelay = state.refreshFailureCount
+      ? Math.min(30_000, baseDelay * (2 ** Math.min(state.refreshFailureCount, 4)))
+      : baseDelay;
+    state.pollTimer = window.setTimeout(async () => {
+      state.pollTimer = null;
+      try {
+        await refreshClass();
+      } catch (_) {
+        // The status callout has the user-facing explanation. Keep polling
+        // rather than producing a toast every few seconds.
+      } finally {
+        scheduleNextClassRefresh();
+      }
+    }, retryDelay);
+  }
+
+  async function refreshClassOnce() {
     if (!state.classId) {
       state.session = null;
       state.students = [];
       $("class-subject").textContent = "";
       renderHeader();
       renderStudents();
-     return;
+      return;
     }
     const selected = currentClass();
     $("class-subject").textContent = selected?.defaultSubject || "";
@@ -197,8 +321,10 @@
       api(`/api/classes/${state.classId}/session`),
       api(`/api/classes/${state.classId}/students`)
     ]);
-    state.session = session;
-    state.students = students || [];
+    state.session = session && typeof session === "object" ? session : null;
+    state.students = Array.isArray(students)
+      ? students.map(normalizeStudent).filter(Boolean)
+      : [];
     const currentIds = new Set(state.students.map((student) => student.deviceId));
     state.selectedDeviceIds = new Set(
       [...state.selectedDeviceIds].filter((deviceId) => currentIds.has(deviceId))
@@ -217,9 +343,7 @@
     $("metric-online-count").textContent = String(online);
     $("offline-count").textContent = String(offline);
     $("needs-attention-count").textContent = String(needsAttention);
-    $("session-caption").textContent = state.session
-      ? `${state.session.subject} · ${formatTime(state.session.startedAtUtc)} 시작`
-      : "활성 수업이 없습니다.";
+    $("session-caption").textContent = formatSessionCaption(state.session);
     $("start-session-button").hidden = Boolean(state.teacher?.isGuest) || Boolean(state.session) || !state.classId;
     $("end-session-button").hidden = Boolean(state.teacher?.isGuest) || !state.session;
     const screenWallButton = $("screen-wall-button");
@@ -228,15 +352,97 @@
       screenWallButton.setAttribute("aria-pressed", String(state.screenWallOpen));
     }
     renderSelection();
+    renderStudentViewControls();
+    renderRefreshStatus();
+  }
+
+  function formatSessionCaption(session) {
+    if (!session) return "활성 수업이 없습니다.";
+    const startedAt = new Date(session.startedAtUtc);
+    if (Number.isNaN(startedAt.getTime())) return `${displayText(session.subject, "수업")} · 시작 시간 확인 필요`;
+    const elapsedMinutes = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 60_000));
+    const progress = elapsedMinutes < 1 ? "방금 시작" : `${elapsedMinutes}분 진행`;
+    return `${displayText(session.subject, "수업")} · ${formatTime(session.startedAtUtc)} 시작 · ${progress}`;
+  }
+
+  function attentionSignals(student) {
+    if (!student?.online) return [];
+    const signals = [];
+    if (student.needsHelp) signals.push({ kind: "help", label: "도움 요청", detail: "학생이 도움을 요청했습니다." });
+    if (student.activityRisk?.level === "warning") {
+      signals.push({ kind: "risk", label: "활동 확인", detail: student.activityRisk.reason || "활동 신호를 확인해 주세요." });
+    }
+    if (!student.activity) signals.push({ kind: "agent", label: "상태 대기", detail: "학생 앱의 현재 활동 정보가 아직 도착하지 않았습니다." });
+    if (!student.networkStatus || student.networkStatus === "unknown") {
+      signals.push({ kind: "network", label: "연결 확인", detail: "네트워크 상태를 확인하지 못했습니다." });
+    }
+    if (student.batteryPercent != null && student.batteryPercent <= 15) {
+      signals.push({ kind: "battery", label: "저배터리", detail: `배터리가 ${student.batteryPercent}%입니다.` });
+    }
+    return signals;
   }
 
   function isNeedsAttention(student) {
-    if (!student.online) return false;
-    if (student.activityRisk?.level === "warning") return true;
-    return !student.activity
-      || !student.networkStatus
-      || student.networkStatus === "unknown"
-      || (student.batteryPercent != null && student.batteryPercent <= 15);
+    return attentionSignals(student).length > 0;
+  }
+
+  function primaryAttentionSignal(student) {
+    return attentionSignals(student)[0] || null;
+  }
+
+  function studentStatusRank(student) {
+    if (!student.online) return 4;
+    const signal = primaryAttentionSignal(student);
+    if (signal?.kind === "help") return 0;
+    if (signal) return 1;
+    if (student.policyApplied) return 2;
+    return 3;
+  }
+
+  function sortStudents(students) {
+    const collator = new Intl.Collator("ko-KR", { numeric: true, sensitivity: "base" });
+    return [...students].sort((left, right) => {
+      if (state.studentSort === "status") {
+        const statusDifference = studentStatusRank(left) - studentStatusRank(right);
+        if (statusDifference) return statusDifference;
+      } else if (state.studentSort === "name") {
+        const nameDifference = collator.compare(left.studentDisplayName, right.studentDisplayName);
+        if (nameDifference) return nameDifference;
+      } else {
+        const numberDifference = (left.studentNumber ?? Number.MAX_SAFE_INTEGER) - (right.studentNumber ?? Number.MAX_SAFE_INTEGER);
+        if (numberDifference) return numberDifference;
+      }
+      const fallbackName = collator.compare(left.studentDisplayName, right.studentDisplayName);
+      return fallbackName || collator.compare(left.computerName, right.computerName);
+    });
+  }
+
+  function renderStudentViewControls() {
+    const sort = $("student-sort");
+    const densityButton = $("student-density-button");
+    const grid = $("student-grid");
+    if (sort) sort.value = state.studentSort;
+    if (densityButton) {
+      const compact = state.studentDensity === "compact";
+      densityButton.textContent = compact ? "여유 보기" : "촘촘히 보기";
+      densityButton.setAttribute("aria-pressed", String(compact));
+      densityButton.title = compact ? "카드 간격을 넓게 표시" : "카드를 더 촘촘하게 표시";
+    }
+    if (grid) grid.dataset.density = state.studentDensity;
+  }
+
+  function renderRefreshStatus() {
+    const callout = $("class-sync-status");
+    const message = $("class-sync-message");
+    if (!callout || !message) return;
+    if (!state.lastRefreshError) {
+      callout.hidden = true;
+      return;
+    }
+    const attempts = state.refreshFailureCount > 1 ? ` 연속 ${state.refreshFailureCount}회 실패했습니다.` : "";
+    const lastSuccess = state.lastSuccessfulRefreshAt ? ` 마지막 정상 갱신 ${formatTime(state.lastSuccessfulRefreshAt)}.` : "";
+    message.textContent = `${state.lastRefreshError}${attempts} 기존 학생 목록은 유지하고 다시 연결 중입니다.${lastSuccess}`;
+    callout.hidden = false;
   }
 
   function renderSelection() {
@@ -251,14 +457,15 @@
 
   function renderStudents() {
     const grid = $("student-grid");
-    const query = state.search.toLocaleLowerCase("ko-KR");
-    const filtered = state.students.filter((student) => {
+    const query = String(state.search || "").toLocaleLowerCase("ko-KR");
+    const filtered = sortStudents(state.students.filter((student) => {
       if (state.filter === "online") return student.online;
       if (state.filter === "offline") return !student.online;
       if (state.filter === "attention") return isNeedsAttention(student);
       return true;
     }).filter((student) => !query
-      || student.studentDisplayName.toLocaleLowerCase("ko-KR").includes(query));
+      || student.studentDisplayName.toLocaleLowerCase("ko-KR").includes(query)));
+    renderStudentViewControls();
     if (!filtered.length) {
       if (state.students.length) {
         grid.innerHTML = '<div class="empty-state">현재 필터에 해당하는 학생이 없습니다.</div>';
@@ -270,22 +477,22 @@
     grid.innerHTML = filtered.map((student) => {
       const activity = activityForClassroom(student);
       const activityContext = activity?.browserDomain || activity?.windowTitle || "현재 창 정보 없음";
-      const desktopDisconnected = student.online && !student.activity;
-      const risk = student.activityRisk;
-      const riskAttention = risk?.level === "warning";
-      const statusClass = student.policyApplied ? "focus" : desktopDisconnected || riskAttention ? "attention" : student.online ? "online" : "";
-      const statusText = student.policyApplied ? "집중 모드" : desktopDisconnected || riskAttention ? "확인 필요" : student.online ? "온라인" : "오프라인";
+      const attention = primaryAttentionSignal(student);
+      const statusClass = !student.online ? "" : attention?.kind === "help" ? "help" : attention ? "attention" : student.policyApplied ? "focus" : "online";
+      const statusText = !student.online ? "오프라인" : attention?.kind === "help" ? "도움 요청" : attention ? "확인 필요" : student.policyApplied ? "집중 모드" : "온라인";
       const battery = student.batteryPercent == null ? "배터리 —" : `배터리 ${student.batteryPercent}%`;
       const selected = state.selectedDeviceIds.has(student.deviceId);
       const selector = state.teacher?.isGuest
         ? ""
         : `<label class="student-selector" title="명령 대상 선택"><input type="checkbox" aria-label="${escapeHtml(student.studentDisplayName)} 선택" ${selected ? "checked" : ""}></label>`;
-      const riskNotice = riskAttention ? `<div class="activity-risk" role="status"><span aria-hidden="true">!</span><span>${escapeHtml(risk.reason || "활동 신호를 확인해 주세요.")}</span></div>` : "";
-      return `<article class="student-card${selected ? " selected" : ""}" data-device-id="${student.deviceId}">
+      const riskNotice = attention
+        ? `<div class="activity-risk ${escapeHtml(attention.kind)}"><span aria-hidden="true">!</span><span>${escapeHtml(attention.detail)}</span></div>`
+        : "";
+      return `<article class="student-card${selected ? " selected" : ""}" data-device-id="${escapeHtml(student.deviceId)}">
         ${selector}
         <div class="student-head"><div><div class="student-name">${escapeHtml(student.studentDisplayName)}</div><div class="student-device">${escapeHtml(student.computerName)}</div></div><span class="status-dot ${statusClass}">${statusText}</span></div>
         <div class="student-activity"><span class="app-icon" aria-hidden="true">▣</span><div class="activity-copy"><div class="activity-label">현재 활동</div><div class="activity-app">${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div class="activity-domain">${escapeHtml(activityContext)}</div>${riskNotice}</div></div>
-        <div class="student-meta"><span>${student.studentNumber ? `${student.studentNumber}번` : "번호 —"}</span><span>${battery}</span><span>${escapeHtml(student.networkStatus || "unknown")}</span>${student.policyApplied ? '<span class="policy-tag">🔒 집중</span>' : ""}${risk?.level === "warning" ? '<span class="risk-tag">확인 필요</span>' : ""}</div>
+        <div class="student-meta"><span>${student.studentNumber ? `${student.studentNumber}번` : "번호 —"}</span><span>${battery}</span><span>${escapeHtml(student.networkStatus || "unknown")}</span>${student.policyApplied ? '<span class="policy-tag">🔒 집중</span>' : ""}${attention ? `<span class="risk-tag ${escapeHtml(attention.kind)}">${escapeHtml(attention.label)}</span>` : ""}</div>
       </article>`;
     }).join("");
     grid.querySelectorAll(".student-card").forEach((card) => {
@@ -355,8 +562,9 @@
         ? `<img src="data:image/jpeg;base64,${frame.screenFrame.base64Data}" alt="${escapeHtml(student.studentDisplayName)} 학생 화면" decoding="async">`
         : `<div class="screen-frame-empty">${student.online ? "첫 화면을 기다리는 중입니다…" : "학생이 오프라인입니다."}</div>`;
       const activity = activityForClassroom(student);
-      const risk = student.activityRisk?.level === "warning"
-        ? `<span class="screen-risk-label">확인 필요</span>`
+      const attention = primaryAttentionSignal(student);
+      const risk = attention
+        ? `<span class="screen-risk-label ${escapeHtml(attention.kind)}">${escapeHtml(attention.label)}</span>`
         : "";
       const classLabel = student.grade
         ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번`
@@ -392,14 +600,13 @@
     }
     $("detail-pane").classList.toggle("screen-mode", state.detailView === "screen");
     const activity = student.activity;
-    const desktopDisconnected = student.online && !activity;
-    const detailStatusClass = desktopDisconnected ? "attention" : student.online ? "online" : "";
-    const detailStatusText = desktopDisconnected ? "확인 필요" : student.online ? "온라인" : "오프라인";
-    const risk = student.activityRisk;
-    const riskMarkup = risk?.level === "warning"
-      ? `<div class="risk-callout"><strong>확인 필요</strong><span>${escapeHtml(risk.reason || "활동 신호를 확인해 주세요.")}</span></div>`
+    const attention = primaryAttentionSignal(student);
+    const detailStatusClass = !student.online ? "" : attention?.kind === "help" ? "help" : attention ? "attention" : student.policyApplied ? "focus" : "online";
+    const detailStatusText = !student.online ? "오프라인" : attention?.kind === "help" ? "도움 요청" : attention ? "확인 필요" : student.policyApplied ? "집중 모드" : "온라인";
+    const riskMarkup = attention
+      ? `<div class="risk-callout ${escapeHtml(attention.kind)}"><strong>${escapeHtml(attention.label)}</strong><span>${escapeHtml(attention.detail)}</span></div>`
       : `<div class="privacy-note">현재 앱과 창 제목을 상태 요약으로 표시합니다. 화면 보기는 교사가 수업 중 직접 켠 동안만 저화질로 전송되며 학생 앱에 공유 중 표시가 나타납니다.</div>`;
-    const statusRows = `<div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>학급 / 번호</span><strong>${student.grade ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번` : "학급 정보 없음"}</strong></div><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>현재 창</span><strong>${escapeHtml(activity?.windowTitle || "창 정보 미연결")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "확인 필요" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 연결</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div>`;
+    const statusRows = `<div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>학급 / 번호</span><strong>${student.grade ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번` : "학급 정보 없음"}</strong></div><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>수업 신호</span><strong>${escapeHtml(attention?.label || "정상")}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>현재 창</span><strong>${escapeHtml(activity?.windowTitle || "창 정보 미연결")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "확인 필요" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 연결</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div>`;
     const deviceRows = `<div class="detail-section"><h3>장치 식별자</h3><div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div><div class="detail-row"><span>Agent</span><strong>${escapeHtml(student.agentVersion)}</strong></div></div>`;
     const header = `<div class="eyebrow">STUDENT DEVICE</div><h2 class="detail-title">${escapeHtml(student.studentDisplayName)}</h2><div class="detail-status"><span class="status-dot ${detailStatusClass}">${detailStatusText}</span></div>`;
 
@@ -1205,8 +1412,9 @@
   }
 
   function formatTime(value) {
-    if (!value) return "—";
-    return new Date(value).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    const date = new Date(value);
+    if (!value || Number.isNaN(date.getTime())) return "시간 확인 필요";
+    return date.toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
 
   function renderTodayInfo() {
@@ -1470,7 +1678,7 @@
   async function saveProfile(values) {
     const result = await api("/auth/profile", { method: "PUT", body: values });
     state.teacher = result;
-    state.classes = result.classes || [];
+    state.classes = Array.isArray(result.classes) ? result.classes : [];
     sessionStorage.removeItem("classroom.onboardingDismissed");
     await loadTeacher();
   }
@@ -1884,8 +2092,19 @@
     renderStudents();
     renderSelection();
   });
+  $("class-sync-retry").addEventListener("click", () => refreshClass().catch((error) => showToast(error.message)));
   $("student-search").addEventListener("input", (event) => {
     state.search = event.target.value.trim();
+    renderStudents();
+  });
+  $("student-sort").addEventListener("change", (event) => {
+    state.studentSort = event.target.value;
+    localStorage.setItem("classroom.studentSort", state.studentSort);
+    renderStudents();
+  });
+  $("student-density-button").addEventListener("click", () => {
+    state.studentDensity = state.studentDensity === "comfortable" ? "compact" : "comfortable";
+    localStorage.setItem("classroom.studentDensity", state.studentDensity);
     renderStudents();
   });
   $("student-code-search").addEventListener("input", renderStudentCodes);
@@ -2136,14 +2355,21 @@
   fetch(apiUrl("/health"), { headers: { Accept: "application/json" } })
     .then((response) => response.ok ? response.json() : null)
     .then((health) => {
-      $("dev-login-hint").hidden = true;
-      $("security-setting").textContent = apiOrigin
-        ? `암호화된 외부 API ${apiOrigin}에 연결됨`
-        : health?.storage === "durable-object"
-          ? "Cloudflare의 암호화된 영속 API에 연결됨"
-          : "Teacher session bearer token으로 같은 서버에 연결됨";
+      const devLoginHint = $("dev-login-hint");
+      const securitySetting = $("security-setting");
+      if (devLoginHint) devLoginHint.hidden = true;
+      if (securitySetting) {
+        securitySetting.textContent = apiOrigin
+          ? `암호화된 외부 API ${apiOrigin}에 연결됨`
+          : health?.storage === "durable-object"
+            ? "Cloudflare의 암호화된 영속 API에 연결됨"
+            : "Teacher session bearer token으로 같은 서버에 연결됨";
+      }
     })
-    .catch(() => { $("dev-login-hint").hidden = true; });
+    .catch(() => {
+      const devLoginHint = $("dev-login-hint");
+      if (devLoginHint) devLoginHint.hidden = true;
+    });
 
   function refreshFirebaseAvailability() {
     const firebaseReady = window.ClassroomFirebaseAuth?.isConfigured() === true;
@@ -2159,7 +2385,22 @@
   checkForAppUpdate();
   window.setInterval(checkForAppUpdate, 5 * 60 * 1000);
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") checkForAppUpdate();
+    if (document.visibilityState === "visible") {
+      checkForAppUpdate();
+      if (state.token) refreshClass().catch(() => {});
+    }
+    if (state.token) startClassPolling();
+  });
+  window.addEventListener("online", () => {
+    if (state.token) {
+      refreshClass().catch(() => {});
+      startClassPolling();
+    }
+  });
+  window.addEventListener("offline", () => {
+    if (!state.token) return;
+    state.lastRefreshError = "인터넷 연결이 끊겼습니다.";
+    renderRefreshStatus();
   });
   syncInstallUi();
 

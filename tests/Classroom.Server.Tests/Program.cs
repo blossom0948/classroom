@@ -174,6 +174,7 @@ static void HeartbeatUpdatesStatus()
             480,
             270,
             DateTimeOffset.UtcNow),
+        true,
         true);
     var result = fixture.Store.RecordHeartbeat(identity!, heartbeat);
     Assert(result.Succeeded, $"{result.Code}: {result.Message}");
@@ -183,11 +184,14 @@ static void HeartbeatUpdatesStatus()
     Assert(status.Online, "Heartbeat did not make the device online.");
     Assert(status.StudentId == fixture.StudentId, "Status exposed a client-claimed student identity.");
     Assert(status.ScreenSharingAvailable, "Student status did not advertise screen sharing support.");
+    Assert(status.NeedsHelp, "Student help request was not retained in class status.");
     var screens = fixture.Store.GetClassScreenFrames(fixture.TeacherId, fixture.ClassId);
     Assert(screens.Count == 1 && screens[0].DeviceId == fixture.DeviceId, "Current screen frame was not available to the teacher.");
     Assert(status.Activity?.BrowserDomain == "classroom.google.com", "Activity domain was not retained.");
 
     fixture.Store.EndSession(fixture.TeacherId, fixture.ClassId, session.SessionId);
+    var endedStatus = fixture.Store.GetClassStatuses(fixture.TeacherId, fixture.ClassId).Single();
+    Assert(!endedStatus.NeedsHelp, "A completed class retained a stale student help request.");
     var nextSession = fixture.Store.StartSession(fixture.TeacherId, fixture.ClassId, "수학");
     var nextHeartbeat = fixture.Store.RecordHeartbeat(identity!, heartbeat with { SessionId = session.SessionId });
     Assert(nextHeartbeat.Value == nextSession.SessionId, "Device stayed pinned to an ended session.");

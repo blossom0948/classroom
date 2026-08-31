@@ -1549,3 +1549,144 @@ html[data-theme="dark"] .activity-risk > span:first-child { background: #552b35;
   .guest-password-card > .error,
   .guest-password-card > .muted { grid-column: auto; }
 }
+
+/* 0.5.21 quality pass — keep live classroom data readable when a class has
+   long device names, a narrow display, or a temporary connection failure. */
+.student-view-controls {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+}
+
+.student-sort-control { display: block; min-width: 0; }
+.student-sort-control select {
+  border-radius: 10px;
+  font-size: 12px;
+  min-height: 37px;
+  min-width: 92px;
+  padding: 7px 26px 7px 10px;
+}
+.density-button { font-size: 11px; min-height: 37px; padding: 8px 10px; white-space: nowrap; }
+
+.class-sync-status {
+  align-items: center;
+  background: #fff8ec;
+  border: 1px solid #f0cf9e;
+  border-radius: 13px;
+  color: #855515;
+  display: flex;
+  gap: 10px;
+  line-height: 1.45;
+  margin: 0 0 16px;
+  padding: 10px 13px;
+}
+.class-sync-icon { color: #c77912; flex: 0 0 auto; font-size: 17px; font-weight: 850; }
+.class-sync-status > span:nth-child(2) { flex: 1 1 auto; font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
+.class-sync-status .ghost-button { color: #9a5b0b; flex: 0 0 auto; font-size: 11px; font-weight: 800; padding: 5px 2px; white-space: nowrap; }
+
+.status-dot.help { color: #9c5b08; }
+.status-dot.help::before { background: #e59a23; box-shadow: 0 0 0 4px rgba(229,154,35,.12); }
+.risk-tag.help, .screen-risk-label.help { background: #fff0cf; color: #9a5c08; }
+.risk-callout.help { background: #fff8e9; border-color: #f4d39a; color: #91560a; }
+.activity-risk.help { color: #9a5d0a; }
+.activity-risk.help > span:first-child { background: #fff0cf; color: #a56209; }
+
+.student-grid[data-density="compact"] { gap: 11px; }
+.student-grid[data-density="compact"] .student-card { min-height: 194px; padding: 14px; }
+.student-grid[data-density="compact"] .student-activity { margin-top: 13px; padding: 9px; }
+.student-grid[data-density="compact"] .activity-domain { -webkit-line-clamp: 2; }
+
+.student-card { min-width: 0; }
+.student-card .student-name,
+.student-card .student-device,
+.activity-app,
+.activity-domain,
+.student-meta { overflow-wrap: anywhere; word-break: break-word; }
+.activity-app { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.activity-risk { max-width: 100%; }
+
+.settings-card,
+.admin-grant-form,
+.admin-management-grid,
+.admin-access-grid,
+.inline-fields,
+.roster-card,
+.file-field { min-width: 0; }
+.file-field { overflow: hidden; }
+.file-field input { max-width: 100%; min-width: 0; }
+.inline-fields label,
+.roster-card .inline-fields label { min-inline-size: 0; }
+.file-field input[type="file"] {
+  font-size: 11px;
+  overflow: hidden;
+  padding-right: 6px;
+  text-overflow: ellipsis;
+}
+.file-field input[type="file"]::file-selector-button {
+  background: #eef2ff;
+  border: 1px solid #cbd6fb;
+  border-radius: 7px;
+  color: #3157d5;
+  font: inherit;
+  font-weight: 800;
+  margin-right: 7px;
+  padding: 5px 7px;
+}
+.admin-management-grid > *,
+.admin-access-grid > * { min-width: 0; }
+
+.detail-row { gap: 16px; }
+.detail-row > span:first-child { flex: 0 1 40%; }
+.detail-row > strong,
+.detail-row > code { flex: 1 1 56%; }
+
+.command-dialog {
+  max-height: calc(100dvh - 24px);
+  max-width: calc(100vw - 28px);
+  overflow: auto;
+}
+
+@media (min-width: 901px) {
+  .app-shell:has(.detail-pane:not([hidden])) .main-content {
+    max-width: none;
+    padding-right: min(31vw, 430px);
+  }
+}
+
+html[data-theme="dark"] .class-sync-status { background: #3a2c18; border-color: #6c4f22; color: #f4c97b; }
+html[data-theme="dark"] .class-sync-icon, html[data-theme="dark"] .class-sync-status .ghost-button { color: #f2b455; }
+html[data-theme="dark"] .risk-tag.help, html[data-theme="dark"] .screen-risk-label.help { background: #4f3716; color: #f5c46e; }
+html[data-theme="dark"] .risk-callout.help { background: #3c2d19; border-color: #705429; color: #f2c77e; }
+html[data-theme="dark"] .activity-risk.help { color: #f3c574; }
+html[data-theme="dark"] .activity-risk.help > span:first-child { background: #513a17; color: #f4c068; }
+
+@media (max-width: 1000px) {
+  .toolbar { justify-content: flex-start; }
+  .student-view-controls { margin-left: auto; }
+}
+
+@media (max-width: 820px) {
+  .student-view-controls { margin-left: 0; width: 100%; }
+  .student-sort-control { flex: 1 1 auto; }
+  .student-sort-control select { width: 100%; }
+  .density-button { flex: 0 0 auto; }
+  .class-sync-status { align-items: flex-start; }
+  .class-sync-status .ghost-button { align-self: center; }
+  .student-grid[data-density="compact"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1180px) and (min-width: 821px) {
+  .admin-management-grid .inline-fields,
+  .roster-card .inline-fields { grid-template-columns: 1fr; }
+  .roster-card .inline-fields button { grid-column: auto; }
+}
+
+@media (max-width: 560px) {
+  .student-view-controls { align-items: stretch; flex-direction: column; }
+  .density-button { width: 100%; }
+  .class-sync-status { align-items: stretch; flex-wrap: wrap; }
+  .class-sync-status > span:nth-child(2) { flex-basis: calc(100% - 30px); }
+  .class-sync-status .ghost-button { margin-left: 28px; text-align: left; }
+  .student-grid[data-density="compact"] { grid-template-columns: 1fr; }
+}

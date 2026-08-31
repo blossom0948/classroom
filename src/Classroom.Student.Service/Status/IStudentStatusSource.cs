@@ -8,7 +8,8 @@ public sealed record StudentStatusData(
     string? NetworkStatus,
     bool PolicyApplied,
     ScreenFrame? ScreenFrame = null,
-    bool ScreenSharingEnabled = false)
+    bool ScreenSharingEnabled = false,
+    bool NeedsHelp = false)
 {
     public static StudentStatusData Empty { get; } = new(null, null, "unknown", false);
 }
