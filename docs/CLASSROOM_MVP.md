@@ -70,9 +70,11 @@ Teacher Console이 표시된다. 개발 DB 최초 계정은 다음과 같다.
 비밀번호: ChangeMe!Classroom123
 ```
 
-첫 실행 후 Teacher Console의 설정에서 비밀번호를 변경한다. 로그인 token은
-브라우저 `sessionStorage`와 서버의 해시만 사용하며, 원문은 DB에 저장하지
-않는다. 개발 기본 계정은 파일럿 전용이며 외부에 노출하지 않는다.
+첫 실행 후 Teacher Console의 설정에서 비밀번호를 변경한다. 일반 계정의 로그인
+token은 설치 앱을 다시 열어도 로그인 상태를 복원할 수 있도록 브라우저의
+`localStorage`에 저장되고, 서버에는 해시만 보관된다. 게스트 token은 현재 탭의
+`sessionStorage`에만 저장된다. 개발 기본 계정은 파일럿 전용이며 외부에 노출하지
+않는다.
 
 Teacher Console에서 할 수 있는 일:
 
