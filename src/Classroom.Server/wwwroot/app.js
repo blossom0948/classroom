@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.18";
+  const APP_VERSION = "0.5.19";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const state = {
@@ -261,18 +261,20 @@
       const activity = activityForClassroom(student);
       const activityContext = activity?.browserDomain || activity?.windowTitle || "현재 창 정보 없음";
       const desktopDisconnected = student.online && !student.activity;
-      const statusClass = student.policyApplied ? "focus" : desktopDisconnected ? "attention" : student.online ? "online" : "";
-      const statusText = student.policyApplied ? "집중 모드" : desktopDisconnected ? "확인 필요" : student.online ? "온라인" : "오프라인";
+      const riskAttention = risk?.level === "warning";
+      const statusClass = student.policyApplied ? "focus" : desktopDisconnected || riskAttention ? "attention" : student.online ? "online" : "";
+      const statusText = student.policyApplied ? "집중 모드" : desktopDisconnected || riskAttention ? "확인 필요" : student.online ? "온라인" : "오프라인";
       const battery = student.batteryPercent == null ? "배터리 —" : `배터리 ${student.batteryPercent}%`;
       const selected = state.selectedDeviceIds.has(student.deviceId);
       const risk = student.activityRisk;
       const selector = state.teacher?.isGuest
         ? ""
         : `<label class="student-selector" title="명령 대상 선택"><input type="checkbox" aria-label="${escapeHtml(student.studentDisplayName)} 선택" ${selected ? "checked" : ""}></label>`;
+      const riskNotice = riskAttention ? `<div class="activity-risk" role="status"><span aria-hidden="true">!</span><span>${escapeHtml(risk.reason || "활동 신호를 확인해 주세요.")}</span></div>` : "";
       return `<article class="student-card${selected ? " selected" : ""}" data-device-id="${student.deviceId}">
         ${selector}
         <div class="student-head"><div><div class="student-name">${escapeHtml(student.studentDisplayName)}</div><div class="student-device">${escapeHtml(student.computerName)}</div></div><span class="status-dot ${statusClass}">${statusText}</span></div>
-        <div class="student-activity"><span class="app-icon" aria-hidden="true">▣</span><div class="activity-copy"><div class="activity-label">현재 활동</div><div class="activity-app">${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div class="activity-domain">${escapeHtml(activityContext)}</div></div></div>
+        <div class="student-activity"><span class="app-icon" aria-hidden="true">▣</span><div class="activity-copy"><div class="activity-label">현재 활동</div><div class="activity-app">${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div class="activity-domain">${escapeHtml(activityContext)}</div>${riskNotice}</div></div>
         <div class="student-meta"><span>${student.studentNumber ? `${student.studentNumber}번` : "번호 —"}</span><span>${battery}</span><span>${escapeHtml(student.networkStatus || "unknown")}</span>${student.policyApplied ? '<span class="policy-tag">🔒 집중</span>' : ""}${risk?.level === "warning" ? '<span class="risk-tag">확인 필요</span>' : ""}</div>
       </article>`;
     }).join("");

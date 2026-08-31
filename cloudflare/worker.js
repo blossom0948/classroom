@@ -1695,14 +1695,53 @@ function parseClassLabel(value) {
 
 function classifyActivity(activity) {
   if (!activity) return { level: "unknown", label: "확인 필요", reason: "활동 정보 없음" };
-  const app = `${activity.ApplicationDisplayName || activity.applicationDisplayName || ""} ${activity.ProcessName || activity.processName || ""}`.toLowerCase();
-  const domain = String(activity.BrowserDomain || activity.browserDomain || "").toLowerCase();
-  if (domain.includes("youtube.com") || domain.includes("youtu.be")) return { level: "excluded", label: "웹 도메인 제외", reason: "YouTube는 위험 신호에서 제외" };
-  const gamingTerms = ["roblox", "minecraft", "fortnite", "steam", "epicgames", "leagueoflegends", "valorant", "game"];
-  if (gamingTerms.some((term) => app.includes(term) || domain.includes(term))) {
-    return { level: "warning", label: "확인 필요", reason: "게임 관련 앱 또는 도메인으로 분류됨" };
+
+  // This is an explainable metadata policy, not hidden screen/audio analysis.
+  // YouTube itself is excluded, but a clearly category-labelled video title can
+  // still be surfaced for teacher review without sending video content to an AI.
+  const app = normalizeActivityText([
+    activity.ApplicationDisplayName,
+    activity.applicationDisplayName,
+    activity.ProcessName,
+    activity.processName
+  ].join(" "));
+  const domain = normalizeActivityText(activity.BrowserDomain || activity.browserDomain || "");
+  const windowTitle = normalizeActivityText(activity.WindowTitle || activity.windowTitle || "");
+  const youtube = isYouTubeActivity(domain, windowTitle);
+  const gamingTerms = [
+    "roblox", "minecraft", "fortnite", "steam", "epicgames", "leagueoflegends",
+    "valorant", "battlenet", "overwatch", "genshin", "pubg", "game", "게임", "게임플레이"
+  ];
+  const videoCategoryTerms = [
+    { category: "게임 콘텐츠", terms: ["roblox", "minecraft", "fortnite", "steam", "gameplay", "gaming", "게임", "게임플레이"] },
+    { category: "먹방 콘텐츠", terms: ["먹방", "mukbang", "먹는방송", "eatingshow", "foodvlog", "asmr eating"] }
+  ];
+  const gamingText = `${app} ${domain} ${youtube ? "" : windowTitle}`;
+  const gamingMatch = gamingTerms.find((term) => gamingText.includes(term));
+  if (gamingMatch) {
+    return { level: "warning", label: "확인 필요", reason: "게임 관련 앱·프로세스 또는 도메인으로 분류됨" };
   }
+
+  if (youtube) {
+    const videoMatch = videoCategoryTerms.find((item) => item.terms.some((term) => windowTitle.includes(normalizeActivityText(term))));
+    if (videoMatch) {
+      return { level: "warning", label: "확인 필요", reason: `YouTube 창 제목에서 ${videoMatch.category} 신호가 감지됨` };
+    }
+    return { level: "excluded", label: "웹 도메인 제외", reason: "YouTube 일반 시청은 위험 신호에서 제외" };
+  }
+
   return { level: "ok", label: "정상", reason: "허용된 상태 신호" };
+}
+
+function normalizeActivityText(value) {
+  return String(value || "").toLowerCase().replace(/\s+/g, "");
+}
+
+function isYouTubeActivity(domain, windowTitle) {
+  return domain === "youtube.com"
+    || domain.endsWith(".youtube.com")
+    || domain === "youtu.be"
+    || windowTitle.includes("youtube");
 }
 
 function serializeSession(row) {

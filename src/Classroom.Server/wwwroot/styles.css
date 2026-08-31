@@ -1473,9 +1473,13 @@ html[data-theme="dark"] .student-activity { border-color: #2d3a50; }
 .guest-password-fields label { min-width: 0; }
 .guest-password-fields input { min-height: 45px; min-width: 0; width: 100%; }
 .guest-password-card .primary { min-height: 45px; white-space: nowrap; }
+.activity-risk { align-items: flex-start; color: #b8323f; display: flex; font-size: 12px; font-weight: 700; gap: 6px; line-height: 1.4; margin-top: 8px; overflow-wrap: anywhere; }
+.activity-risk > span:first-child { align-items: center; background: #ffe9eb; border-radius: 999px; display: inline-flex; flex: 0 0 17px; height: 17px; justify-content: center; line-height: 1; }
 html[data-theme="dark"] .guest-login-button { background: #1c2b57; border-color: #415aa6; color: #dce4ff; }
 html[data-theme="dark"] .guest-login-button:hover { background: #26386d; }
 html[data-theme="dark"] .guest-readonly-note { border-color: #415aa6; color: #b9c7ff; }
+html[data-theme="dark"] .activity-risk { color: #ffadb5; }
+html[data-theme="dark"] .activity-risk > span:first-child { background: #552b35; }
 
 @media (max-width: 900px) {
   .guest-password-card { grid-template-columns: 1fr; }
