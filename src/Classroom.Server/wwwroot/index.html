@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-  <link rel="stylesheet" href="/styles.css?v=0.5.19">
+  <link rel="stylesheet" href="/styles.css?v=0.5.20">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -150,6 +150,25 @@
           <div id="bulk-actions" class="bulk-actions"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button><button id="screen-wall-button" class="secondary screen-wall-open">화면 보기</button><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">집중 해제</button><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL 열기</button><button id="app-button" class="secondary">앱 실행</button></div>
         </div>
         <div id="student-grid" class="student-grid" aria-live="polite"></div>
+        <section id="screen-wall-section" class="screen-wall-section" hidden aria-labelledby="screen-wall-title">
+          <div class="screen-wall-inline-heading">
+            <div>
+              <div class="eyebrow">LIVE SCREEN WALL</div>
+              <h3 id="screen-wall-title">학생 화면 보기</h3>
+              <p id="screen-wall-caption" class="muted">화면 공유를 켠 학생의 저화질 화면을 초당 한 번씩 갱신합니다.</p>
+            </div>
+            <div class="screen-wall-inline-actions">
+              <span id="screen-wall-status" class="screen-wall-status" role="status" aria-live="polite">0명 공유 중</span>
+              <button id="screen-wall-fullscreen" class="secondary" type="button">전체 화면</button>
+              <button id="screen-wall-stop" class="danger-outline" type="button">화면 보기 닫기</button>
+            </div>
+          </div>
+          <div id="screen-wall-grid" class="screen-wall-grid" role="region" aria-label="학생 화면 타일"></div>
+          <div class="screen-wall-inline-footer">
+            <span id="screen-wall-updated" class="muted small">아직 화면을 받지 못했습니다.</span>
+            <span class="screen-sharing-notice">화면 공유 중에는 학생 앱에 공유 상태가 표시됩니다.</span>
+          </div>
+        </section>
       </section>
 
       <section id="student-codes-section" class="section-view" hidden>
@@ -231,7 +250,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.19</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.20</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -354,6 +373,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.5.19" defer></script>
+  <script src="/app.js?v=0.5.20" defer></script>
 </body>
 </html>

@@ -14,7 +14,7 @@ param(
 
     [string]$IpcToken,
 
-    [string]$AgentVersion = "0.5.18",
+    [string]$AgentVersion = "0.5.20",
 
     [string]$LogPath,
 

@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.19";
+  const APP_VERSION = "0.5.20";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const state = {
@@ -28,6 +28,8 @@
     passwordVerificationId: null,
     studentRosterClassId: null,
     screenWallTimer: null,
+    screenWallOpen: false,
+    screenWallRefreshInFlight: false,
     screenShareTargetIds: null,
     stoppingScreenShare: false,
     detailDeviceId: null,
@@ -95,6 +97,8 @@
     state.pollTimer = null;
     if (state.screenWallTimer) clearInterval(state.screenWallTimer);
     state.screenWallTimer = null;
+    state.screenWallOpen = false;
+    state.screenWallRefreshInFlight = false;
     state.screenShareTargetIds = null;
     state.detailDeviceId = null;
     state.detailView = "status";
@@ -201,6 +205,7 @@
     );
     renderHeader();
     renderStudents();
+    if (state.screenWallOpen) renderScreenWall();
     if (state.detailDeviceId && !$("detail-pane").hidden) renderDetail();
   }
 
@@ -217,6 +222,11 @@
       : "활성 수업이 없습니다.";
     $("start-session-button").hidden = Boolean(state.teacher?.isGuest) || Boolean(state.session) || !state.classId;
     $("end-session-button").hidden = Boolean(state.teacher?.isGuest) || !state.session;
+    const screenWallButton = $("screen-wall-button");
+    if (screenWallButton) {
+      screenWallButton.textContent = state.screenWallOpen ? "화면 보기 닫기" : "화면 보기";
+      screenWallButton.setAttribute("aria-pressed", String(state.screenWallOpen));
+    }
     renderSelection();
   }
 
@@ -261,12 +271,12 @@
       const activity = activityForClassroom(student);
       const activityContext = activity?.browserDomain || activity?.windowTitle || "현재 창 정보 없음";
       const desktopDisconnected = student.online && !student.activity;
+      const risk = student.activityRisk;
       const riskAttention = risk?.level === "warning";
       const statusClass = student.policyApplied ? "focus" : desktopDisconnected || riskAttention ? "attention" : student.online ? "online" : "";
       const statusText = student.policyApplied ? "집중 모드" : desktopDisconnected || riskAttention ? "확인 필요" : student.online ? "온라인" : "오프라인";
       const battery = student.batteryPercent == null ? "배터리 —" : `배터리 ${student.batteryPercent}%`;
       const selected = state.selectedDeviceIds.has(student.deviceId);
-      const risk = student.activityRisk;
       const selector = state.teacher?.isGuest
         ? ""
         : `<label class="student-selector" title="명령 대상 선택"><input type="checkbox" aria-label="${escapeHtml(student.studentDisplayName)} 선택" ${selected ? "checked" : ""}></label>`;
@@ -315,6 +325,55 @@
       && /^[A-Za-z0-9+/=]+$/.test(frame.screenFrame.base64Data);
   }
 
+  function renderScreenWall() {
+    const section = $("screen-wall-section");
+    const grid = $("screen-wall-grid");
+    if (!section || !grid) return;
+    section.hidden = !state.screenWallOpen;
+    if (!state.screenWallOpen) {
+      grid.innerHTML = "";
+      return;
+    }
+
+    const targetIds = state.screenShareTargetIds || [];
+    const targetStudents = targetIds
+      .map((deviceId) => state.students.find((student) => student.deviceId === deviceId))
+      .filter(Boolean);
+    const frameCount = targetIds.filter((deviceId) => isUsableScreenFrame(state.screenFrames.get(deviceId))).length;
+    const status = $("screen-wall-status");
+    const updated = $("screen-wall-updated");
+    if (status) status.textContent = `${frameCount}/${targetStudents.length}명 화면 수신 중`;
+    if (!targetStudents.length) {
+      grid.innerHTML = '<div class="empty-state screen-wall-empty">화면을 공유할 학생이 없습니다.</div>';
+      if (updated) updated.textContent = "공유할 온라인 학생을 선택해 주세요.";
+      return;
+    }
+
+    grid.innerHTML = targetStudents.map((student) => {
+      const frame = state.screenFrames.get(student.deviceId);
+      const image = isUsableScreenFrame(frame)
+        ? `<img src="data:image/jpeg;base64,${frame.screenFrame.base64Data}" alt="${escapeHtml(student.studentDisplayName)} 학생 화면" decoding="async">`
+        : `<div class="screen-frame-empty">${student.online ? "첫 화면을 기다리는 중입니다…" : "학생이 오프라인입니다."}</div>`;
+      const activity = activityForClassroom(student);
+      const risk = student.activityRisk?.level === "warning"
+        ? `<span class="screen-risk-label">확인 필요</span>`
+        : "";
+      const classLabel = student.grade
+        ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번`
+        : "학급 정보 없음";
+      const receivedAt = frame?.receivedAtUtc ? formatTime(frame.receivedAtUtc) : "수신 대기";
+      return `<article class="screen-tile" data-screen-tile="${escapeHtml(student.deviceId)}">
+        <div class="screen-tile-heading"><div><strong>${escapeHtml(student.studentDisplayName)}</strong><small>${escapeHtml(classLabel)} · ${escapeHtml(student.computerName)}</small></div><span class="screen-live-dot">● ${student.online ? "온라인" : "오프라인"}</span></div>
+        <div class="screen-frame-wrap">${image}</div>
+        <div class="screen-tile-footer"><div><strong>${escapeHtml(activity.applicationDisplayName || "현재 활동 확인 필요")}</strong><small>${escapeHtml(activity.browserDomain || "창 제목 없음")} · ${escapeHtml(receivedAt)}</small></div><div class="screen-tile-labels">${risk}<button class="ghost-button screen-tile-detail" type="button" data-screen-detail="${escapeHtml(student.deviceId)}">상세 정보</button></div></div>
+      </article>`;
+    }).join("");
+    if (updated) updated.textContent = `마지막 갱신 ${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date())}`;
+    grid.querySelectorAll("[data-screen-detail]").forEach((button) => {
+      button.addEventListener("click", () => openDetail(button.dataset.screenDetail));
+    });
+  }
+
   function openDetail(deviceId, view = "status") {
     if (!state.students.some((student) => student.deviceId === deviceId)) return;
     state.detailDeviceId = deviceId;
@@ -349,7 +408,7 @@
       const image = isUsableScreenFrame(frame)
         ? `<img src="data:image/jpeg;base64,${frame.screenFrame.base64Data}" alt="${escapeHtml(student.studentDisplayName)} 학생 화면">`
         : '<div class="screen-frame-empty">학생 화면을 불러오는 중입니다…</div>';
-      $("detail-content").innerHTML = `${header}<section id="detail-screen-stage" class="detail-screen-stage"><div class="detail-screen-toolbar"><span class="screen-live-dot">● 화면 공유 중</span><span class="muted small">약 3초마다 갱신</span></div><div class="detail-screen-frame">${image}</div></section><div class="detail-section detail-screen-actions"><button id="detail-status-view-button" class="secondary wide" type="button">상세 정보 보기</button><button id="detail-screen-fullscreen" class="primary wide" type="button">전체 화면</button><button id="detail-screen-stop" class="danger-action wide" type="button">화면 공유 종료</button></div>${statusRows}`;
+      $("detail-content").innerHTML = `${header}<section id="detail-screen-stage" class="detail-screen-stage"><div class="detail-screen-toolbar"><span class="screen-live-dot">● 화면 공유 중</span><span class="muted small">초당 갱신</span></div><div class="detail-screen-frame">${image}</div></section><div class="detail-section detail-screen-actions"><button id="detail-status-view-button" class="secondary wide" type="button">상세 정보 보기</button><button id="detail-screen-fullscreen" class="primary wide" type="button">전체 화면</button><button id="detail-screen-stop" class="danger-action wide" type="button">화면 공유 종료</button></div>${statusRows}`;
       $("detail-status-view-button").addEventListener("click", () => {
         state.detailView = "status";
         renderDetail();
@@ -920,11 +979,18 @@
   }
 
   async function refreshScreenWall() {
-    if (!state.classId || !state.screenShareTargetIds?.length) return;
-    const result = await api(`/api/classes/${state.classId}/screens`);
-    const frames = Array.isArray(result) ? result : result?.screens || [];
-    state.screenFrames = new Map(frames.map((frame) => [frame.deviceId, frame]));
-    if (state.detailView === "screen" && !$("detail-pane").hidden) renderDetail();
+    if (!state.classId || !state.screenShareTargetIds?.length || !state.screenWallOpen || state.screenWallRefreshInFlight) return;
+    state.screenWallRefreshInFlight = true;
+    try {
+      const result = await api(`/api/classes/${state.classId}/screens`);
+      const frames = Array.isArray(result) ? result : result?.screens || [];
+      const allowedTargets = new Set(state.screenShareTargetIds);
+      state.screenFrames = new Map(frames.filter((frame) => allowedTargets.has(frame.deviceId)).map((frame) => [frame.deviceId, frame]));
+      renderScreenWall();
+      if (state.detailView === "screen" && !$("detail-pane").hidden) renderDetail();
+    } finally {
+      state.screenWallRefreshInFlight = false;
+    }
   }
 
   async function openStudentScreen(deviceId = null) {
@@ -936,34 +1002,32 @@
       showToast("먼저 수업을 시작하세요.");
       return;
     }
-    const selected = commandTargets() || [];
-    const targetId = deviceId || (selected.length === 1 ? selected[0] : state.detailDeviceId);
-    if (!targetId) {
-      showToast("학생 카드 하나를 열거나 선택한 뒤 화면 보기를 누르세요.");
-      return;
-    }
-    if (selected.length > 1 && !deviceId) {
-      showToast("화면 보기는 한 명씩 열 수 있습니다. 학생 카드에서 대상 한 명을 선택해 주세요.");
-      return;
-    }
-    const student = state.students.find((item) => item.deviceId === targetId);
-    if (!student?.online) {
+    const requestedTargets = deviceId
+      ? [deviceId]
+      : (commandTargets() || state.students.map((student) => student.deviceId));
+    const targetIds = requestedTargets.filter((targetId) => state.students.some((student) => student.deviceId === targetId && student.online));
+    if (!targetIds.length) {
       showToast("온라인인 학생의 화면만 볼 수 있습니다.");
       return;
     }
-    if (state.screenShareTargetIds?.length && !state.screenShareTargetIds.includes(targetId)) {
+    if (targetIds.length > 30) {
+      showToast("한 번에 최대 30명의 화면을 볼 수 있습니다. 일부 학생을 선택해 주세요.");
+      return;
+    }
+    if (state.screenShareTargetIds?.length && state.screenShareTargetIds.some((id) => !targetIds.includes(id))) {
       await stopScreenSharing();
     }
-    state.screenShareTargetIds = [targetId];
-    state.detailDeviceId = targetId;
-    state.detailView = "screen";
-    $("detail-pane").hidden = false;
-    renderDetail();
+    state.screenShareTargetIds = [...new Set(targetIds)];
+    state.screenWallOpen = true;
+    state.detailView = "status";
+    $("detail-pane").hidden = true;
+    renderHeader();
+    renderScreenWall();
     try {
-      await sendCommand("screenShare", [targetId], { screenShareEnabled: true });
+      await sendCommand("screenShare", state.screenShareTargetIds, { screenShareEnabled: true });
       await refreshScreenWall();
       if (state.screenWallTimer) clearInterval(state.screenWallTimer);
-      state.screenWallTimer = setInterval(() => refreshScreenWall().catch(() => {}), 3000);
+      state.screenWallTimer = setInterval(() => refreshScreenWall().catch(() => {}), 1000);
     } catch (error) {
       await stopScreenSharing();
       throw error;
@@ -971,7 +1035,23 @@
   }
 
   async function openScreenWall() {
+    if (state.screenWallOpen) {
+      await stopScreenSharing();
+      return;
+    }
     await openStudentScreen();
+  }
+
+  async function toggleScreenWallFullscreen() {
+    const wall = $("screen-wall-section");
+    if (!wall || wall.hidden) return;
+    if (document.fullscreenElement === wall) {
+      await document.exitFullscreen();
+    } else if (wall.requestFullscreen) {
+      await wall.requestFullscreen();
+    } else {
+      wall.classList.toggle("fullscreen-mode");
+    }
   }
 
   async function stopScreenSharing() {
@@ -980,6 +1060,8 @@
     const targets = state.screenShareTargetIds ? [...state.screenShareTargetIds] : [];
     if (state.screenWallTimer) clearInterval(state.screenWallTimer);
     state.screenWallTimer = null;
+    state.screenWallOpen = false;
+    state.screenWallRefreshInFlight = false;
     state.screenShareTargetIds = null;
     state.screenFrames.clear();
     try {
@@ -993,6 +1075,8 @@
         state.detailView = "status";
         renderDetail();
       }
+      renderHeader();
+      renderScreenWall();
       state.stoppingScreenShare = false;
     }
   }
@@ -1793,6 +1877,8 @@
   $("url-button").addEventListener("click", () => openCommandDialog("url", commandTargets()));
   $("app-button").addEventListener("click", () => openCommandDialog("app", commandTargets()));
   $("screen-wall-button").addEventListener("click", () => openScreenWall().catch((error) => showToast(error.message)));
+  $("screen-wall-stop").addEventListener("click", () => stopScreenSharing().catch((error) => showToast(error.message)));
+  $("screen-wall-fullscreen").addEventListener("click", () => toggleScreenWallFullscreen().catch(() => showToast("전체 화면을 사용할 수 없습니다.")));
   $("clear-selection-button").addEventListener("click", () => {
     state.selectedDeviceIds.clear();
     renderStudents();

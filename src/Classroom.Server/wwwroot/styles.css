@@ -782,6 +782,58 @@ html[data-theme="dark"] .admin-grant-tab.active { color: #9fb1ff; }
 
 html[data-theme="dark"] .screen-tile { background: #182235; border-color: #2d3a50; }
 
+/* 0.5.20 — the screen wall stays in the classroom workspace instead of
+   opening a second dialog/window. */
+.screen-wall-section {
+  animation: screen-wall-enter .2s ease-out;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--elevated-shadow);
+  margin-top: 20px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.screen-wall-inline-heading {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 20px 22px 16px;
+}
+
+.screen-wall-inline-heading h3 {
+  font-size: 20px;
+  letter-spacing: -.03em;
+  margin: 6px 0 4px;
+}
+
+.screen-wall-inline-heading p { font-size: 12px; margin: 0; }
+.screen-wall-inline-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.screen-wall-inline-actions button { white-space: nowrap; }
+.screen-wall-status { color: var(--green); font-size: 12px; font-weight: 800; white-space: nowrap; }
+.screen-wall-inline-heading + .screen-wall-grid { max-height: min(70vh, 820px); }
+.screen-wall-section .screen-wall-grid { background: var(--soft); }
+.screen-tile-heading { align-items: flex-start; display: flex; gap: 10px; justify-content: space-between; padding: 12px 13px 10px; }
+.screen-tile-heading > div { min-width: 0; }
+.screen-tile-heading strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+.screen-tile-heading small { color: var(--muted); display: block; font-size: 10px; line-height: 1.4; margin-top: 3px; overflow-wrap: anywhere; }
+.screen-tile-labels { align-items: flex-end; display: flex; flex: 0 0 auto; flex-direction: column; gap: 4px; }
+.screen-tile-detail { color: var(--blue); font-size: 11px; padding: 0; text-align: right; }
+.screen-risk-label { background: var(--orange-soft); border-radius: 5px; color: var(--orange); font-size: 10px; font-weight: 850; padding: 3px 5px; white-space: nowrap; }
+.screen-wall-inline-footer { align-items: center; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 12px 18px; justify-content: space-between; padding: 12px 18px; }
+.screen-wall-section:fullscreen { background: var(--soft); border: 0; border-radius: 0; height: 100vh; margin: 0; overflow: auto; width: 100vw; }
+.screen-wall-section:fullscreen .screen-wall-inline-heading { padding-top: 24px; }
+.screen-wall-section:fullscreen .screen-wall-inline-heading + .screen-wall-grid { max-height: none; }
+.screen-wall-section.fullscreen-mode { min-height: 100vh; }
+
+@keyframes screen-wall-enter {
+  from { opacity: .3; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @media (max-width: 1180px) {
   .admin-management-grid { grid-template-columns: 1fr; }
 }
@@ -796,6 +848,10 @@ html[data-theme="dark"] .screen-tile { background: #182235; border-color: #2d3a5
   .screen-wall-grid { grid-template-columns: 1fr; padding: 12px; }
   .screen-wall-actions { align-items: stretch; flex-direction: column; }
   .screen-wall-actions button { width: 100%; }
+  .screen-wall-inline-heading { flex-direction: column; }
+  .screen-wall-inline-actions { justify-content: flex-start; width: 100%; }
+  .screen-wall-inline-actions button { flex: 1 1 140px; }
+  .screen-wall-inline-footer { align-items: flex-start; flex-direction: column; }
 }
 
 @media (max-width: 520px) {

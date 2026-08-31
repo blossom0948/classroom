@@ -1716,6 +1716,10 @@ function classifyActivity(activity) {
     { category: "게임 콘텐츠", terms: ["roblox", "minecraft", "fortnite", "steam", "gameplay", "gaming", "게임", "게임플레이"] },
     { category: "먹방 콘텐츠", terms: ["먹방", "mukbang", "먹는방송", "eatingshow", "foodvlog", "asmr eating"] }
   ];
+  const educationTerms = [
+    "교육", "수업", "강의", "학습", "학교", "교과", "ebs", "edu", "education",
+    "lecture", "lesson", "math", "science", "english", "korean", "history"
+  ];
   const gamingText = `${app} ${domain} ${youtube ? "" : windowTitle}`;
   const gamingMatch = gamingTerms.find((term) => gamingText.includes(term));
   if (gamingMatch) {
@@ -1723,6 +1727,9 @@ function classifyActivity(activity) {
   }
 
   if (youtube) {
+    if (educationTerms.some((term) => windowTitle.includes(normalizeActivityText(term)))) {
+      return { level: "excluded", label: "교육 콘텐츠 제외", reason: "교육 관련 YouTube 콘텐츠는 위험 신호에서 제외" };
+    }
     const videoMatch = videoCategoryTerms.find((item) => item.terms.some((term) => windowTitle.includes(normalizeActivityText(term))));
     if (videoMatch) {
       return { level: "warning", label: "확인 필요", reason: `YouTube 창 제목에서 ${videoMatch.category} 신호가 감지됨` };
