@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.22";
+  const APP_VERSION = "0.5.23";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
 
@@ -2380,6 +2380,7 @@
     renderStudents();
   }));
   document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", async () => {
+    closeClassPicker();
     state.activeSection = button.dataset.section;
     document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
     button.classList.add("active");

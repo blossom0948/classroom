@@ -39,5 +39,7 @@ assert.doesNotMatch(script, /\bconfirm\(/, "Native browser confirmation prompts 
 assert.match(styles, /@media \(max-width: 820px\)/, "The mobile shell must keep a compact breakpoint.");
 assert.match(styles, /\.command-dialog\s*\{[\s\S]*max-height:/, "Dialogs must stay inside the viewport.");
 assert.match(styles, /\.class-select-menu\s*\{/, "The class picker menu must use the console visual system.");
+assert.match(styles, /#settings-section > \.password-card\s*\{[\s\S]*grid-column: 1;[\s\S]*grid-row: 3;/, "Desktop settings must keep password controls in the compact left column.");
+assert.match(styles, /\.teacher-greeting\s*\{[\s\S]*text-wrap: balance;[\s\S]*word-break: keep-all;/, "Long greetings must wrap at readable word boundaries on phones.");
 
 console.log("PASS Classroom web quality guards and responsive UI contracts");
