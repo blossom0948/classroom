@@ -30,7 +30,14 @@ assert.doesNotMatch(script, /\$\("security-setting"\)\.textContent/, "Removed se
 assert.match(html, /id="class-sync-status"/, "The console needs a visible sync recovery status.");
 assert.match(html, /id="student-sort"/, "The class roster needs a sorting control.");
 assert.match(html, /id="student-density-button"/, "The class roster needs a density control.");
+assert.match(html, /id="close-console-button"/, "Account users need an in-app close affordance.");
+assert.match(html, /id="console-close-dialog"/, "Closing the account console needs a branded confirmation dialog.");
+assert.match(html, /id="confirm-dialog"/, "Destructive classroom actions need branded confirmations.");
+assert.match(html, /id="class-select-menu"/, "The primary class picker needs a branded listbox.");
+assert.match(script, /localStorage.*TEACHER_TOKEN_KEY|TEACHER_TOKEN_KEY[\s\S]*localStorage/, "Account tokens must survive closing the console.");
+assert.doesNotMatch(script, /\bconfirm\(/, "Native browser confirmation prompts should not be used in the console.");
 assert.match(styles, /@media \(max-width: 820px\)/, "The mobile shell must keep a compact breakpoint.");
 assert.match(styles, /\.command-dialog\s*\{[\s\S]*max-height:/, "Dialogs must stay inside the viewport.");
+assert.match(styles, /\.class-select-menu\s*\{/, "The class picker menu must use the console visual system.");
 
 console.log("PASS Classroom web quality guards and responsive UI contracts");

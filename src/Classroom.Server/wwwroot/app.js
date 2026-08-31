@@ -1,9 +1,40 @@
 (() => {
-  const APP_VERSION = "0.5.21";
+  const APP_VERSION = "0.5.22";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
+
+  const TEACHER_TOKEN_KEY = "classroom.teacherToken";
+
+  function storageGet(storageName, key) {
+    try { return window[storageName]?.getItem(key) || null; } catch (_) { return null; }
+  }
+
+  function storageSet(storageName, key, value) {
+    try { window[storageName]?.setItem(key, value); } catch (_) { /* storage can be disabled */ }
+  }
+
+  function storageRemove(storageName, key) {
+    try { window[storageName]?.removeItem(key); } catch (_) { /* storage can be disabled */ }
+  }
+
+  function readTeacherToken() {
+    return storageGet("localStorage", TEACHER_TOKEN_KEY)
+      || storageGet("sessionStorage", TEACHER_TOKEN_KEY);
+  }
+
+  function storeTeacherToken(token, isGuest = false) {
+    if (!token) return;
+    if (isGuest) {
+      storageRemove("localStorage", TEACHER_TOKEN_KEY);
+      storageSet("sessionStorage", TEACHER_TOKEN_KEY, token);
+      return;
+    }
+    storageSet("localStorage", TEACHER_TOKEN_KEY, token);
+    storageRemove("sessionStorage", TEACHER_TOKEN_KEY);
+  }
+
   const state = {
-    token: sessionStorage.getItem("classroom.teacherToken"),
+    token: readTeacherToken(),
     teacher: null,
     classes: [],
     classId: null,
@@ -31,6 +62,7 @@
     schoolSearchTimers: new Map(),
     weatherLoaded: false,
     passwordVerificationId: null,
+    confirmResolver: null,
     studentRosterClassId: null,
     screenWallTimer: null,
     screenWallOpen: false,
@@ -107,8 +139,9 @@
     state.selectedDeviceIds.clear();
     state.weatherLoaded = false;
     state.passwordVerificationId = null;
-    sessionStorage.removeItem("classroom.teacherToken");
-    sessionStorage.removeItem("classroom.onboardingDismissed");
+    storageRemove("localStorage", TEACHER_TOKEN_KEY);
+    storageRemove("sessionStorage", TEACHER_TOKEN_KEY);
+    storageRemove("sessionStorage", "classroom.onboardingDismissed");
     if (state.pollTimer) clearTimeout(state.pollTimer);
     state.pollTimer = null;
     if (state.screenWallTimer) clearInterval(state.screenWallTimer);
@@ -132,8 +165,70 @@
     state.toastTimer = setTimeout(() => toast.classList.remove("show"), 2800);
   }
 
+  function askConfirmation(title, message, confirmLabel = "확인") {
+    const dialog = $("confirm-dialog");
+    if (!dialog) return Promise.resolve(false);
+    if (state.confirmResolver) {
+      state.confirmResolver(false);
+      state.confirmResolver = null;
+    }
+    $("confirm-dialog-title").textContent = title;
+    $("confirm-dialog-message").textContent = message;
+    $("confirm-dialog-confirm").textContent = confirmLabel;
+    return new Promise((resolve) => {
+      state.confirmResolver = resolve;
+      dialog.showModal();
+    });
+  }
+
   function currentClass() {
     return state.classes.find((item) => item.id === state.classId) || null;
+  }
+
+  function closeClassPicker() {
+    const button = $("class-select-button");
+    const menu = $("class-select-menu");
+    if (menu) menu.hidden = true;
+    if (button) button.setAttribute("aria-expanded", "false");
+  }
+
+  function renderClassPicker() {
+    const select = $("class-select");
+    const button = $("class-select-button");
+    const menu = $("class-select-menu");
+    if (!select || !button || !menu) return;
+    const classes = Array.isArray(state.classes) ? state.classes : [];
+    const selected = currentClass();
+    select.innerHTML = classes.length
+      ? classes.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join("")
+      : '<option value="">학급 없음</option>';
+    select.value = state.classId || "";
+    select.disabled = !classes.length;
+    button.disabled = !classes.length;
+    button.innerHTML = `<span>${escapeHtml(selected?.name || "학급 없음")}</span><span class="select-chevron" aria-hidden="true">⌄</span>`;
+    menu.innerHTML = classes.length
+      ? classes.map((item) => `<button type="button" class="class-select-option${item.id === state.classId ? " active" : ""}" role="option" aria-selected="${item.id === state.classId}" data-class-option="${escapeHtml(item.id)}"><span>${escapeHtml(item.name)}</span>${item.defaultSubject ? `<small>${escapeHtml(item.defaultSubject)}</small>` : ""}</button>`).join("")
+      : '<div class="class-select-empty">관리자 메뉴에서 학급을 먼저 만들어 주세요.</div>';
+    closeClassPicker();
+  }
+
+  function toggleClassPicker() {
+    const button = $("class-select-button");
+    const menu = $("class-select-menu");
+    if (!button || !menu || button.disabled) return;
+    const willOpen = menu.hidden;
+    menu.hidden = !willOpen;
+    button.setAttribute("aria-expanded", String(willOpen));
+  }
+
+  async function chooseClass(classId) {
+    if (!classId || !state.classes.some((item) => item.id === classId)) return;
+    if (state.screenShareTargetIds?.length) await stopScreenSharing(true);
+    state.classId = classId;
+    state.session = null;
+    state.selectedDeviceIds.clear();
+    renderClassPicker();
+    await refreshClass();
   }
 
   function displayText(value, fallback = "확인 필요") {
@@ -195,6 +290,9 @@
     state.teacher = session;
     state.classes = Array.isArray(session.classes) ? session.classes : [];
     const isGuest = session.isGuest === true;
+    // Account sessions survive closing/reopening the installed console. Guest
+    // sessions deliberately stay tab-scoped and are never promoted to disk.
+    storeTeacherToken(state.token, isGuest);
     state.classId = state.classId && state.classes.some((item) => item.id === state.classId)
       ? state.classId
       : state.classes[0]?.id || null;
@@ -205,6 +303,7 @@
     $("teacher-role").textContent = isGuest ? "게스트" : "관리자";
     $("teacher-role").classList.toggle("guest-badge", isGuest);
     $("teacher-role").hidden = !session.isAdmin && !isGuest;
+    $("close-console-button").hidden = isGuest;
     $("admins-nav").hidden = !session.isAdmin;
     $("student-codes-nav").hidden = false;
     $("history-nav").hidden = isGuest;
@@ -227,12 +326,7 @@
       document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.section === "class"));
       document.querySelectorAll(".section-view").forEach((section) => { section.hidden = section.id !== "class-section"; });
     }
-    const select = $("class-select");
-    select.innerHTML = state.classes.length
-      ? state.classes.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join("")
-      : '<option value="">학급 없음</option>';
-    select.value = state.classId || "";
-    select.disabled = !state.classes.length;
+    renderClassPicker();
     $("teacher-greeting").textContent = isGuest ? "게스트로 접속했습니다." : `${session.displayName || "선생님"}선생님 안녕하세요.`;
     $("school-name").textContent = session.school?.name || "학교를 설정해 주세요";
     $("school-name").classList.toggle("unconfigured", !session.school?.name);
@@ -657,7 +751,7 @@
   }
 
   async function revokeDevice(student) {
-    if (!confirm(`${student.studentDisplayName} 학생의 ${student.computerName} 연결을 해제할까요?\n이 장치는 새 등록 파일 없이는 다시 연결할 수 없습니다.`)) return;
+    if (!await askConfirmation("장치 연결 해제", `${student.studentDisplayName} 학생의 ${student.computerName} 연결을 해제할까요?\n이 장치는 새 등록 파일 없이는 다시 연결할 수 없습니다.`, "연결 해제")) return;
     await api(`/api/classes/${state.classId}/devices/${student.deviceId}`, { method: "DELETE" });
     $("detail-pane").hidden = true;
     showToast("학생 장치 연결을 해제했습니다.");
@@ -843,7 +937,7 @@
     if (!state.teacher?.isAdmin) {
       throw new Error("학생 코드는 관리자만 재발급할 수 있습니다.");
     }
-    if (!confirm(`${code.studentDisplayName} 학생의 기존 코드를 폐기하고 새 코드를 발급할까요?`)) return;
+    if (!await askConfirmation("학생 코드 재발급", `${code.studentDisplayName} 학생의 기존 코드를 폐기하고 새 코드를 발급할까요?`, "새 코드 발급")) return;
     const ticket = await api(`/api/classes/${code.classId}/enrollment-tickets`, {
       method: "POST",
       body: { studentId: code.studentId, studentDisplayName: code.studentDisplayName, studentNumber: code.studentNumber }
@@ -948,7 +1042,7 @@
 
   async function updateAdminAccess(identifier, isAdmin) {
     if (!identifier) return;
-    if (!isAdmin && !confirm(`${identifier} 계정의 관리자 권한을 해제할까요?`)) return;
+    if (!isAdmin && !await askConfirmation("관리자 권한 해제", `${identifier} 계정의 관리자 권한을 해제할까요?`, "권한 해제")) return;
     await api("/api/admin/teachers", { method: "POST", body: { kind: "teacher", identifier, isAdmin } });
     showToast(isAdmin ? "관리자 권한을 부여했습니다." : "관리자 권한을 해제했습니다.");
     await loadAdminDirectory();
@@ -956,7 +1050,7 @@
 
   async function updateStudentAdminAccess(student, isAdmin) {
     if (!student?.studentId || !student.classId) return;
-    if (!isAdmin && !confirm(`${student.studentDisplayName} 학생의 학생 관리자 권한을 해제할까요?`)) return;
+    if (!isAdmin && !await askConfirmation("학생 관리자 권한 해제", `${student.studentDisplayName} 학생의 학생 관리자 권한을 해제할까요?`, "권한 해제")) return;
     await api("/api/admin/teachers", {
       method: "POST",
       body: { kind: "student", studentId: student.studentId, classId: student.classId, isAdmin }
@@ -1313,7 +1407,7 @@
   }
 
   async function endSession() {
-    if (!state.session || !confirm("현재 수업을 종료할까요?")) return;
+    if (!state.session || !await askConfirmation("수업 종료", "현재 수업을 종료할까요?", "수업 종료")) return;
     if (state.screenShareTargetIds?.length) await stopScreenSharing(true);
     await api(`/api/classes/${state.classId}/sessions/${state.session.sessionId}`, { method: "DELETE" });
     showToast("수업을 종료했습니다.");
@@ -1489,6 +1583,32 @@
     loginView.hidden = true;
     appView.hidden = true;
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function finishConsoleExit(logout) {
+    const dialog = $("console-close-dialog");
+    if (dialog?.open) dialog.close(logout ? "logout" : "close");
+    if (logout) {
+      try { await api("/auth/logout", { method: "POST" }); } catch (_) { /* local logout still clears the token */ }
+      try { await window.ClassroomFirebaseAuth?.signOut(); } catch (_) { /* local logout still clears the token */ }
+      clearSession();
+    }
+    try { window.close(); } catch (_) { /* browsers may block closing a user-opened tab */ }
+    window.setTimeout(() => {
+      if (window.closed) return;
+      if (logout) {
+        showLanding();
+        showToast("로그아웃했습니다. 이 탭은 브라우저에서 닫아 주세요.");
+      } else {
+        showToast("브라우저가 탭 닫기를 막았습니다. 로그인 상태는 유지됩니다.");
+      }
+    }, 160);
+  }
+
+  function openConsoleCloseDialog() {
+    if (!state.teacher || state.teacher.isGuest) return;
+    const dialog = $("console-close-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
   }
 
   function setAuthMode(mode) {
@@ -1827,7 +1947,7 @@
     });
     sessionStorage.removeItem("classroom.pendingFirebaseProfile");
     state.token = result.accessToken;
-    sessionStorage.setItem("classroom.teacherToken", state.token);
+    storeTeacherToken(state.token);
     await loadTeacher();
   }
 
@@ -1856,7 +1976,7 @@
       } else {
         const result = await api("/auth/login", { method: "POST", body: { loginName, password } });
         state.token = result.accessToken;
-        sessionStorage.setItem("classroom.teacherToken", state.token);
+        storeTeacherToken(state.token);
         await loadTeacher();
       }
     } catch (error) {
@@ -1891,7 +2011,7 @@
         body: { schoolId, password }
       });
       state.token = result.accessToken;
-      sessionStorage.setItem("classroom.teacherToken", state.token);
+      storeTeacherToken(state.token, true);
       $("guest-login-dialog").close("success");
       await loadTeacher();
     } catch (error) {
@@ -2056,6 +2176,7 @@
     button.addEventListener("click", () => openLegalDocument(button.dataset.legalDocument));
   });
   $("theme-toggle").addEventListener("click", toggleTheme);
+  $("close-console-button").addEventListener("click", openConsoleCloseDialog);
   document.querySelectorAll("[data-theme-choice]").forEach((button) => {
     button.addEventListener("click", () => applyTheme(button.dataset.themeChoice));
   });
@@ -2066,12 +2187,17 @@
     try { await window.ClassroomFirebaseAuth?.signOut(); } catch (_) { /* local logout still clears the token */ }
     clearSession();
   });
-  $("class-select").addEventListener("change", async (event) => {
-    if (state.screenShareTargetIds?.length) await stopScreenSharing(true);
-    state.classId = event.target.value;
-    state.session = null;
-    state.selectedDeviceIds.clear();
-    await refreshClass();
+  $("class-select-button").addEventListener("click", toggleClassPicker);
+  $("class-select-menu").addEventListener("click", (event) => {
+    const option = event.target.closest("[data-class-option]");
+    if (option) chooseClass(option.dataset.classOption).catch((error) => showToast(error.message));
+  });
+  $("class-select").addEventListener("change", (event) => chooseClass(event.target.value).catch((error) => showToast(error.message)));
+  document.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element) || !event.target.closest(".custom-class-picker")) closeClassPicker();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeClassPicker();
   });
   $("start-session-button").addEventListener("click", () => {
     const subject = currentClass()?.defaultSubject || state.teacher?.subject || "수업";
@@ -2155,6 +2281,14 @@
     importRoster();
   });
   $("close-detail").addEventListener("click", () => closeDetail().catch((error) => showToast(error.message)));
+  $("confirm-dialog").addEventListener("close", (event) => {
+    const resolver = state.confirmResolver;
+    state.confirmResolver = null;
+    if (resolver) resolver(event.currentTarget.returnValue === "confirm");
+  });
+  $("console-exit-yes").addEventListener("click", () => finishConsoleExit(false));
+  $("console-exit-logout").addEventListener("click", () => finishConsoleExit(true));
+  $("console-exit-cancel").addEventListener("click", () => $("console-close-dialog").close("cancel"));
   document.querySelectorAll("[data-dialog-cancel]").forEach((button) => {
     button.addEventListener("click", () => {
       const dialog = button.closest("dialog");

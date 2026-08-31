@@ -1550,7 +1550,7 @@ html[data-theme="dark"] .activity-risk > span:first-child { background: #552b35;
   .guest-password-card > .muted { grid-column: auto; }
 }
 
-/* 0.5.21 quality pass — keep live classroom data readable when a class has
+/* Earlier quality pass — keep live classroom data readable when a class has
    long device names, a narrow display, or a temporary connection failure. */
 .student-view-controls {
   align-items: center;
@@ -1689,4 +1689,258 @@ html[data-theme="dark"] .activity-risk.help > span:first-child { background: #51
   .class-sync-status > span:nth-child(2) { flex-basis: calc(100% - 30px); }
   .class-sync-status .ghost-button { margin-left: 28px; text-align: left; }
   .student-grid[data-density="compact"] { grid-template-columns: 1fr; }
+}
+
+/* 0.5.22 — account continuity, calm layered surfaces, and controls that
+   remain legible at classroom distance and in a narrow window. */
+:root {
+  --glass-border: rgba(255, 255, 255, .2);
+  --glass-highlight: rgba(255, 255, 255, .08);
+}
+
+button,
+input,
+textarea,
+select { max-width: 100%; }
+
+/* The desktop shell gets a floating navigation layer without allowing the
+   main grid to overflow when the detail pane is open. */
+@media (min-width: 821px) {
+  .app-shell {
+    gap: 14px;
+    grid-template-columns: 260px minmax(0, 1fr);
+    overflow-x: clip;
+    padding: 12px 14px 12px 0;
+  }
+
+  .sidebar {
+    background:
+      radial-gradient(circle at 12% 6%, rgba(127, 153, 255, .2), transparent 15rem),
+      linear-gradient(160deg, rgba(31, 48, 78, .96), rgba(18, 29, 49, .97));
+    backdrop-filter: blur(24px) saturate(1.25);
+    border: 1px solid var(--glass-border);
+    border-left: 0;
+    border-radius: 0 28px 28px 0;
+    box-shadow: 16px 0 42px rgba(21, 33, 57, .12), inset 0 1px 0 var(--glass-highlight);
+    height: calc(100vh - 24px);
+    min-height: 0;
+    top: 12px;
+  }
+
+  .main-content {
+    min-width: 0;
+    padding-left: clamp(22px, 2.7vw, 48px);
+    padding-right: clamp(22px, 2.7vw, 48px);
+  }
+
+  .topbar {
+    align-items: center;
+    backdrop-filter: blur(18px) saturate(1.08);
+    min-width: 0;
+  }
+
+  .teacher-heading {
+    align-items: center;
+    display: flex;
+    flex: 1 1 auto;
+    gap: 22px;
+    justify-content: space-between;
+    min-width: 0;
+  }
+
+  .teacher-heading-main { min-width: 0; }
+  .topbar .header-context { flex: 0 0 auto; margin: 0 0 0 auto; }
+}
+
+@media (min-width: 821px) and (max-width: 1000px) {
+  .teacher-heading {
+    align-items: flex-start;
+    display: grid;
+    gap: 14px;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .topbar .header-context { margin: 0; }
+}
+
+/* Replace the browser's platform-specific class list with a small, branded
+   listbox. The native select remains in the DOM as a form/accessibility
+   fallback, but it is not used as the visual control. */
+.custom-class-picker { min-width: 0; }
+.class-select-native {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 1px;
+  white-space: nowrap;
+}
+
+.class-select-button {
+  align-items: center;
+  background: linear-gradient(145deg, #f7f9fc, #eef2f7);
+  border: 1px solid #e0e6ef;
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 #fff, 0 4px 12px rgba(44, 64, 103, .04);
+  color: var(--ink);
+  display: flex;
+  font-size: clamp(17px, 1.35vw, 21px);
+  font-weight: 850;
+  gap: 18px;
+  justify-content: space-between;
+  min-height: 48px;
+  min-width: 178px;
+  padding: 9px 14px;
+  text-align: left;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.class-select-button:hover:not(:disabled) {
+  border-color: #aebff4;
+  box-shadow: inset 0 1px 0 #fff, 0 8px 18px rgba(61, 100, 232, .1);
+  transform: translateY(-1px);
+}
+
+.class-select-button:focus-visible,
+.class-select-button[aria-expanded="true"] {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 4px rgba(61, 100, 232, .12), inset 0 1px 0 #fff;
+}
+
+.class-select-button:disabled { cursor: not-allowed; opacity: .65; }
+.class-select-button .select-chevron { color: #73819a; font-size: 17px; position: static; transform: none; }
+
+.class-select-menu {
+  background: rgba(255, 255, 255, .98);
+  border: 1px solid #dfe5ef;
+  border-radius: 15px;
+  box-shadow: 0 20px 44px rgba(30, 45, 79, .18), inset 0 1px 0 rgba(255, 255, 255, .9);
+  display: grid;
+  gap: 4px;
+  left: 0;
+  max-height: min(320px, 45vh);
+  min-width: 100%;
+  overflow: auto;
+  padding: 7px;
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 45;
+}
+
+.class-select-option {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  color: var(--ink);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 42px;
+  padding: 8px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.class-select-option:hover,
+.class-select-option.active { background: var(--blue-soft); color: var(--blue); }
+.class-select-option span { font-size: 13px; font-weight: 800; }
+.class-select-option small { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.class-select-empty { color: var(--muted); font-size: 11px; line-height: 1.5; padding: 10px; }
+
+/* Consistent in-app confirmation surfaces replace native browser prompts. */
+.command-dialog {
+  animation: dialog-pop .22s cubic-bezier(.2, .8, .2, 1) both;
+  border: 1px solid rgba(218, 225, 237, .96);
+  max-width: calc(100vw - 28px);
+}
+
+.command-dialog::backdrop { backdrop-filter: blur(4px); }
+.confirm-dialog { width: min(470px, calc(100vw - 28px)); }
+.confirm-dialog .dialog-copy { overflow-wrap: anywhere; white-space: pre-line; }
+.console-close-dialog { width: min(520px, calc(100vw - 28px)); }
+.console-close-dialog .dialog-copy { font-size: 13px; line-height: 1.7; }
+.console-close-actions { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 6px; }
+.console-close-choice {
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 850;
+  min-height: 49px;
+  padding: 11px 10px;
+  transition: box-shadow .2s ease, transform .2s ease, filter .2s ease;
+}
+.console-close-choice:hover { filter: brightness(.97); transform: translateY(-1px); }
+.console-close-choice:focus-visible { box-shadow: 0 0 0 4px rgba(61, 100, 232, .16); }
+.console-close-yes { background: #e7ebf0; border-color: #d0d7e1; color: #475467; }
+.console-close-logout { background: var(--blue); box-shadow: 0 8px 17px rgba(61, 100, 232, .2); color: #fff; }
+.console-close-cancel { background: #fff1f1; border-color: #efbcbc; color: var(--red); }
+
+@keyframes dialog-pop {
+  from { opacity: 0; transform: translateY(8px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.close-console-button {
+  background: rgba(255, 241, 241, .86);
+  border-color: #f0c5c5;
+  color: var(--red);
+}
+.close-console-button:hover { background: #fff1f1; border-color: #e69b9b; color: #a6323d; }
+
+/* Settings become a compact command tray on wide screens and stay stacked
+   only when the content truly needs the full width. */
+@media (min-width: 821px) {
+  #settings-section {
+    display: grid;
+    gap: 15px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #settings-section > .hero-row,
+  #settings-section > .profile-card,
+  #settings-section > .update-card { grid-column: 1 / -1; }
+  #settings-section > .password-card,
+  #settings-section > .legal-card { margin: 0; min-height: 0; }
+  #settings-section > .legal-card { align-content: start; display: grid; }
+}
+
+@media (max-width: 820px) {
+  .class-select-button { min-width: 0; width: 100%; }
+  .class-select-menu { width: min(320px, calc(100vw - 40px)); }
+  .console-close-actions { grid-template-columns: 1fr; }
+  .console-close-choice { min-height: 46px; }
+  .close-console-button span { display: none; }
+}
+
+@media (max-width: 560px) {
+  #settings-section > .profile-card { padding: 17px; }
+  .console-close-dialog { padding: 21px 18px; }
+  .console-close-dialog .dialog-heading h2 { font-size: 21px; line-height: 1.3; }
+}
+
+html[data-theme="dark"] .class-select-button {
+  background: linear-gradient(145deg, #202c40, #192438);
+  border-color: #35445c;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 8px 22px rgba(0,0,0,.16);
+}
+html[data-theme="dark"] .class-select-menu {
+  background: rgba(24, 34, 53, .98);
+  border-color: #35445c;
+}
+html[data-theme="dark"] .class-select-option:hover,
+html[data-theme="dark"] .class-select-option.active { background: #1d2b59; }
+html[data-theme="dark"] .console-close-yes { background: #303b4d; border-color: #44536a; color: #e3e9f3; }
+html[data-theme="dark"] .console-close-cancel { background: #43252b; border-color: #6b3c44; }
+html[data-theme="dark"] .close-console-button { background: #43252b; border-color: #6b3c44; color: #ffadb5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .command-dialog { animation: none; }
+  .class-select-button:hover:not(:disabled),
+  .console-close-choice:hover { transform: none; }
 }

@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-  <link rel="stylesheet" href="/styles.css?v=0.5.21">
+  <link rel="stylesheet" href="/styles.css?v=0.5.22">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -122,7 +122,12 @@
             <div id="school-name" class="school-name">학교를 설정해 주세요</div>
             <div id="teacher-greeting" class="teacher-greeting">선생님 안녕하세요.</div>
             <div class="class-picker">
-              <label class="class-select-wrap"><span class="sr-only">학급 선택</span><select id="class-select" aria-label="학급 선택"></select><span class="select-chevron" aria-hidden="true">⌄</span></label>
+              <div class="class-select-wrap custom-class-picker">
+                <span class="sr-only">학급 선택</span>
+                <button id="class-select-button" class="class-select-button" type="button" aria-haspopup="listbox" aria-expanded="false" disabled><span>학급 없음</span><span class="select-chevron" aria-hidden="true">⌄</span></button>
+                <select id="class-select" class="class-select-native" aria-label="학급 선택" tabindex="-1"></select>
+                <div id="class-select-menu" class="class-select-menu" role="listbox" hidden></div>
+              </div>
               <strong id="class-subject" class="class-subject"></strong>
             </div>
           </div>
@@ -135,7 +140,7 @@
             </span>
           </div>
         </div>
-        <div class="top-actions"><button id="theme-toggle" class="icon-button" type="button" title="다크 모드로 전환">◐ <span>다크</span></button></div>
+        <div class="top-actions"><button id="theme-toggle" class="icon-button" type="button" title="다크 모드로 전환">◐ <span>다크</span></button><button id="close-console-button" class="icon-button close-console-button" type="button" title="Classroom 종료" hidden>× <span>종료</span></button></div>
       </header>
 
       <section id="class-section" class="section-view">
@@ -255,7 +260,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.21</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.22</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -265,11 +270,31 @@
       </section>
     </main>
 
-    <aside id="detail-pane" class="detail-pane" hidden>
+  <aside id="detail-pane" class="detail-pane" hidden>
       <button id="close-detail" class="close-button" aria-label="상세 닫기">×</button>
       <div id="detail-content"></div>
     </aside>
   </div>
+
+  <dialog id="console-close-dialog" class="command-dialog console-close-dialog">
+    <form method="dialog" class="stack">
+      <div class="dialog-heading"><span class="eyebrow">CLOSE CLASSROOM</span><h2>이대로 종료하시겠습니까?</h2></div>
+      <p class="muted dialog-copy">예를 누르면 로그인 상태를 유지한 채 종료를 시도합니다. 로그아웃 후 종료를 선택하면 다음에 계정 로그인이 필요합니다.</p>
+      <div class="console-close-actions">
+        <button id="console-exit-yes" class="console-close-choice console-close-yes" type="button">예</button>
+        <button id="console-exit-logout" class="console-close-choice console-close-logout" type="button">로그아웃 후 종료</button>
+        <button id="console-exit-cancel" class="console-close-choice console-close-cancel" type="button">취소</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="command-dialog confirm-dialog">
+    <form method="dialog" class="stack">
+      <div class="dialog-heading"><span class="eyebrow">CONFIRM ACTION</span><h2 id="confirm-dialog-title">확인</h2></div>
+      <p id="confirm-dialog-message" class="muted dialog-copy"></p>
+      <div class="dialog-actions"><button class="secondary" type="button" data-dialog-cancel>취소</button><button id="confirm-dialog-confirm" class="primary" type="submit" value="confirm">확인</button></div>
+    </form>
+  </dialog>
 
   <dialog id="command-dialog" class="command-dialog">
     <form method="dialog" id="command-form" class="stack">
@@ -378,6 +403,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.5.21" defer></script>
+  <script src="/app.js?v=0.5.22" defer></script>
 </body>
 </html>
