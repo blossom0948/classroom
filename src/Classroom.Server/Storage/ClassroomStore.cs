@@ -17,10 +17,13 @@ public sealed class ClassroomStore
     private readonly Dictionary<Guid, StudentDeviceState> devices = [];
     private readonly Dictionary<Guid, SessionState> sessions = [];
     private readonly Dictionary<CommandKey, CommandRecord> commands = [];
+    private readonly Dictionary<Guid, ExitPinAttemptState> exitPinAttempts = [];
     private readonly Queue<AuditEvent> auditEvents = [];
     private const int MaximumAuditEvents = 10_000;
     private const int JoinCodeLength = 8;
     private const string JoinCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private const int MaximumExitPinAttempts = 5;
+    private static readonly TimeSpan ExitPinCooldown = TimeSpan.FromMinutes(5);
 
     public ClassroomStore(ServerOptions options, ClassroomDatabase? database = null)
     {
@@ -515,6 +518,79 @@ public sealed class ClassroomStore
                     queued.Count,
                     queued,
                     rejected));
+        }
+    }
+
+    public StoreResult<bool> VerifyStudentExitPin(
+        AuthenticatedDevice identity,
+        string pin)
+    {
+        lock (gate)
+        {
+            if (!devices.TryGetValue(identity.DeviceId, out var device)
+                || device.Revoked
+                || device.SchoolId != identity.SchoolId
+                || device.ClassId != identity.ClassId
+                || device.StudentId != identity.StudentId)
+            {
+                return StoreResult<bool>.Failure(
+                    "DEVICE_REVOKED",
+                    "학생 장치 등록을 확인할 수 없습니다.");
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            if (exitPinAttempts.TryGetValue(identity.DeviceId, out var attempts)
+                && attempts.BlockedUntilUtc > now)
+            {
+                return StoreResult<bool>.Failure(
+                    "EXIT_PIN_RATE_LIMITED",
+                    "종료 비밀번호 확인 시도가 많습니다. 잠시 후 다시 시도해 주세요.");
+            }
+
+            var verification = database?.VerifyStudentExitPin(device.SchoolId, pin)
+                ?? new StudentExitPinVerification(false, false);
+            if (!verification.Configured)
+            {
+                return StoreResult<bool>.Failure(
+                    "EXIT_PIN_NOT_CONFIGURED",
+                    "관리자가 학생 앱 종료 비밀번호를 아직 설정하지 않았습니다.");
+            }
+
+            if (!verification.Approved)
+            {
+                attempts ??= new ExitPinAttemptState();
+                attempts.FailedAttempts += 1;
+                var rateLimited = attempts.FailedAttempts >= MaximumExitPinAttempts;
+                if (rateLimited)
+                {
+                    attempts.FailedAttempts = 0;
+                    attempts.BlockedUntilUtc = now.Add(ExitPinCooldown);
+                }
+
+                exitPinAttempts[identity.DeviceId] = attempts;
+                AddAuditLocked(AuditEvent.Create(
+                    "STUDENT_APP_EXIT_PIN",
+                    rateLimited ? "RATE_LIMITED" : "REJECTED",
+                    schoolId: device.SchoolId,
+                    classId: device.ClassId,
+                    studentId: device.StudentId,
+                    studentDeviceId: device.DeviceId));
+                return StoreResult<bool>.Failure(
+                    rateLimited ? "EXIT_PIN_RATE_LIMITED" : "EXIT_PIN_REJECTED",
+                    rateLimited
+                        ? "종료 비밀번호 확인 시도가 많습니다. 잠시 후 다시 시도해 주세요."
+                        : "종료 비밀번호가 올바르지 않습니다.");
+            }
+
+            exitPinAttempts.Remove(identity.DeviceId);
+            AddAuditLocked(AuditEvent.Create(
+                "STUDENT_APP_EXIT_PIN",
+                "APPROVED",
+                schoolId: device.SchoolId,
+                classId: device.ClassId,
+                studentId: device.StudentId,
+                studentDeviceId: device.DeviceId));
+            return StoreResult<bool>.Success(true);
         }
     }
 
@@ -1318,6 +1394,13 @@ public sealed class ClassroomStore
         DateTimeOffset CreatedAtUtc)
     {
         public string State { get; set; } = "QUEUED";
+    }
+
+    private sealed class ExitPinAttemptState
+    {
+        public int FailedAttempts { get; set; }
+
+        public DateTimeOffset BlockedUntilUtc { get; set; }
     }
 
     private readonly record struct CommandKey(Guid RequestId, Guid DeviceId);

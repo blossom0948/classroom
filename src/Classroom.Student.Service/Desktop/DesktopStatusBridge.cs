@@ -32,6 +32,7 @@ public sealed class DesktopStatusBridge(
     private Task? acceptTask;
     private NamedPipeServerStream? connectedPipe;
     private StreamWriter? connectedWriter;
+    private Func<string, CancellationToken, Task<StudentExitPinVerificationResult>>? exitPinVerifier;
     private bool serverConnected;
     private Guid serverSessionId;
     private int disposed;
@@ -124,6 +125,16 @@ public sealed class DesktopStatusBridge(
         catch (IOException exception) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogDebug("Could not publish server state to Student Desktop: {Message}", exception.Message);
+        }
+    }
+
+    public void SetExitPinVerifier(
+        Func<string, CancellationToken, Task<StudentExitPinVerificationResult>> verifier)
+    {
+        ArgumentNullException.ThrowIfNull(verifier);
+        lock (gate)
+        {
+            exitPinVerifier = verifier;
         }
     }
 
@@ -303,6 +314,10 @@ public sealed class DesktopStatusBridge(
         {
             connectedWriter = writer;
         }
+        // A successful authorized exit only applies to the previous visible
+        // desktop lifetime. Once a user starts the desktop again, clear the
+        // short-lived watchdog marker immediately.
+        StudentDesktopExitAuthorization.Clear(options.DeviceId);
         await WriteAsync(writer, new DesktopReply("hello-accepted", "Student Desktop connected."));
         bool currentServerConnected;
         Guid currentServerSessionId;
@@ -369,6 +384,36 @@ public sealed class DesktopStatusBridge(
                     }
 
                     break;
+                case "exit-pin-verify":
+                    var exitPinRequest = ClassroomJson.Deserialize<DesktopExitPinVerificationRequest>(json);
+                    ProtocolValidation.ValidateExitPinVerification(
+                        new DeviceExitPinVerificationRequest(exitPinRequest.RequestId, exitPinRequest.Pin));
+                    var exitPinResult = await VerifyExitPinAsync(exitPinRequest.Pin, cancellationToken);
+                    if (exitPinResult.Approved)
+                    {
+                        try
+                        {
+                            StudentDesktopExitAuthorization.Grant(options.DeviceId);
+                        }
+                        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                        {
+                            exitPinResult = new StudentExitPinVerificationResult(
+                                false,
+                                "EXIT_AUTHORIZATION_FAILED",
+                                "종료 권한을 준비하지 못했습니다. 학생 서비스를 다시 연결해 주세요.");
+                            logger.LogWarning(exception, "Could not write approved Student Desktop exit marker.");
+                        }
+                    }
+
+                    await WriteAsync(
+                        writer,
+                        new DesktopExitPinVerificationResponse(
+                            "exit-pin-result",
+                            exitPinRequest.RequestId,
+                            exitPinResult.Approved,
+                            exitPinResult.Code,
+                            exitPinResult.Message));
+                    break;
                 default:
                     throw new ProtocolValidationException("Unknown Student Desktop IPC message kind.");
             }
@@ -401,6 +446,42 @@ public sealed class DesktopStatusBridge(
         finally
         {
             writeGate.Release();
+        }
+    }
+
+    private async Task<StudentExitPinVerificationResult> VerifyExitPinAsync(
+        string pin,
+        CancellationToken cancellationToken)
+    {
+        Func<string, CancellationToken, Task<StudentExitPinVerificationResult>>? verifier;
+        lock (gate)
+        {
+            verifier = exitPinVerifier;
+        }
+
+        if (verifier is null)
+        {
+            return new StudentExitPinVerificationResult(
+                false,
+                "SERVER_OFFLINE",
+                "Classroom 서버에 연결한 뒤 다시 시도해 주세요.");
+        }
+
+        try
+        {
+            return await verifier(pin, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
+        {
+            logger.LogDebug(exception, "Student exit PIN verification did not complete.");
+            return new StudentExitPinVerificationResult(
+                false,
+                "SERVER_OFFLINE",
+                "Classroom 서버에 연결한 뒤 다시 시도해 주세요.");
         }
     }
 
@@ -459,6 +540,18 @@ public sealed class DesktopStatusBridge(
         string Kind,
         bool Connected,
         Guid SessionId);
+
+    private sealed record DesktopExitPinVerificationRequest(
+        string Kind,
+        Guid RequestId,
+        string Pin);
+
+    private sealed record DesktopExitPinVerificationResponse(
+        string Kind,
+        Guid RequestId,
+        bool Approved,
+        string Code,
+        string Message);
 
     private sealed record DesktopCommandResult(
         string Kind,

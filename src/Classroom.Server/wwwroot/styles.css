@@ -1370,3 +1370,73 @@ html[data-theme="dark"] .student-activity { border-color: #2d3a50; }
     transition-duration: .01ms !important;
   }
 }
+
+/* 0.5.15 — a single student screen stays inside the existing detail area,
+   while the admin-only exit-password setting remains compact and readable. */
+.message-font-note {
+  color: var(--blue);
+  display: block;
+  font-size: 11px;
+  font-weight: 750;
+  margin-top: 7px;
+}
+
+.student-exit-pin-card {
+  align-items: end;
+  display: grid;
+  gap: 13px;
+  grid-template-columns: minmax(230px, 1.5fr) minmax(150px, 1fr) minmax(150px, 1fr) auto;
+  margin-bottom: 18px;
+}
+
+.student-exit-pin-card > div,
+.student-exit-pin-card > .error,
+.student-exit-pin-card > .muted { grid-column: 1 / -1; }
+.student-exit-pin-card h3 { margin: 9px 0 5px; }
+.student-exit-pin-card label { min-width: 0; }
+.student-exit-pin-card input { min-height: 45px; min-width: 0; width: 100%; }
+.student-exit-pin-card .primary { min-height: 45px; white-space: nowrap; }
+
+.detail-pane.screen-mode {
+  padding: 28px 24px;
+  width: min(760px, calc(100vw - 34px));
+}
+
+.detail-screen-stage {
+  background: #111b2d;
+  border: 1px solid rgba(130, 154, 205, .42);
+  border-radius: 15px;
+  box-shadow: 0 15px 34px rgba(20, 34, 60, .16);
+  margin: 18px 0 4px;
+  overflow: hidden;
+}
+
+.detail-screen-toolbar {
+  align-items: center;
+  background: rgba(16, 29, 50, .95);
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 13px;
+}
+
+.detail-screen-toolbar .muted { color: #cad4e7; }
+.detail-screen-frame { align-items: center; aspect-ratio: 16 / 9; display: flex; justify-content: center; min-height: 210px; }
+.detail-screen-frame img { display: block; height: 100%; object-fit: contain; width: 100%; }
+.detail-screen-stage:fullscreen, .detail-screen-stage.fullscreen-mode { border: 0; border-radius: 0; height: 100vh; margin: 0; width: 100vw; }
+.detail-screen-stage:fullscreen .detail-screen-frame, .detail-screen-stage.fullscreen-mode .detail-screen-frame { height: calc(100vh - 43px); }
+.detail-screen-actions { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.detail-screen-actions button { min-width: 0; padding-left: 9px; padding-right: 9px; }
+
+@media (max-width: 900px) {
+  .student-exit-pin-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .student-exit-pin-card > div { grid-column: 1 / -1; }
+  .student-exit-pin-card .primary { grid-column: 1 / -1; width: 100%; }
+}
+
+@media (max-width: 620px) {
+  .student-exit-pin-card { grid-template-columns: 1fr; }
+  .student-exit-pin-card > div, .student-exit-pin-card > .error, .student-exit-pin-card > .muted { grid-column: auto; }
+  .detail-pane.screen-mode { padding: 23px 17px 100px; width: 100vw; }
+  .detail-screen-actions { grid-template-columns: 1fr; }
+  .detail-screen-frame { min-height: 180px; }
+}

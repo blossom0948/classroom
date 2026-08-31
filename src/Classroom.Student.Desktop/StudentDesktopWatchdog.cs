@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Blossom.Classroom.Core.Desktop;
 using Blossom.Classroom.Student.Desktop.Configuration;
 
 namespace Blossom.Classroom.Student.Desktop;
@@ -30,6 +31,11 @@ internal static class StudentDesktopWatchdog
             {
                 try
                 {
+                    if (StudentDesktopExitAuthorization.IsGrantedForCurrentBoot(options.DeviceId))
+                    {
+                        return;
+                    }
+
                     if (studentProcess is null || studentProcess.HasExited)
                     {
                         studentProcess?.Dispose();

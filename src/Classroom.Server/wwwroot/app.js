@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.14";
+  const APP_VERSION = "0.5.15";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const state = {
@@ -29,7 +29,11 @@
     studentRosterClassId: null,
     screenWallTimer: null,
     screenShareTargetIds: null,
-    stoppingScreenShare: false
+    stoppingScreenShare: false,
+    detailDeviceId: null,
+    detailView: "status",
+    screenFrames: new Map(),
+    studentExitPinStatus: null
   };
 
   const $ = (id) => document.getElementById(id);
@@ -79,6 +83,7 @@
     state.students = [];
     state.studentCodes = [];
     state.adminDirectory = null;
+    state.studentExitPinStatus = null;
     state.selectedDeviceIds.clear();
     state.weatherLoaded = false;
     state.passwordVerificationId = null;
@@ -89,7 +94,9 @@
     if (state.screenWallTimer) clearInterval(state.screenWallTimer);
     state.screenWallTimer = null;
     state.screenShareTargetIds = null;
-    if ($("screen-wall-dialog")?.open) $("screen-wall-dialog").close("session-cleared");
+    state.detailDeviceId = null;
+    state.detailView = "status";
+    state.screenFrames.clear();
     landingView.hidden = false;
     loginView.hidden = true;
     appView.hidden = true;
@@ -171,6 +178,7 @@
     );
     renderHeader();
     renderStudents();
+    if (state.detailDeviceId && !$("detail-pane").hidden) renderDetail();
   }
 
   function renderHeader() {
@@ -271,10 +279,29 @@
     };
   }
 
-  function openDetail(deviceId) {
-    const student = state.students.find((item) => item.deviceId === deviceId);
-    if (!student) return;
+  function isUsableScreenFrame(frame) {
+    return frame?.screenFrame?.mimeType === "image/jpeg"
+      && typeof frame.screenFrame.base64Data === "string"
+      && /^[A-Za-z0-9+/=]+$/.test(frame.screenFrame.base64Data);
+  }
+
+  function openDetail(deviceId, view = "status") {
+    if (!state.students.some((student) => student.deviceId === deviceId)) return;
+    state.detailDeviceId = deviceId;
+    state.detailView = view;
     $("detail-pane").hidden = false;
+    renderDetail();
+  }
+
+  function renderDetail() {
+    const deviceId = state.detailDeviceId;
+    const student = state.students.find((item) => item.deviceId === deviceId);
+    if (!student) {
+      $("detail-pane").hidden = true;
+      $("detail-pane").classList.remove("screen-mode");
+      return;
+    }
+    $("detail-pane").classList.toggle("screen-mode", state.detailView === "screen");
     const activity = student.activity;
     const desktopDisconnected = student.online && !activity;
     const detailStatusClass = desktopDisconnected ? "attention" : student.online ? "online" : "";
@@ -282,10 +309,51 @@
     const risk = student.activityRisk;
     const riskMarkup = risk?.level === "warning"
       ? `<div class="risk-callout"><strong>확인 필요</strong><span>${escapeHtml(risk.reason || "활동 신호를 확인해 주세요.")}</span></div>`
-      : `<div class="privacy-note">현재 앱과 창 제목을 상태 요약으로 표시합니다. 화면 보기는 교사가 수업 중 직접 켠 동안만 저화질로 전송되며 학생 앱에 공유 중 표시가 나타납니다. 키 입력·오디오·원격 셸은 수집하지 않습니다.</div>`;
-    $("detail-content").innerHTML = `<div class="eyebrow">STUDENT DEVICE</div><h2 class="detail-title">${escapeHtml(student.studentDisplayName)}</h2><div class="detail-status"><span class="status-dot ${detailStatusClass}">${detailStatusText}</span></div>${riskMarkup}<div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>학급 / 번호</span><strong>${student.grade ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번` : "학급 정보 없음"}</strong></div><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>현재 창</span><strong>${escapeHtml(activity?.windowTitle || "창 정보 미연결")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "확인 필요" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 연결</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div><div class="detail-section"><h3>장치 식별자</h3><div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div><div class="detail-row"><span>Agent</span><strong>${escapeHtml(student.agentVersion)}</strong></div><div class="detail-row"><span>원격 제어</span><strong>허용 목록 작업만 사용</strong></div></div><div class="detail-section stack"><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>`;
-    $("detail-message-button").addEventListener("click", () => openCommandDialog("message", [deviceId]));
+      : `<div class="privacy-note">현재 앱과 창 제목을 상태 요약으로 표시합니다. 화면 보기는 교사가 수업 중 직접 켠 동안만 저화질로 전송되며 학생 앱에 공유 중 표시가 나타납니다.</div>`;
+    const statusRows = `<div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>학급 / 번호</span><strong>${student.grade ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번` : "학급 정보 없음"}</strong></div><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>현재 창</span><strong>${escapeHtml(activity?.windowTitle || "창 정보 미연결")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "확인 필요" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 연결</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div>`;
+    const deviceRows = `<div class="detail-section"><h3>장치 식별자</h3><div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div><div class="detail-row"><span>Agent</span><strong>${escapeHtml(student.agentVersion)}</strong></div></div>`;
+    const header = `<div class="eyebrow">STUDENT DEVICE</div><h2 class="detail-title">${escapeHtml(student.studentDisplayName)}</h2><div class="detail-status"><span class="status-dot ${detailStatusClass}">${detailStatusText}</span></div>`;
+
+    if (state.detailView === "screen") {
+      const frame = state.screenFrames.get(student.deviceId);
+      const image = isUsableScreenFrame(frame)
+        ? `<img src="data:image/jpeg;base64,${frame.screenFrame.base64Data}" alt="${escapeHtml(student.studentDisplayName)} 학생 화면">`
+        : '<div class="screen-frame-empty">학생 화면을 불러오는 중입니다…</div>';
+      $("detail-content").innerHTML = `${header}<section id="detail-screen-stage" class="detail-screen-stage"><div class="detail-screen-toolbar"><span class="screen-live-dot">● 화면 공유 중</span><span class="muted small">약 3초마다 갱신</span></div><div class="detail-screen-frame">${image}</div></section><div class="detail-section detail-screen-actions"><button id="detail-status-view-button" class="secondary wide" type="button">상세 정보 보기</button><button id="detail-screen-fullscreen" class="primary wide" type="button">전체 화면</button><button id="detail-screen-stop" class="danger-action wide" type="button">화면 공유 종료</button></div>${statusRows}`;
+      $("detail-status-view-button").addEventListener("click", () => {
+        state.detailView = "status";
+        renderDetail();
+      });
+      $("detail-screen-fullscreen").addEventListener("click", () => openDetailScreenFullscreen().catch(() => showToast("전체 화면을 사용할 수 없습니다.")));
+      $("detail-screen-stop").addEventListener("click", () => stopScreenSharing().catch((error) => showToast(error.message)));
+      return;
+    }
+
+    $("detail-content").innerHTML = `${header}${riskMarkup}${statusRows}${deviceRows}<div class="detail-section stack"><button class="primary wide" id="detail-screen-button">이 학생 화면 보기</button><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>`;
+    $("detail-screen-button").addEventListener("click", () => openStudentScreen(student.deviceId).catch((error) => showToast(error.message)));
+    $("detail-message-button").addEventListener("click", () => openCommandDialog("message", [student.deviceId]));
     $("detail-revoke-button").addEventListener("click", () => revokeDevice(student).catch((error) => showToast(error.message)));
+  }
+
+  async function closeDetail() {
+    const shouldStopSharing = state.detailView === "screen"
+      && state.screenShareTargetIds?.includes(state.detailDeviceId);
+    $("detail-pane").hidden = true;
+    $("detail-pane").classList.remove("screen-mode");
+    state.detailView = "status";
+    if (shouldStopSharing) await stopScreenSharing();
+  }
+
+  async function openDetailScreenFullscreen() {
+    const stage = $("detail-screen-stage");
+    if (!stage) return;
+    if (document.fullscreenElement === stage) {
+      await document.exitFullscreen();
+    } else if (stage.requestFullscreen) {
+      await stage.requestFullscreen();
+    } else {
+      stage.classList.toggle("fullscreen-mode");
+    }
   }
 
   async function revokeDevice(student) {
@@ -493,10 +561,24 @@
     const list = $("admin-list");
     if (list) list.innerHTML = '<div class="empty-state">관리자 목록을 불러오는 중입니다…</div>';
     if (!state.studentCodes.length) await loadStudentCodes();
-    const directory = await api("/api/admin/teachers");
+    const [directory, exitPinStatus] = await Promise.all([
+      api("/api/admin/teachers"),
+      api("/api/admin/student-exit-pin")
+    ]);
     state.adminDirectory = directory;
+    state.studentExitPinStatus = exitPinStatus;
     renderStudentAdminOptions();
     renderAdminDirectory();
+    renderStudentExitPinStatus();
+  }
+
+  function renderStudentExitPinStatus() {
+    const target = $("student-exit-pin-status");
+    if (!target) return;
+    const status = state.studentExitPinStatus;
+    target.textContent = status?.configured
+      ? `설정됨 · 마지막 변경 ${formatTime(status.updatedAtUtc)}`
+      : "미설정 · 학생 앱은 종료 비밀번호 없이 종료할 수 없습니다.";
   }
 
   async function loadOperationsStatus() {
@@ -786,78 +868,65 @@
     return result;
   }
 
-  function screenShareTargets() {
-    const selected = commandTargets();
-    const candidates = selected?.length
-      ? selected
-      : state.students.filter((student) => student.online).map((student) => student.deviceId);
-    return candidates.slice(0, 30);
-  }
-
-  function renderScreenWall(frames = []) {
-    const grid = $("screen-wall-grid");
-    const targetIds = state.screenShareTargetIds || [];
-    const framesByDevice = new Map(frames.map((item) => [item.deviceId, item]));
-    const students = targetIds.map((deviceId) => state.students.find((student) => student.deviceId === deviceId))
-      .filter(Boolean);
-    if (!students.length) {
-      grid.innerHTML = '<div class="empty-state"><strong>화면을 볼 온라인 학생이 없습니다.</strong><p>학생 앱 연결을 확인한 뒤 다시 시도해 주세요.</p></div>';
-      $("screen-wall-caption").textContent = "연결된 학생 화면이 없습니다.";
-      return;
-    }
-    let received = 0;
-    grid.innerHTML = students.map((student) => {
-      const frame = framesByDevice.get(student.deviceId);
-      const validFrame = frame?.screenFrame?.mimeType === "image/jpeg"
-        && typeof frame.screenFrame.base64Data === "string"
-        && /^[A-Za-z0-9+/=]+$/.test(frame.screenFrame.base64Data);
-      if (validFrame) received += 1;
-      const image = validFrame
-        ? `<img src="data:image/jpeg;base64,${frame.screenFrame.base64Data}" alt="${escapeHtml(student.studentDisplayName)} 학생 화면">`
-        : '<div class="screen-frame-empty">화면 응답 대기 중…</div>';
-      const activity = activityForClassroom(student);
-      return `<article class="screen-tile"><div class="screen-frame-wrap">${image}</div><div class="screen-tile-footer"><div><strong>${escapeHtml(student.studentDisplayName)}</strong><small>${escapeHtml(activity.applicationDisplayName)} · ${escapeHtml(student.computerName)}</small></div><span class="screen-live-dot">● ${validFrame ? "공유 중" : "대기"}</span></div></article>`;
-    }).join("");
-    $("screen-wall-caption").textContent = `${students.length}명 중 ${received}명 화면 수신 · 약 3초마다 갱신`;
-  }
-
   async function refreshScreenWall() {
-    if (!state.classId || !state.screenShareTargetIds?.length || !$("screen-wall-dialog").open) return;
+    if (!state.classId || !state.screenShareTargetIds?.length) return;
     const result = await api(`/api/classes/${state.classId}/screens`);
-    renderScreenWall(Array.isArray(result) ? result : result?.screens || []);
+    const frames = Array.isArray(result) ? result : result?.screens || [];
+    state.screenFrames = new Map(frames.map((frame) => [frame.deviceId, frame]));
+    if (state.detailView === "screen" && !$("detail-pane").hidden) renderDetail();
   }
 
-  async function openScreenWall() {
+  async function openStudentScreen(deviceId = null) {
     if (!state.session) {
       showToast("먼저 수업을 시작하세요.");
       return;
     }
-    const targets = screenShareTargets();
-    if (!targets.length) {
-      showToast("화면을 볼 온라인 학생이 없습니다.");
+    const selected = commandTargets() || [];
+    const targetId = deviceId || (selected.length === 1 ? selected[0] : state.detailDeviceId);
+    if (!targetId) {
+      showToast("학생 카드 하나를 열거나 선택한 뒤 화면 보기를 누르세요.");
       return;
     }
-    state.screenShareTargetIds = targets;
-    renderScreenWall([]);
-    $("screen-wall-dialog").showModal();
+    if (selected.length > 1 && !deviceId) {
+      showToast("화면 보기는 한 명씩 열 수 있습니다. 학생 카드에서 대상 한 명을 선택해 주세요.");
+      return;
+    }
+    const student = state.students.find((item) => item.deviceId === targetId);
+    if (!student?.online) {
+      showToast("온라인인 학생의 화면만 볼 수 있습니다.");
+      return;
+    }
+    if (state.screenShareTargetIds?.length && !state.screenShareTargetIds.includes(targetId)) {
+      await stopScreenSharing();
+    }
+    state.screenShareTargetIds = [targetId];
+    state.detailDeviceId = targetId;
+    state.detailView = "screen";
+    $("detail-pane").hidden = false;
+    renderDetail();
     try {
-      await sendCommand("screenShare", targets, { screenShareEnabled: true });
+      await sendCommand("screenShare", [targetId], { screenShareEnabled: true });
       await refreshScreenWall();
       if (state.screenWallTimer) clearInterval(state.screenWallTimer);
       state.screenWallTimer = setInterval(() => refreshScreenWall().catch(() => {}), 3000);
     } catch (error) {
-      showToast(error.message);
-      await stopScreenSharing(false);
+      await stopScreenSharing();
+      throw error;
     }
   }
 
-  async function stopScreenSharing(closeDialog = true) {
+  async function openScreenWall() {
+    await openStudentScreen();
+  }
+
+  async function stopScreenSharing() {
     if (state.stoppingScreenShare) return;
     state.stoppingScreenShare = true;
     const targets = state.screenShareTargetIds ? [...state.screenShareTargetIds] : [];
     if (state.screenWallTimer) clearInterval(state.screenWallTimer);
     state.screenWallTimer = null;
     state.screenShareTargetIds = null;
+    state.screenFrames.clear();
     try {
       if (targets.length && state.session) {
         await sendCommand("screenShare", targets, { screenShareEnabled: false });
@@ -865,7 +934,10 @@
     } catch (error) {
       showToast(error.message);
     } finally {
-      if (closeDialog && $("screen-wall-dialog").open) $("screen-wall-dialog").close("stopped");
+      if (state.detailView === "screen" && !$("detail-pane").hidden) {
+        state.detailView = "status";
+        renderDetail();
+      }
       state.stoppingScreenShare = false;
     }
   }
@@ -1617,10 +1689,6 @@
   $("url-button").addEventListener("click", () => openCommandDialog("url", commandTargets()));
   $("app-button").addEventListener("click", () => openCommandDialog("app", commandTargets()));
   $("screen-wall-button").addEventListener("click", () => openScreenWall().catch((error) => showToast(error.message)));
-  $("screen-wall-stop").addEventListener("click", () => stopScreenSharing(true));
-  $("screen-wall-dialog").addEventListener("close", () => {
-    if (state.screenShareTargetIds?.length) stopScreenSharing(false);
-  });
   $("clear-selection-button").addEventListener("click", () => {
     state.selectedDeviceIds.clear();
     renderStudents();
@@ -1677,7 +1745,7 @@
     event.preventDefault();
     importRoster();
   });
-  $("close-detail").addEventListener("click", () => { $("detail-pane").hidden = true; });
+  $("close-detail").addEventListener("click", () => closeDetail().catch((error) => showToast(error.message)));
   document.querySelectorAll("[data-dialog-cancel]").forEach((button) => {
     button.addEventListener("click", () => {
       const dialog = button.closest("dialog");
@@ -1817,6 +1885,31 @@
       if (!identifier) throw new Error("관리자 이메일 또는 아이디를 입력해 주세요.");
       await updateAdminAccess(identifier, true);
       $("admin-form").reset();
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
+    }
+  });
+  $("student-exit-pin-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const errorTarget = $("student-exit-pin-error");
+    errorTarget.hidden = true;
+    const pin = $("student-exit-pin").value;
+    const confirmation = $("student-exit-pin-confirm").value;
+    try {
+      if (pin.length < 6 || pin.length > 64) {
+        throw new Error("종료 비밀번호는 6~64자로 입력해 주세요.");
+      }
+      if (pin !== confirmation) {
+        throw new Error("종료 비밀번호가 일치하지 않습니다.");
+      }
+      state.studentExitPinStatus = await api("/api/admin/student-exit-pin", {
+        method: "PUT",
+        body: { pin }
+      });
+      $("student-exit-pin-form").reset();
+      renderStudentExitPinStatus();
+      showToast("학생 앱 종료 비밀번호를 저장했습니다.");
     } catch (error) {
       errorTarget.textContent = error.message;
       errorTarget.hidden = false;

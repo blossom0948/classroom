@@ -11,6 +11,7 @@ public sealed class StudentDesktopForm : Form
 {
     private readonly StudentDesktopOptions options;
     private readonly WindowsStudentStatusProvider statusProvider;
+    private readonly Func<string, CancellationToken, Task<DesktopExitPinVerificationResult>> exitPinVerifier;
     private readonly Label connectionLabel = CreateLabel("● 서비스 연결 대기 중", 11, Color.DarkOrange);
     private readonly Label serverLabel = CreateLabel("● Classroom 서버 재연결 중", 11, Color.DarkOrange);
     private readonly Label activityLabel = CreateLabel("현재 앱: 확인 중", 11, Color.FromArgb(35, 44, 58));
@@ -19,14 +20,18 @@ public sealed class StudentDesktopForm : Form
     private readonly NotifyIcon trayIcon = new();
     private readonly System.Windows.Forms.Timer disconnectFailsafeTimer = new() { Interval = 60_000 };
     private bool screenSharingActive;
+    private bool approvedExit;
+    private bool exitPromptOpen;
     private FocusOverlayForm? focusOverlay;
 
     public StudentDesktopForm(
         StudentDesktopOptions options,
-        WindowsStudentStatusProvider statusProvider)
+        WindowsStudentStatusProvider statusProvider,
+        Func<string, CancellationToken, Task<DesktopExitPinVerificationResult>> exitPinVerifier)
     {
         this.options = options;
         this.statusProvider = statusProvider;
+        this.exitPinVerifier = exitPinVerifier;
         deviceLabel = CreateLabel($"장치: {options.DeviceId:D}", 9, Color.DimGray);
         Text = "Classroom Student";
         StartPosition = FormStartPosition.CenterScreen;
@@ -85,7 +90,7 @@ public sealed class StudentDesktopForm : Form
         };
         FormClosing += (_, eventArgs) =>
         {
-            if (eventArgs.CloseReason == CloseReason.UserClosing)
+            if (eventArgs.CloseReason == CloseReason.UserClosing && !approvedExit)
             {
                 eventArgs.Cancel = true;
                 if (screenSharingActive)
@@ -98,12 +103,7 @@ public sealed class StudentDesktopForm : Form
                         ToolTipIcon.Info);
                     return;
                 }
-                Hide();
-                trayIcon.ShowBalloonTip(
-                    2_000,
-                    "Classroom Student",
-                    "학교 관리 상태는 알림 영역에서 계속 확인할 수 있습니다.",
-                    ToolTipIcon.Info);
+                BeginInvoke(new Action(() => _ = RequestApprovedExitAsync()));
             }
         };
         FormClosed += (_, _) =>
@@ -306,6 +306,56 @@ public sealed class StudentDesktopForm : Form
         BringToFront();
     }
 
+    private async Task RequestApprovedExitAsync()
+    {
+        if (exitPromptOpen || IsDisposed)
+        {
+            return;
+        }
+
+        exitPromptOpen = true;
+        try
+        {
+            using var dialog = new StudentExitPinForm();
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+            var result = await exitPinVerifier(dialog.Pin, timeout.Token);
+            if (!result.Approved)
+            {
+                MessageBox.Show(
+                    this,
+                    string.IsNullOrWhiteSpace(result.Message)
+                        ? "종료 비밀번호를 확인하지 못했습니다."
+                        : result.Message,
+                    "Classroom 종료 확인",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            approvedExit = true;
+            trayIcon.Visible = false;
+            Close();
+        }
+        catch (OperationCanceledException)
+        {
+            MessageBox.Show(
+                this,
+                "종료 비밀번호 확인 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.",
+                "Classroom 종료 확인",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            exitPromptOpen = false;
+        }
+    }
+
     private DesktopCommandApplyResult LaunchApprovedApp(CommandRequest command)
     {
         if (command.ApprovedAppId is null
@@ -346,6 +396,18 @@ public sealed class StudentDesktopForm : Form
         AutoSize = true
     };
 
+    private static Font CreateTeacherMessageFont(float size)
+    {
+        try
+        {
+            return new Font("Gungsuh", size, FontStyle.Regular, GraphicsUnit.Point);
+        }
+        catch (ArgumentException)
+        {
+            return new Font("Batang", size, FontStyle.Regular, GraphicsUnit.Point);
+        }
+    }
+
     private sealed class TeacherMessageForm : Form
     {
         public TeacherMessageForm(string message, int seconds)
@@ -366,7 +428,7 @@ public sealed class StudentDesktopForm : Form
                 Padding = new Padding(34),
                 ForeColor = Color.White,
                 BackColor = Color.FromArgb(196, 42, 52),
-                Font = new Font("Segoe UI Semibold", 25F, FontStyle.Bold, GraphicsUnit.Point),
+                Font = CreateTeacherMessageFont(28F),
                 AutoEllipsis = false
             };
             Controls.Add(label);
@@ -379,6 +441,98 @@ public sealed class StudentDesktopForm : Form
             Shown += (_, _) => timer.Start();
             FormClosed += (_, _) => timer.Dispose();
         }
+    }
+
+    private sealed class StudentExitPinForm : Form
+    {
+        private readonly TextBox pinInput = new()
+        {
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 13F, FontStyle.Regular, GraphicsUnit.Point),
+            MaxLength = 64,
+            UseSystemPasswordChar = true
+        };
+        private readonly Label errorLabel = new()
+        {
+            AutoSize = true,
+            ForeColor = Color.FromArgb(188, 42, 52),
+            Visible = false
+        };
+
+        public StudentExitPinForm()
+        {
+            Text = "Classroom 종료 확인";
+            StartPosition = FormStartPosition.CenterParent;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ClientSize = new Size(420, 248);
+            BackColor = Color.White;
+            Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
+
+            var title = new Label
+            {
+                Text = "학생 앱 종료",
+                AutoSize = true,
+                Font = new Font("Segoe UI Semibold", 19F, FontStyle.Bold, GraphicsUnit.Point),
+                ForeColor = Color.FromArgb(27, 42, 68),
+                Location = new Point(28, 24)
+            };
+            var copy = new Label
+            {
+                Text = "관리자가 설정한 종료 비밀번호를 입력하면\n학생 앱을 종료합니다. Windows를 다시 시작하면 자동으로 다시 실행됩니다.",
+                AutoSize = true,
+                ForeColor = Color.FromArgb(92, 102, 118),
+                Location = new Point(30, 66)
+            };
+            var fieldLabel = new Label
+            {
+                Text = "종료 비밀번호",
+                AutoSize = true,
+                Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold, GraphicsUnit.Point),
+                ForeColor = Color.FromArgb(35, 44, 58),
+                Location = new Point(30, 119)
+            };
+            pinInput.Location = new Point(30, 143);
+            pinInput.Size = new Size(360, 33);
+            errorLabel.Location = new Point(30, 181);
+            var cancel = new Button
+            {
+                Text = "취소",
+                DialogResult = DialogResult.Cancel,
+                Location = new Point(213, 205),
+                Size = new Size(82, 31)
+            };
+            var submit = new Button
+            {
+                Text = "종료하기",
+                Location = new Point(303, 205),
+                Size = new Size(87, 31),
+                BackColor = Color.FromArgb(56, 91, 223),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat
+            };
+            submit.FlatAppearance.BorderSize = 0;
+            submit.Click += (_, _) =>
+            {
+                if (string.IsNullOrWhiteSpace(pinInput.Text) || pinInput.Text.Length is < 6 or > 64)
+                {
+                    errorLabel.Text = "종료 비밀번호는 6~64자로 입력해 주세요.";
+                    errorLabel.Visible = true;
+                    pinInput.Focus();
+                    return;
+                }
+
+                DialogResult = DialogResult.OK;
+                Close();
+            };
+            Controls.AddRange([title, copy, fieldLabel, pinInput, errorLabel, cancel, submit]);
+            AcceptButton = submit;
+            CancelButton = cancel;
+            Shown += (_, _) => pinInput.Focus();
+        }
+
+        public string Pin => pinInput.Text;
     }
 
     private sealed class FocusOverlayForm : Form

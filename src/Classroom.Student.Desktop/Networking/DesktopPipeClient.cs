@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
@@ -16,6 +17,76 @@ public sealed class DesktopPipeClient(
     Action<string> log)
 {
     private const int MaxMessageBytes = StudentDesktopIpc.MaxMessageBytes;
+    private readonly object exitPinGate = new();
+    private readonly ConcurrentDictionary<Guid, TaskCompletionSource<DesktopExitPinVerificationResult>> pendingExitPinVerifications = [];
+    private ExitPinConnection? exitPinConnection;
+
+    public async Task<DesktopExitPinVerificationResult> VerifyExitPinAsync(
+        string pin,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(pin)
+            || pin.Length is < 6 or > 64
+            || pin.Any(char.IsControl))
+        {
+            return new DesktopExitPinVerificationResult(
+                false,
+                "EXIT_PIN_INVALID",
+                "종료 비밀번호는 6~64자로 입력해 주세요.");
+        }
+
+        ExitPinConnection? connection;
+        lock (exitPinGate)
+        {
+            connection = exitPinConnection;
+        }
+
+        if (connection is null)
+        {
+            return new DesktopExitPinVerificationResult(
+                false,
+                "STUDENT_SERVICE_OFFLINE",
+                "학생 서비스에 연결한 뒤 다시 시도해 주세요.");
+        }
+
+        var requestId = Guid.NewGuid();
+        var completion = new TaskCompletionSource<DesktopExitPinVerificationResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!pendingExitPinVerifications.TryAdd(requestId, completion))
+        {
+            return new DesktopExitPinVerificationResult(
+                false,
+                "EXIT_PIN_REQUEST_DUPLICATE",
+                "종료 요청을 다시 시도해 주세요.");
+        }
+
+        try
+        {
+            await WriteAsync(
+                connection.Writer,
+                connection.WriteGate,
+                new DesktopExitPinVerificationRequest("exit-pin-verify", requestId, pin));
+            return await completion.Task.WaitAsync(TimeSpan.FromSeconds(20), cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            return new DesktopExitPinVerificationResult(
+                false,
+                "EXIT_PIN_TIMEOUT",
+                "종료 비밀번호 확인 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
+        }
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+        {
+            return new DesktopExitPinVerificationResult(
+                false,
+                "STUDENT_SERVICE_OFFLINE",
+                "학생 서비스 연결이 끊겼습니다. 잠시 후 다시 시도해 주세요.");
+        }
+        finally
+        {
+            pendingExitPinVerifications.TryRemove(requestId, out _);
+        }
+    }
 
     public async Task RunAsync(
         Func<CommandRequest, Task<DesktopCommandApplyResult>> commandHandler,
@@ -105,6 +176,11 @@ public sealed class DesktopPipeClient(
 
         connectionHandler(true);
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var activeExitPinConnection = new ExitPinConnection(writer, writeGate);
+        lock (exitPinGate)
+        {
+            exitPinConnection = activeExitPinConnection;
+        }
         var statusTask = SendStatusLoopAsync(writer, writeGate, statusHandler, lifetime.Token);
         try
         {
@@ -118,6 +194,14 @@ public sealed class DesktopPipeClient(
         }
         finally
         {
+            lock (exitPinGate)
+            {
+                if (ReferenceEquals(exitPinConnection, activeExitPinConnection))
+                {
+                    exitPinConnection = null;
+                }
+            }
+            FailExitPinVerifications(new IOException("Student Service IPC connection ended."));
             lifetime.Cancel();
             try
             {
@@ -154,7 +238,7 @@ public sealed class DesktopPipeClient(
         }
     }
 
-    private static async Task ReceiveLoopAsync(
+    private async Task ReceiveLoopAsync(
         StreamReader reader,
         StreamWriter writer,
         SemaphoreSlim writeGate,
@@ -178,6 +262,20 @@ public sealed class DesktopPipeClient(
             {
                 var serverStatus = ClassroomJson.Deserialize<DesktopServerStatusMessage>(json);
                 serverConnectionHandler(serverStatus.Connected, serverStatus.SessionId);
+                continue;
+            }
+
+            if (string.Equals(kind, "exit-pin-result", StringComparison.Ordinal))
+            {
+                var exitPinResult = ClassroomJson.Deserialize<DesktopExitPinVerificationResponse>(json);
+                if (pendingExitPinVerifications.TryGetValue(exitPinResult.RequestId, out var completion))
+                {
+                    completion.TrySetResult(new DesktopExitPinVerificationResult(
+                        exitPinResult.Approved,
+                        exitPinResult.Code,
+                        exitPinResult.Message));
+                }
+
                 continue;
             }
 
@@ -236,6 +334,14 @@ public sealed class DesktopPipeClient(
         return line;
     }
 
+    private void FailExitPinVerifications(Exception exception)
+    {
+        foreach (var completion in pendingExitPinVerifications.Values)
+        {
+            completion.TrySetException(exception);
+        }
+    }
+
     private sealed record DesktopHello(string Kind, string Token);
 
     private sealed record DesktopReply(string Kind, string Message);
@@ -254,6 +360,18 @@ public sealed class DesktopPipeClient(
         bool Connected,
         Guid SessionId);
 
+    private sealed record DesktopExitPinVerificationRequest(
+        string Kind,
+        Guid RequestId,
+        string Pin);
+
+    private sealed record DesktopExitPinVerificationResponse(
+        string Kind,
+        Guid RequestId,
+        bool Approved,
+        string Code,
+        string Message);
+
     private sealed record DesktopCommandMessage(
         string Kind,
         Guid RequestId,
@@ -265,4 +383,8 @@ public sealed class DesktopPipeClient(
         bool Success,
         string Code,
         string Message);
+
+    private sealed record ExitPinConnection(
+        StreamWriter Writer,
+        SemaphoreSlim WriteGate);
 }

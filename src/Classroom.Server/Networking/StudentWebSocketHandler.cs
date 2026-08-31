@@ -185,6 +185,41 @@ public sealed class StudentWebSocketHandler(
 
                     break;
                 }
+                case ProtocolConstants.DeviceExitPinVerificationRequest:
+                {
+                    var verification = ProtocolCodec.Deserialize<DeviceExitPinVerificationRequest>(json);
+                    try
+                    {
+                        ProtocolValidation.ValidateExitPinVerification(verification.Payload);
+                    }
+                    catch (ProtocolValidationException)
+                    {
+                        await SendEnvelopeAsync(
+                            socket,
+                            sendGate,
+                            ProtocolConstants.DeviceExitPinVerificationResponse,
+                            new DeviceExitPinVerificationResponse(
+                                verification.Payload.RequestId,
+                                false,
+                                "EXIT_PIN_INVALID",
+                                "종료 비밀번호는 6~64자로 입력해 주세요."),
+                            cancellationToken);
+                        break;
+                    }
+
+                    var result = store.VerifyStudentExitPin(identity, verification.Payload.Pin);
+                    await SendEnvelopeAsync(
+                        socket,
+                        sendGate,
+                        ProtocolConstants.DeviceExitPinVerificationResponse,
+                        new DeviceExitPinVerificationResponse(
+                            verification.Payload.RequestId,
+                            result.Succeeded,
+                            result.Code,
+                            result.Message),
+                        cancellationToken);
+                    break;
+                }
                 case ProtocolConstants.CommandResult:
                 {
                     var resultEnvelope = ProtocolCodec.Deserialize<CommandResult>(json);

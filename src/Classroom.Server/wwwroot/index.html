@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-  <link rel="stylesheet" href="/styles.css?v=0.5.14">
+  <link rel="stylesheet" href="/styles.css?v=0.5.15">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -190,6 +190,14 @@
           </form>
           <div id="admin-list" class="admin-list"></div>
         </div>
+        <form id="student-exit-pin-form" class="settings-card student-exit-pin-card">
+          <div><span class="settings-icon">◈</span><h3>학생 앱 종료 비밀번호</h3><p>관리자만 설정할 수 있습니다. 학생 앱을 일반적으로 종료할 때 이 비밀번호를 학교 서버에서 확인합니다.</p></div>
+          <label>종료 비밀번호<input id="student-exit-pin" type="password" minlength="6" maxlength="64" autocomplete="new-password" placeholder="6자 이상 입력" required></label>
+          <label>한 번 더 입력<input id="student-exit-pin-confirm" type="password" minlength="6" maxlength="64" autocomplete="new-password" placeholder="같은 비밀번호 다시 입력" required></label>
+          <button class="primary" type="submit">종료 비밀번호 저장</button>
+          <p id="student-exit-pin-status" class="muted small" role="status">설정 상태를 확인하는 중입니다.</p>
+          <p id="student-exit-pin-error" class="error" hidden></p>
+        </form>
       </section>
 
       <section id="history-section" class="section-view" hidden>
@@ -214,7 +222,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.14</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.15</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -234,7 +242,7 @@
     <form method="dialog" id="command-form" class="stack">
       <div class="dialog-heading"><span id="dialog-kicker" class="eyebrow">COMMAND</span><h2 id="dialog-title">메시지 보내기</h2></div>
       <p id="command-audience" class="dialog-audience"></p>
-      <label id="message-field">메시지<textarea id="command-message" rows="4" maxlength="2000" placeholder="학생에게 보낼 내용을 입력하세요."></textarea></label>
+      <label id="message-field">메시지<textarea id="command-message" rows="4" maxlength="2000" placeholder="학생에게 보낼 내용을 입력하세요."></textarea><span class="message-font-note">학생 화면에서는 궁서체로 크게 표시됩니다.</span></label>
       <div id="message-presets" class="message-presets" hidden><span class="muted small">빠른 문구</span><button type="button" class="preset-button" data-message-preset="수업을 시작합니다. 기기를 준비해 주세요.">수업 시작</button><button type="button" class="preset-button" data-message-preset="질문이 있으면 학생용 앱에서 도움을 요청해 주세요.">질문 안내</button><button type="button" class="preset-button" data-message-preset="수업 종료 5분 전입니다. 작업을 정리해 주세요.">마무리</button></div>
       <label id="url-field" hidden>HTTPS URL<input id="command-url" type="url" placeholder="https://example.com"></label>
       <label id="app-field" hidden>승인된 앱<select id="command-app"><option value="notepad">메모장</option><option value="calculator">계산기</option></select></label>
@@ -301,16 +309,6 @@
   <dialog id="legal-dialog" class="command-dialog legal-dialog">
     <form method="dialog" class="stack"><div class="dialog-heading"><span id="legal-kicker" class="eyebrow">CLASSROOM</span><h2 id="legal-title">이용약관</h2></div><div id="legal-content" class="legal-content"></div><div class="dialog-actions"><button class="primary" type="submit" value="default">확인</button></div></form>
   </dialog>
-  <dialog id="screen-wall-dialog" class="command-dialog screen-wall-dialog">
-    <form method="dialog" class="screen-wall-shell">
-      <div class="screen-wall-heading">
-        <div><span class="eyebrow">LIVE SCREENS</span><h2>학생 화면</h2><p id="screen-wall-caption" class="muted">저화질 화면을 불러오는 중입니다.</p></div>
-        <button class="icon-button screen-wall-close" type="button" data-dialog-cancel aria-label="학생 화면 닫기">×</button>
-      </div>
-      <div id="screen-wall-grid" class="screen-wall-grid" aria-live="polite"></div>
-      <div class="screen-wall-actions"><span class="screen-sharing-notice">학생 앱에 ‘화면 공유 중’이 표시되며, 창을 닫으면 공유가 종료됩니다.</span><button id="screen-wall-stop" class="danger-outline" type="button">화면 공유 종료</button></div>
-    </form>
-  </dialog>
   <dialog id="password-dialog" class="command-dialog password-dialog">
     <form method="dialog" id="password-form" class="stack">
       <div class="dialog-heading"><span class="eyebrow">ACCOUNT SECURITY</span><h2>비밀번호 설정</h2></div>
@@ -337,6 +335,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.5.14" defer></script>
+  <script src="/app.js?v=0.5.15" defer></script>
 </body>
 </html>

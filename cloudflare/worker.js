@@ -201,6 +201,14 @@ export class ClassroomState {
       consumed_at_utc TEXT,
       created_at_utc TEXT NOT NULL
     )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS StudentExitPins (
+      school_id TEXT PRIMARY KEY,
+      pin_salt TEXT NOT NULL,
+      pin_hash TEXT NOT NULL,
+      pin_iterations INTEGER NOT NULL,
+      updated_by_teacher_id TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    )`);
     this.exec("CREATE INDEX IF NOT EXISTS idx_devices_class ON Devices(class_id, revoked_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_codes_class ON StudentCodes(class_id, revoked_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_sessions_teacher ON TeacherSessions(teacher_id, expires_at_utc)");
@@ -289,6 +297,8 @@ export class ClassroomState {
       if (path === "/api/admin/student-codes/import" && request.method === "POST") return this.importStudentCodes(request, cors);
       if (path === "/api/admin/teachers" && request.method === "GET") return this.getAdministrators(request, cors);
       if (path === "/api/admin/teachers" && request.method === "POST") return this.setAdministrator(request, cors);
+      if (path === "/api/admin/student-exit-pin" && request.method === "GET") return this.getStudentExitPinStatus(request, cors);
+      if (path === "/api/admin/student-exit-pin" && request.method === "PUT") return this.setStudentExitPin(request, cors);
       if (path === "/api/devices/enroll-code" && request.method === "POST") return this.enrollByCode(request, cors);
       if (path === "/api/devices/enroll" && request.method === "POST") {
         return responseError("ENROLLMENT_NOT_FOUND", "학생 코드로 다시 등록해 주세요.", 401, cors);
@@ -1022,6 +1032,40 @@ export class ClassroomState {
     return responseJson({ teachers, grants, students }, 200, cors);
   }
 
+  async getStudentExitPinStatus(request, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "관리자만 학생 앱 종료 비밀번호를 확인할 수 있습니다.", 403, cors);
+    const pin = this.one("SELECT updated_at_utc FROM StudentExitPins WHERE school_id = ?", user.school_id);
+    return responseJson({
+      configured: Boolean(pin),
+      updatedAtUtc: pin?.updated_at_utc || null
+    }, 200, cors);
+  }
+
+  async setStudentExitPin(request, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "관리자만 학생 앱 종료 비밀번호를 설정할 수 있습니다.", 403, cors);
+    const body = await readJson(request);
+    const pin = normalizeStudentExitPin(body?.pin);
+    if (!pin) return responseError("INVALID_EXIT_PIN", "학생 앱 종료 비밀번호는 6~64자로 입력해 주세요.", 400, cors);
+    const encoded = await hashPassword(pin);
+    const now = isoNow();
+    this.exec(`INSERT INTO StudentExitPins (
+      school_id, pin_salt, pin_hash, pin_iterations, updated_by_teacher_id, updated_at_utc
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(school_id) DO UPDATE SET
+      pin_salt = excluded.pin_salt,
+      pin_hash = excluded.pin_hash,
+      pin_iterations = excluded.pin_iterations,
+      updated_by_teacher_id = excluded.updated_by_teacher_id,
+      updated_at_utc = excluded.updated_at_utc`,
+    user.school_id, encoded.salt, encoded.hash, PASSWORD_ITERATIONS, user.id, now);
+    this.audit({ schoolId: user.school_id, teacherId: user.id, action: "STUDENT_EXIT_PIN", result: "SET" });
+    return responseJson({ configured: true, updatedAtUtc: now }, 200, cors);
+  }
+
   async setAdministrator(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
@@ -1144,6 +1188,61 @@ export class ClassroomState {
         active?.session_id || null,
         device.device_id);
       if (incoming.payload.sessionId !== (active?.session_id || "00000000-0000-0000-0000-000000000000")) this.sendSessionAccepted(socket, device.device_id, active?.session_id || "00000000-0000-0000-0000-000000000000");
+      return;
+    }
+    if (incoming.type === "DEVICE_EXIT_PIN_VERIFICATION_REQUEST") {
+      const payload = incoming.payload;
+      const requestId = validId(payload?.requestId) ? payload.requestId : null;
+      const pin = normalizeStudentExitPin(payload?.pin);
+      if (!requestId || !pin) {
+        socket.send(envelope("DEVICE_EXIT_PIN_VERIFICATION_RESPONSE", {
+          requestId: requestId || "00000000-0000-0000-0000-000000000000",
+          approved: false,
+          code: "EXIT_PIN_INVALID",
+          message: "종료 비밀번호는 6~64자로 입력해 주세요."
+        }));
+        return;
+      }
+
+      const rateKey = `student-exit-pin:${device.device_id}`;
+      if (!this.consumeRateLimit(rateKey, 5, 5 * 60_000)) {
+        this.audit({ schoolId: device.school_id, classId: device.class_id, studentId: device.student_id, deviceId: device.device_id, action: "STUDENT_APP_EXIT_PIN", result: "RATE_LIMITED" });
+        socket.send(envelope("DEVICE_EXIT_PIN_VERIFICATION_RESPONSE", {
+          requestId,
+          approved: false,
+          code: "EXIT_PIN_RATE_LIMITED",
+          message: "종료 비밀번호 확인 시도가 많습니다. 잠시 후 다시 시도해 주세요."
+        }));
+        return;
+      }
+
+      const configured = this.one("SELECT * FROM StudentExitPins WHERE school_id = ?", device.school_id);
+      if (!configured) {
+        socket.send(envelope("DEVICE_EXIT_PIN_VERIFICATION_RESPONSE", {
+          requestId,
+          approved: false,
+          code: "EXIT_PIN_NOT_CONFIGURED",
+          message: "관리자가 학생 앱 종료 비밀번호를 아직 설정하지 않았습니다."
+        }));
+        return;
+      }
+
+      const approved = await verifyPassword(pin, configured.pin_salt, configured.pin_hash, configured.pin_iterations);
+      if (approved) this.exec("DELETE FROM RateLimits WHERE rate_key = ?", rateKey);
+      this.audit({
+        schoolId: device.school_id,
+        classId: device.class_id,
+        studentId: device.student_id,
+        deviceId: device.device_id,
+        action: "STUDENT_APP_EXIT_PIN",
+        result: approved ? "APPROVED" : "REJECTED"
+      });
+      socket.send(envelope("DEVICE_EXIT_PIN_VERIFICATION_RESPONSE", {
+        requestId,
+        approved,
+        code: approved ? "EXIT_PIN_APPROVED" : "EXIT_PIN_REJECTED",
+        message: approved ? "종료 비밀번호를 확인했습니다." : "종료 비밀번호가 올바르지 않습니다."
+      }));
       return;
     }
     if (incoming.type === "COMMAND_ACK") {
@@ -1416,6 +1515,15 @@ function text(value, maxLength) {
 function normalizeIdentifier(value) { return text(value, 254).toLowerCase(); }
 function normalizeEmail(value) { return normalizeIdentifier(value); }
 function normalizeJoinCode(value) { return text(value, 32).toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+function normalizeStudentExitPin(value) {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim();
+  return normalized.length >= 6
+    && normalized.length <= 64
+    && !/[\u0000-\u001F\u007F]/.test(normalized)
+    ? normalized
+    : "";
+}
 function validId(value) { return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
 function numberInRange(value, min, max) { const number = Number(value); return Number.isInteger(number) && number >= min && number <= max ? number : null; }
 function placeholders(count) { return Array.from({ length: count }, () => "?").join(", "); }

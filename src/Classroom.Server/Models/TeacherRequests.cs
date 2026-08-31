@@ -15,6 +15,12 @@ public sealed record AdministratorRequest(
     string Identifier,
     bool IsAdmin);
 
+public sealed record StudentExitPinUpdateRequest(string Pin);
+
+public sealed record StudentExitPinStatus(
+    bool Configured,
+    DateTimeOffset? UpdatedAtUtc);
+
 public sealed record StudentCodeView(
     Guid DeviceId,
     Guid SchoolId,

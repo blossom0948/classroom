@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -19,8 +20,89 @@ public sealed class ClassroomServerClient(
     DesktopStatusBridge desktopBridge,
     ILogger<ClassroomServerClient> logger)
 {
+    private readonly object exitPinConnectionGate = new();
+    private readonly ConcurrentDictionary<Guid, TaskCompletionSource<DeviceExitPinVerificationResponse>> pendingExitPinVerifications = [];
+    private ExitPinConnection? exitPinConnection;
+
+    public async Task<StudentExitPinVerificationResult> VerifyExitPinAsync(
+        string pin,
+        CancellationToken cancellationToken)
+    {
+        var request = new DeviceExitPinVerificationRequest(Guid.NewGuid(), pin);
+        try
+        {
+            ProtocolValidation.ValidateExitPinVerification(request);
+        }
+        catch (ProtocolValidationException)
+        {
+            return new StudentExitPinVerificationResult(
+                false,
+                "EXIT_PIN_INVALID",
+                "종료 비밀번호는 6~64자로 입력해 주세요.");
+        }
+
+        ExitPinConnection? connection;
+        lock (exitPinConnectionGate)
+        {
+            connection = exitPinConnection;
+        }
+
+        if (connection is null)
+        {
+            return new StudentExitPinVerificationResult(
+                false,
+                "SERVER_OFFLINE",
+                "Classroom 서버에 연결한 뒤 다시 시도해 주세요.");
+        }
+
+        var completion = new TaskCompletionSource<DeviceExitPinVerificationResponse>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!pendingExitPinVerifications.TryAdd(request.RequestId, completion))
+        {
+            return new StudentExitPinVerificationResult(
+                false,
+                "EXIT_PIN_REQUEST_DUPLICATE",
+                "종료 요청을 다시 시도해 주세요.");
+        }
+
+        try
+        {
+            await SendEnvelopeAsync(
+                connection.Socket,
+                connection.SendGate,
+                ProtocolConstants.DeviceExitPinVerificationRequest,
+                request,
+                cancellationToken);
+            var response = await completion.Task.WaitAsync(TimeSpan.FromSeconds(20), cancellationToken);
+            return new StudentExitPinVerificationResult(
+                response.Approved,
+                response.Code,
+                response.Message);
+        }
+        catch (TimeoutException)
+        {
+            return new StudentExitPinVerificationResult(
+                false,
+                "EXIT_PIN_TIMEOUT",
+                "종료 비밀번호 확인 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
+        }
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException or WebSocketException)
+        {
+            logger.LogDebug(exception, "Student exit PIN verification connection ended.");
+            return new StudentExitPinVerificationResult(
+                false,
+                "SERVER_OFFLINE",
+                "Classroom 서버에 연결한 뒤 다시 시도해 주세요.");
+        }
+        finally
+        {
+            pendingExitPinVerifications.TryRemove(request.RequestId, out _);
+        }
+    }
+
     public async Task RunAsync(CancellationToken cancellationToken)
     {
+        desktopBridge.SetExitPinVerifier(VerifyExitPinAsync);
         var retryDelay = TimeSpan.FromSeconds(1);
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -60,6 +142,11 @@ public sealed class ClassroomServerClient(
 
         using var sendGate = new SemaphoreSlim(1, 1);
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var activeExitPinConnection = new ExitPinConnection(socket, sendGate);
+        lock (exitPinConnectionGate)
+        {
+            exitPinConnection = activeExitPinConnection;
+        }
         var sessionState = new DeviceSessionState(options.SessionId);
         await SendEnvelopeAsync(
             socket,
@@ -75,6 +162,14 @@ public sealed class ClassroomServerClient(
         }
         finally
         {
+            lock (exitPinConnectionGate)
+            {
+                if (ReferenceEquals(exitPinConnection, activeExitPinConnection))
+                {
+                    exitPinConnection = null;
+                }
+            }
+            FailExitPinVerifications(new IOException("Classroom server connection ended."));
             lifetime.Cancel();
             try
             {
@@ -138,6 +233,18 @@ public sealed class ClassroomServerClient(
                 var commandEnvelope = ProtocolCodec.Deserialize<CommandRequest>(json);
                 ProtocolValidation.ValidateCommand(commandEnvelope.Payload);
                 await ApplyCommandAsync(socket, sendGate, commandEnvelope.Payload, cancellationToken);
+                continue;
+            }
+
+            if (type == ProtocolConstants.DeviceExitPinVerificationResponse)
+            {
+                var response = ProtocolCodec.Deserialize<DeviceExitPinVerificationResponse>(json);
+                ProtocolValidation.ValidateExitPinVerificationResponse(response.Payload);
+                if (pendingExitPinVerifications.TryGetValue(response.Payload.RequestId, out var completion))
+                {
+                    completion.TrySetResult(response.Payload);
+                }
+
                 continue;
             }
 
@@ -300,6 +407,14 @@ public sealed class ClassroomServerClient(
         }
     }
 
+    private void FailExitPinVerifications(Exception exception)
+    {
+        foreach (var completion in pendingExitPinVerifications.Values)
+        {
+            completion.TrySetException(exception);
+        }
+    }
+
     private sealed class DeviceSessionState(Guid initialSessionId)
     {
         private readonly object gate = new();
@@ -323,4 +438,8 @@ public sealed class ClassroomServerClient(
             }
         }
     }
+
+    private sealed record ExitPinConnection(
+        ClientWebSocket Socket,
+        SemaphoreSlim SendGate);
 }

@@ -19,7 +19,8 @@ var tests = new (string Name, Action Run)[]
     ("teacher session tokens can be revoked", TeacherSessionsCanBeRevoked),
     ("password rotation revokes other teacher sessions", PasswordRotationRevokesOtherSessions),
     ("firebase identities create and reuse a teacher", FirebaseIdentityCreatesTeacher),
-    ("administrators can grant school-wide access", AdministratorsCanGrantSchoolWideAccess)
+    ("administrators can grant school-wide access", AdministratorsCanGrantSchoolWideAccess),
+    ("student app exit PINs are administrator-managed and server-verified", StudentExitPinsAreServerVerified)
 };
 
 var failures = 0;
@@ -449,6 +450,55 @@ static void AdministratorsCanGrantSchoolWideAccess()
         if (Directory.Exists(rootPath))
         {
             Directory.Delete(rootPath, recursive: true);
+        }
+    }
+}
+
+static void StudentExitPinsAreServerVerified()
+{
+    var fixture = CreatePersistentFixture();
+    try
+    {
+        using var database = new ClassroomDatabase(fixture.DatabasePath);
+        database.Initialize(fixture.Options);
+        var store = new ClassroomStore(fixture.Options, database);
+        var ticket = store.CreateEnrollmentTicket(
+            fixture.TeacherId,
+            fixture.ClassId,
+            fixture.StudentId,
+            "종료 비밀번호 학생");
+        var enrollment = store.Enroll(new DeviceEnrollmentRequest(
+            ticket.DeviceId,
+            "EXIT-PIN-01",
+            "0.4.1",
+            ticket.EnrollmentToken));
+        Assert(enrollment.Succeeded && enrollment.Value is not null, "Exit PIN fixture enrollment failed.");
+        Assert(store.TryAuthenticateDevice(ticket.DeviceId, enrollment.Value!.DeviceToken, out var device)
+            && device is not null, "Exit PIN fixture authentication failed.");
+
+        var beforeSetup = store.VerifyStudentExitPin(device!, "school-exit-2026");
+        Assert(beforeSetup.Code == "EXIT_PIN_NOT_CONFIGURED", "An unset exit PIN was accepted.");
+
+        database.SetStudentExitPin(fixture.TeacherId, "school-exit-2026");
+        var status = database.GetStudentExitPinStatus(fixture.Options.DevelopmentSchoolId);
+        Assert(status.Configured && status.UpdatedAtUtc is not null, "Exit PIN setup state was not persisted.");
+
+        var rejected = store.VerifyStudentExitPin(device!, "wrong-exit-pin");
+        Assert(rejected.Code == "EXIT_PIN_REJECTED", "Wrong exit PIN was accepted.");
+        var approved = store.VerifyStudentExitPin(device!, "school-exit-2026");
+        Assert(approved.Succeeded && approved.Value is true, "Correct exit PIN was not approved.");
+
+        var nonAdmin = database.CreateOrGetFirebaseTeacher(
+            new FirebaseIdentity("exit-pin-non-admin", "nonadmin@example.edu", "일반 교사", true, "google.com"),
+            "일반 교사",
+            "국어");
+        AssertThrows<InvalidOperationException>(() => database.SetStudentExitPin(nonAdmin.Id, "different-exit-pin"));
+    }
+    finally
+    {
+        if (Directory.Exists(fixture.RootPath))
+        {
+            Directory.Delete(fixture.RootPath, recursive: true);
         }
     }
 }

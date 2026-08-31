@@ -45,6 +45,21 @@ public sealed record DeviceHeartbeat(
     ScreenFrame? ScreenFrame = null,
     bool ScreenSharingEnabled = false);
 
+/// <summary>
+/// A visible Student Desktop asks its already-authenticated local service to
+/// check this value with the school server before an ordinary app exit. The
+/// value is never persisted or sent to a teacher browser.
+/// </summary>
+public sealed record DeviceExitPinVerificationRequest(
+    Guid RequestId,
+    string Pin);
+
+public sealed record DeviceExitPinVerificationResponse(
+    Guid RequestId,
+    bool Approved,
+    string Code,
+    string Message);
+
 public sealed record ScreenFrame(
     string MimeType,
     string Base64Data,

@@ -47,6 +47,25 @@ public static class ProtocolValidation
         }
     }
 
+    public static void ValidateExitPinVerification(DeviceExitPinVerificationRequest request)
+    {
+        RequireGuid(request.RequestId, nameof(request.RequestId));
+        if (string.IsNullOrWhiteSpace(request.Pin)
+            || request.Pin.Length is < 6 or > 64
+            || request.Pin.Any(char.IsControl))
+        {
+            throw new ProtocolValidationException(
+                "Student exit PIN must be 6 to 64 printable characters.");
+        }
+    }
+
+    public static void ValidateExitPinVerificationResponse(DeviceExitPinVerificationResponse response)
+    {
+        RequireGuid(response.RequestId, nameof(response.RequestId));
+        RequireText(response.Code, nameof(response.Code), 64);
+        RequireText(response.Message, nameof(response.Message), 256);
+    }
+
     public static void ValidateScreenFrame(ScreenFrame frame)
     {
         if (!string.Equals(frame.MimeType, "image/jpeg", StringComparison.Ordinal)

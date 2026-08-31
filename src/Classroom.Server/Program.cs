@@ -555,6 +555,68 @@ app.MapPost("/api/admin/teachers", (
     }
 });
 
+app.MapGet("/api/admin/student-exit-pin", (
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!database.IsTeacherAdmin(teacherId)
+        || !database.GetTeacherSchoolId(teacherId, out var schoolId))
+    {
+        return Results.Json(
+            new { code = "ADMIN_REQUIRED", message = "관리자만 학생 앱 종료 비밀번호를 확인할 수 있습니다." },
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    return Results.Ok(database.GetStudentExitPinStatus(schoolId));
+});
+
+app.MapPut("/api/admin/student-exit-pin", (
+    StudentExitPinUpdateRequest? request,
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!database.IsTeacherAdmin(teacherId))
+    {
+        return Results.Json(
+            new { code = "ADMIN_REQUIRED", message = "관리자만 학생 앱 종료 비밀번호를 설정할 수 있습니다." },
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    try
+    {
+        database.SetStudentExitPin(teacherId, request?.Pin);
+        return database.GetTeacherSchoolId(teacherId, out var schoolId)
+            ? Results.Ok(database.GetStudentExitPinStatus(schoolId))
+            : Results.Json(
+                new { code = "ADMIN_REQUIRED", message = "관리자 학교 정보를 확인할 수 없습니다." },
+                statusCode: StatusCodes.Status403Forbidden);
+    }
+    catch (ArgumentException exception)
+    {
+        return Results.Json(
+            new { code = "INVALID_EXIT_PIN", message = exception.Message },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Json(
+            new { code = "ADMIN_REQUIRED", message = exception.Message },
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+});
+
 app.MapPost("/api/devices/enroll", (
     DeviceEnrollmentRequest request,
     ClassroomStore store) =>

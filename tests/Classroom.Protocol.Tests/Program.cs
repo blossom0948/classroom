@@ -16,6 +16,7 @@ var tests = new (string Name, Action Run)[]
     ("approved app command has no shell field", ApprovedAppIsConstrained),
     ("screen sharing command requires an explicit state", ScreenShareCommandWorks),
     ("commands reject duplicate or oversized targets", TargetLimitsAreEnforced),
+    ("student exit PIN verification messages are strictly validated", StudentExitPinVerificationWorks),
     ("protocol codec rejects oversized JSON", OversizedMessageIsRejected)
 };
 
@@ -214,6 +215,31 @@ static void TargetLimitsAreEnforced()
         {
             TargetDeviceIds = new[] { targets[0], targets[0] }
         }));
+}
+
+static void StudentExitPinVerificationWorks()
+{
+    var request = new DeviceExitPinVerificationRequest(
+        Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"),
+        "school-exit-2026");
+    ProtocolValidation.ValidateExitPinVerification(request);
+
+    var envelope = ProtocolEnvelope<DeviceExitPinVerificationRequest>.Create(
+        ProtocolConstants.DeviceExitPinVerificationRequest,
+        request);
+    var json = ProtocolCodec.Serialize(envelope);
+    var parsed = ProtocolCodec.Deserialize<DeviceExitPinVerificationRequest>(json);
+    Assert(parsed.Type == ProtocolConstants.DeviceExitPinVerificationRequest,
+        "Exit PIN request type was not retained.");
+    Assert(parsed.Payload.RequestId == request.RequestId && parsed.Payload.Pin == request.Pin,
+        "Exit PIN request did not round trip.");
+
+    ProtocolValidation.ValidateExitPinVerificationResponse(
+        new DeviceExitPinVerificationResponse(request.RequestId, false, "EXIT_PIN_REJECTED", "Not approved."));
+    AssertThrows<ProtocolValidationException>(() =>
+        ProtocolValidation.ValidateExitPinVerification(request with { Pin = "12345" }));
+    AssertThrows<ProtocolValidationException>(() =>
+        ProtocolValidation.ValidateExitPinVerification(request with { Pin = "valid\nline" }));
 }
 
 static void OversizedMessageIsRejected()

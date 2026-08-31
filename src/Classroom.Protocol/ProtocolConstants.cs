@@ -18,6 +18,8 @@ public static class ProtocolConstants
     public const string DeviceHello = "DEVICE_HELLO";
     public const string DeviceHeartbeat = "DEVICE_HEARTBEAT";
     public const string DeviceStatus = "DEVICE_STATUS";
+    public const string DeviceExitPinVerificationRequest = "DEVICE_EXIT_PIN_VERIFICATION_REQUEST";
+    public const string DeviceExitPinVerificationResponse = "DEVICE_EXIT_PIN_VERIFICATION_RESPONSE";
     public const string CommandRequest = "COMMAND_REQUEST";
     public const string CommandAck = "COMMAND_ACK";
     public const string CommandResult = "COMMAND_RESULT";
@@ -30,6 +32,8 @@ public static class ProtocolConstants
         or DeviceHello
         or DeviceHeartbeat
         or DeviceStatus
+        or DeviceExitPinVerificationRequest
+        or DeviceExitPinVerificationResponse
         or CommandRequest
         or CommandAck
         or CommandResult

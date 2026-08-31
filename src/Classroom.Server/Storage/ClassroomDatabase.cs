@@ -13,7 +13,7 @@ namespace Blossom.Classroom.Server.Storage;
 
 public sealed class ClassroomDatabase : IDisposable
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     private readonly string connectionString;
 
@@ -190,6 +190,12 @@ public sealed class ClassroomDatabase : IDisposable
                 CreatedAtUtc TEXT NOT NULL,
                 IsActive INTEGER NOT NULL DEFAULT 1,
                 PRIMARY KEY (Identifier, SchoolId)
+            );
+            CREATE TABLE IF NOT EXISTS StudentExitPins (
+                SchoolId TEXT PRIMARY KEY,
+                PinHash TEXT NOT NULL,
+                UpdatedByTeacherId TEXT NOT NULL,
+                UpdatedAtUtc TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS IX_Classes_TeacherId ON Classes (TeacherId);
             CREATE INDEX IF NOT EXISTS IX_Devices_ClassId ON Devices (ClassId);
@@ -631,6 +637,84 @@ public sealed class ClassroomDatabase : IDisposable
         command.CommandText = "SELECT IsAdmin FROM Users WHERE Id = @teacherId AND Role = 'Teacher' AND IsActive = 1;";
         command.Parameters.AddWithValue("@teacherId", ToDb(teacherId));
         return Convert.ToInt32(command.ExecuteScalar() ?? 0, CultureInfo.InvariantCulture) != 0;
+    }
+
+    public StudentExitPinStatus GetStudentExitPinStatus(Guid schoolId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT UpdatedAtUtc FROM StudentExitPins WHERE SchoolId = @schoolId;";
+        command.Parameters.AddWithValue("@schoolId", ToDb(schoolId));
+        var value = command.ExecuteScalar();
+        return value is string updatedAtUtc
+            ? new StudentExitPinStatus(true, ParseDate(updatedAtUtc))
+            : new StudentExitPinStatus(false, null);
+    }
+
+    public void SetStudentExitPin(Guid requesterId, string? pin)
+    {
+        ValidateStudentExitPin(pin);
+        var hash = PasswordSecurity.HashPassword(pin!);
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        Guid schoolId;
+        using (var requesterCommand = connection.CreateCommand())
+        {
+            requesterCommand.Transaction = transaction;
+            requesterCommand.CommandText = """
+                SELECT SchoolId
+                FROM Users
+                WHERE Id = @teacherId
+                  AND Role = 'Teacher'
+                  AND IsActive = 1
+                  AND IsAdmin = 1;
+                """;
+            requesterCommand.Parameters.AddWithValue("@teacherId", ToDb(requesterId));
+            var value = requesterCommand.ExecuteScalar();
+            if (value is not string schoolValue || !Guid.TryParse(schoolValue, out schoolId))
+            {
+                throw new InvalidOperationException("관리자 계정을 확인할 수 없습니다.");
+            }
+        }
+
+        ExecuteNonQuery(
+            connection,
+            transaction,
+            """
+            INSERT INTO StudentExitPins (SchoolId, PinHash, UpdatedByTeacherId, UpdatedAtUtc)
+            VALUES (@schoolId, @pinHash, @teacherId, @updatedAtUtc)
+            ON CONFLICT(SchoolId) DO UPDATE SET
+                PinHash = excluded.PinHash,
+                UpdatedByTeacherId = excluded.UpdatedByTeacherId,
+                UpdatedAtUtc = excluded.UpdatedAtUtc;
+            """,
+            ("@schoolId", ToDb(schoolId)),
+            ("@pinHash", hash),
+            ("@teacherId", ToDb(requesterId)),
+            ("@updatedAtUtc", ToDb(DateTimeOffset.UtcNow)));
+        transaction.Commit();
+    }
+
+    public StudentExitPinVerification VerifyStudentExitPin(Guid schoolId, string? pin)
+    {
+        if (string.IsNullOrWhiteSpace(pin)
+            || pin.Length is < 6 or > 64
+            || pin.Any(char.IsControl))
+        {
+            return new StudentExitPinVerification(false, false);
+        }
+
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT PinHash FROM StudentExitPins WHERE SchoolId = @schoolId;";
+        command.Parameters.AddWithValue("@schoolId", ToDb(schoolId));
+        var value = command.ExecuteScalar();
+        if (value is not string hash || string.IsNullOrWhiteSpace(hash))
+        {
+            return new StudentExitPinVerification(false, false);
+        }
+
+        return new StudentExitPinVerification(true, PasswordSecurity.VerifyPassword(pin, hash));
     }
 
     public IReadOnlyList<StudentCodeView> GetStudentCodes(Guid schoolId)
@@ -1398,6 +1482,16 @@ public sealed class ClassroomDatabase : IDisposable
         return normalized;
     }
 
+    private static void ValidateStudentExitPin(string? pin)
+    {
+        if (string.IsNullOrWhiteSpace(pin)
+            || pin.Length is < 6 or > 64
+            || pin.Any(char.IsControl))
+        {
+            throw new ArgumentException("학생 앱 종료 비밀번호는 6~64자로 입력하세요.", nameof(pin));
+        }
+    }
+
     private static TeacherAccount? FindTeacherByIdentity(
         SqliteConnection connection,
         SqliteTransaction transaction,
@@ -1504,6 +1598,10 @@ public sealed record TeacherDirectoryEntry(
     string DisplayName,
     string Email,
     bool IsAdmin);
+
+public sealed record StudentExitPinVerification(
+    bool Configured,
+    bool Approved);
 
 public sealed record PersistedDevice(
     Guid DeviceId,
