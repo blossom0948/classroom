@@ -76,6 +76,17 @@ public sealed record TeacherLoginRequest(
     string LoginName,
     string Password);
 
+public sealed record GuestLoginRequest(
+    string SchoolId,
+    string Password);
+
+public sealed record GuestPasswordUpdateRequest(
+    string Password);
+
+public sealed record GuestPasswordStatus(
+    bool Configured,
+    DateTimeOffset? UpdatedAtUtc);
+
 public sealed record FirebaseLoginRequest(
     string IdToken,
     string? DisplayName = null,

@@ -35,6 +35,17 @@ public static class TeacherAuthentication
         return false;
     }
 
+    public static bool TryGetGuestSchoolId(
+        HttpRequest request,
+        ClassroomDatabase database,
+        out Guid schoolId)
+    {
+        schoolId = Guid.Empty;
+        var token = GetBearerToken(request);
+        return !string.IsNullOrWhiteSpace(token)
+            && database.TryValidateGuestSession(token, out schoolId);
+    }
+
     public static string? GetBearerToken(HttpRequest request)
     {
         var header = request.Headers.Authorization.ToString();

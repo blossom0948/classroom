@@ -13,7 +13,7 @@ namespace Blossom.Classroom.Server.Storage;
 
 public sealed class ClassroomDatabase : IDisposable
 {
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
 
     private readonly string connectionString;
 
@@ -183,6 +183,13 @@ public sealed class ClassroomDatabase : IDisposable
                 ExpiresAtUtc TEXT NOT NULL,
                 Revoked INTEGER NOT NULL DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS GuestSessions (
+                TokenHash TEXT PRIMARY KEY,
+                SchoolId TEXT NOT NULL,
+                CreatedAtUtc TEXT NOT NULL,
+                ExpiresAtUtc TEXT NOT NULL,
+                Revoked INTEGER NOT NULL DEFAULT 0
+            );
             CREATE TABLE IF NOT EXISTS AdminGrants (
                 Identifier TEXT NOT NULL,
                 SchoolId TEXT NOT NULL,
@@ -197,10 +204,17 @@ public sealed class ClassroomDatabase : IDisposable
                 UpdatedByTeacherId TEXT NOT NULL,
                 UpdatedAtUtc TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS GuestPasswords (
+                SchoolId TEXT PRIMARY KEY,
+                PasswordHash TEXT NOT NULL,
+                UpdatedByTeacherId TEXT NOT NULL,
+                UpdatedAtUtc TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS IX_Classes_TeacherId ON Classes (TeacherId);
             CREATE INDEX IF NOT EXISTS IX_Devices_ClassId ON Devices (ClassId);
             CREATE INDEX IF NOT EXISTS IX_AuditEvents_ClassId_TimestampUtc ON AuditEvents (ClassId, TimestampUtc);
             CREATE INDEX IF NOT EXISTS IX_Commands_DeviceId_State ON Commands (DeviceId, State);
+            CREATE INDEX IF NOT EXISTS IX_GuestSessions_SchoolId ON GuestSessions (SchoolId, ExpiresAtUtc);
             """);
 
         // Keep migrations idempotent so an existing pilot database upgrades in place.
@@ -600,6 +614,31 @@ public sealed class ClassroomDatabase : IDisposable
             ORDER BY Name;
             """;
         command.Parameters.AddWithValue("@teacherId", ToDb(teacherId));
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add(new TeacherClass(
+                ParseGuid(reader.GetString(0)),
+                ParseGuid(reader.GetString(1)),
+                reader.GetString(2),
+                reader.GetString(3)));
+        }
+
+        return result;
+    }
+
+    public IReadOnlyList<TeacherClass> GetClassesForSchool(Guid schoolId)
+    {
+        var result = new List<TeacherClass>();
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, SchoolId, Name, DefaultSubject
+            FROM Classes
+            WHERE SchoolId = @schoolId
+            ORDER BY Name;
+            """;
+        command.Parameters.AddWithValue("@schoolId", ToDb(schoolId));
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
@@ -1295,6 +1334,125 @@ public sealed class ClassroomDatabase : IDisposable
             ("@currentTokenHash", TokenSecurity.HashToken(currentToken)));
     }
 
+    public GuestPasswordStatus GetGuestPasswordStatus(Guid schoolId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT UpdatedAtUtc FROM GuestPasswords WHERE SchoolId = @schoolId;";
+        command.Parameters.AddWithValue("@schoolId", ToDb(schoolId));
+        var value = command.ExecuteScalar();
+        return value is string updatedAtUtc
+            ? new GuestPasswordStatus(true, ParseDate(updatedAtUtc))
+            : new GuestPasswordStatus(false, null);
+    }
+
+    public void SetGuestPassword(Guid requesterId, string? password)
+    {
+        ValidateGuestPassword(password);
+        var hash = PasswordSecurity.HashPassword(password!);
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        Guid schoolId;
+        using (var requesterCommand = connection.CreateCommand())
+        {
+            requesterCommand.Transaction = transaction;
+            requesterCommand.CommandText = """
+                SELECT SchoolId
+                FROM Users
+                WHERE Id = @teacherId
+                  AND Role = 'Teacher'
+                  AND IsActive = 1
+                  AND IsAdmin = 1;
+                """;
+            requesterCommand.Parameters.AddWithValue("@teacherId", ToDb(requesterId));
+            var value = requesterCommand.ExecuteScalar();
+            if (value is not string schoolValue || !Guid.TryParse(schoolValue, out schoolId))
+            {
+                throw new InvalidOperationException("관리자 계정을 확인할 수 없습니다.");
+            }
+        }
+
+        ExecuteNonQuery(
+            connection,
+            transaction,
+            """
+            INSERT INTO GuestPasswords (SchoolId, PasswordHash, UpdatedByTeacherId, UpdatedAtUtc)
+            VALUES (@schoolId, @passwordHash, @teacherId, @updatedAtUtc)
+            ON CONFLICT(SchoolId) DO UPDATE SET
+                PasswordHash = excluded.PasswordHash,
+                UpdatedByTeacherId = excluded.UpdatedByTeacherId,
+                UpdatedAtUtc = excluded.UpdatedAtUtc;
+            """,
+            ("@schoolId", ToDb(schoolId)),
+            ("@passwordHash", hash),
+            ("@teacherId", ToDb(requesterId)),
+            ("@updatedAtUtc", ToDb(DateTimeOffset.UtcNow)));
+        transaction.Commit();
+    }
+
+    public bool VerifyGuestPassword(Guid schoolId, string? password)
+    {
+        if (string.IsNullOrWhiteSpace(password)
+            || password.Length is < 6 or > 64
+            || password.Any(char.IsControl))
+        {
+            return false;
+        }
+
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT PasswordHash FROM GuestPasswords WHERE SchoolId = @schoolId;";
+        command.Parameters.AddWithValue("@schoolId", ToDb(schoolId));
+        var value = command.ExecuteScalar();
+        return value is string hash
+            && !string.IsNullOrWhiteSpace(hash)
+            && PasswordSecurity.VerifyPassword(password, hash);
+    }
+
+    public string CreateGuestSession(Guid schoolId, TimeSpan lifetime)
+    {
+        var token = TokenSecurity.CreateToken();
+        ExecuteNonQuery(
+            "INSERT INTO GuestSessions (TokenHash, SchoolId, CreatedAtUtc, ExpiresAtUtc, Revoked) VALUES (@tokenHash, @schoolId, @createdAtUtc, @expiresAtUtc, 0);",
+            ("@tokenHash", TokenSecurity.HashToken(token)),
+            ("@schoolId", ToDb(schoolId)),
+            ("@createdAtUtc", ToDb(DateTimeOffset.UtcNow)),
+            ("@expiresAtUtc", ToDb(DateTimeOffset.UtcNow.Add(lifetime))));
+        return token;
+    }
+
+    public bool TryValidateGuestSession(string token, out Guid schoolId)
+    {
+        schoolId = Guid.Empty;
+        if (string.IsNullOrWhiteSpace(token)) return false;
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT SchoolId, ExpiresAtUtc
+            FROM GuestSessions
+            WHERE TokenHash = @tokenHash AND Revoked = 0;
+            """;
+        command.Parameters.AddWithValue("@tokenHash", TokenSecurity.HashToken(token));
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()
+            || !Guid.TryParse(reader.GetString(0), out schoolId)
+            || ParseDate(reader.GetString(1)) <= DateTimeOffset.UtcNow)
+        {
+            schoolId = Guid.Empty;
+            return false;
+        }
+
+        return true;
+    }
+
+    public void RevokeGuestSession(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return;
+        ExecuteNonQuery(
+            "UPDATE GuestSessions SET Revoked = 1 WHERE TokenHash = @tokenHash;",
+            ("@tokenHash", TokenSecurity.HashToken(token)));
+    }
+
     public void Dispose() => SqliteConnection.ClearAllPools();
 
     private SqliteConnection OpenConnection()
@@ -1489,6 +1647,16 @@ public sealed class ClassroomDatabase : IDisposable
             || pin.Any(char.IsControl))
         {
             throw new ArgumentException("학생 앱 종료 비밀번호는 6~64자로 입력하세요.", nameof(pin));
+        }
+    }
+
+    private static void ValidateGuestPassword(string? password)
+    {
+        if (string.IsNullOrWhiteSpace(password)
+            || password.Length is < 6 or > 64
+            || password.Any(char.IsControl))
+        {
+            throw new ArgumentException("게스트 비밀번호는 6~64자로 입력하세요.", nameof(password));
         }
     }
 

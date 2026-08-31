@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-  <link rel="stylesheet" href="/styles.css?v=0.5.16">
+  <link rel="stylesheet" href="/styles.css?v=0.5.17">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -75,6 +75,7 @@
             <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" required></label>
             <div class="form-row"><button id="forgot-password-button" class="inline-link" type="button">비밀번호를 잊으셨나요?</button><button id="account-lookup-button" class="inline-link" type="button">계정 찾기</button></div>
             <button class="primary wide" type="submit">로그인 <span>→</span></button>
+            <button id="login-guest-button" class="guest-login-button" type="button">학교 게스트로 로그인</button>
             <p id="login-error" class="error" hidden></p>
           </form>
           <p id="dev-login-hint" class="login-hint" hidden></p>
@@ -87,6 +88,7 @@
             <label class="consent-check"><input id="signup-terms" type="checkbox" required><span><button type="button" class="inline-link" data-legal-document="terms">이용약관</button>에 동의합니다.</span></label>
             <label class="consent-check"><input id="signup-privacy" type="checkbox" required><span><button type="button" class="inline-link" data-legal-document="privacy">개인정보처리방침</button>에 동의합니다.</span></label>
             <button class="primary wide" type="submit">계정 만들기 <span>→</span></button>
+            <button id="signup-guest-button" class="guest-login-button" type="button">학교 게스트로 로그인</button>
             <p id="signup-error" class="error" hidden></p>
           </form>
         </div>
@@ -102,10 +104,10 @@
       <div class="brand-area"><div class="sidebar-console-label">TEACHER CONSOLE</div><div class="brand"><span class="brand-mark">C</span><span>Classroom</span></div><div id="sidebar-school-name" class="sidebar-school-name">학교를 설정해 주세요</div></div>
       <nav class="nav" aria-label="주 메뉴">
         <button class="nav-item active" data-section="class" aria-label="수업"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg></span><span class="nav-label">수업</span></button>
-        <button class="nav-item" data-section="student-codes" aria-label="학생 코드"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5h16v9H4z"></path><path d="M8 10.5h5M8 13.5h3"></path><circle cx="17" cy="12" r="1.7"></circle></svg></span><span class="nav-label">학생 코드</span></button>
+        <button id="student-codes-nav" class="nav-item" data-section="student-codes" aria-label="학생 코드"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5h16v9H4z"></path><path d="M8 10.5h5M8 13.5h3"></path><circle cx="17" cy="12" r="1.7"></circle></svg></span><span class="nav-label">학생 코드</span></button>
         <button id="admins-nav" class="nav-item" data-section="admins" aria-label="관리자" hidden><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.4-2.8 7.8-7 10-4.2-2.2-7-5.6-7-10V6z"></path><path d="M9.3 12.2l1.8 1.8 3.8-4"></path></svg></span><span class="nav-label">관리자</span></button>
-        <button class="nav-item" data-section="history" aria-label="기록"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4.7 8A8 8 0 1 1 4 14"></path><path d="M4.7 4v4h4"></path><path d="M12 8v4l2.7 1.7"></path></svg></span><span class="nav-label">기록</span></button>
-        <button class="nav-item" data-section="settings" aria-label="설정"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"></path><circle cx="14" cy="7" r="2"></circle><circle cx="6" cy="17" r="2"></circle></svg></span><span class="nav-label">설정</span></button>
+        <button id="history-nav" class="nav-item" data-section="history" aria-label="기록"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4.7 8A8 8 0 1 1 4 14"></path><path d="M4.7 4v4h4"></path><path d="M12 8v4l2.7 1.7"></path></svg></span><span class="nav-label">기록</span></button>
+        <button id="settings-nav" class="nav-item" data-section="settings" aria-label="설정"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"></path><circle cx="14" cy="7" r="2"></circle><circle cx="6" cy="17" r="2"></circle></svg></span><span class="nav-label">설정</span></button>
       </nav>
       <div class="sidebar-bottom">
         <div class="teacher-chip"><span class="avatar">교</span><div><div class="teacher-name-line"><strong id="teacher-name">교사</strong><span id="teacher-role" class="admin-badge active" hidden>관리자</span></div><small id="teacher-account">Teacher</small></div></div>
@@ -145,7 +147,7 @@
         <div class="toolbar">
           <div class="filters" role="tablist"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="online">온라인</button><button class="filter" data-filter="offline">오프라인</button><button class="filter" data-filter="attention">확인 필요</button></div>
           <label class="student-search"><span class="sr-only">학생 이름 검색</span><input id="student-search" type="search" placeholder="학생 이름 검색"></label>
-          <div class="bulk-actions"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button><button id="screen-wall-button" class="secondary screen-wall-open">화면 보기</button><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">집중 해제</button><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL 열기</button><button id="app-button" class="secondary">앱 실행</button></div>
+          <div id="bulk-actions" class="bulk-actions"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button><button id="screen-wall-button" class="secondary screen-wall-open">화면 보기</button><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">집중 해제</button><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL 열기</button><button id="app-button" class="secondary">앱 실행</button></div>
         </div>
         <div id="student-grid" class="student-grid" aria-live="polite"></div>
       </section>
@@ -198,6 +200,13 @@
           <p id="student-exit-pin-status" class="muted small" role="status">설정 상태를 확인하는 중입니다.</p>
           <p id="student-exit-pin-error" class="error" hidden></p>
         </form>
+        <form id="guest-password-form" class="settings-card guest-password-card">
+          <div><span class="settings-icon">◉</span><h3>학교 게스트 비밀번호</h3><p>관리자가 정한 학교 공용 비밀번호로 읽기 전용 수업 현황에 로그인할 수 있습니다.</p></div>
+          <div class="guest-password-fields"><label>게스트 비밀번호<input id="guest-password" type="password" minlength="6" maxlength="64" autocomplete="new-password" placeholder="6자 이상 입력" required></label><label>한 번 더 입력<input id="guest-password-confirm" type="password" minlength="6" maxlength="64" autocomplete="new-password" placeholder="같은 비밀번호 다시 입력" required></label></div>
+          <button class="primary" type="submit">게스트 비밀번호 저장</button>
+          <p id="guest-password-status" class="muted small" role="status">설정 상태를 확인하는 중입니다.</p>
+          <p id="guest-password-error" class="error" hidden></p>
+        </form>
       </section>
 
       <section id="history-section" class="section-view" hidden>
@@ -222,7 +231,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.16</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.17</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -249,6 +258,16 @@
       <label id="seconds-field">표시 시간(초)<input id="command-seconds" type="number" min="1" max="3600" value="10"></label>
       <div class="dialog-actions"><button class="secondary" type="button" data-dialog-cancel>취소</button><button id="send-command-button" class="primary" type="submit" value="default">보내기</button></div>
       <p id="dialog-error" class="error" hidden></p>
+    </form>
+  </dialog>
+  <dialog id="guest-login-dialog" class="command-dialog guest-login-dialog">
+    <form method="dialog" id="guest-login-form" class="stack">
+      <div class="dialog-heading"><span class="eyebrow">SCHOOL GUEST</span><h2>게스트로 로그인</h2></div>
+      <p class="muted dialog-copy">학교를 선택하고 관리자가 설정한 게스트 비밀번호를 입력하세요. 게스트 계정은 수업 현황과 학생 활동을 읽기 전용으로 확인합니다.</p>
+      <div class="school-picker"><label>학교 검색<input id="guest-school-search" autocomplete="organization" placeholder="학교 이름을 2글자 이상 입력" required></label><input id="guest-school-id" type="hidden"><div id="guest-school-results" class="school-results" role="listbox" hidden></div></div>
+      <label>게스트 비밀번호<input id="guest-login-password" type="password" autocomplete="current-password" minlength="6" maxlength="64" required placeholder="학교 관리자가 알려준 비밀번호"></label>
+      <div class="dialog-actions"><button class="secondary" type="button" data-dialog-cancel>취소</button><button id="guest-login-submit" class="primary" type="submit">게스트로 로그인</button></div>
+      <p id="guest-login-error" class="error" hidden></p>
     </form>
   </dialog>
   <dialog id="enrollment-dialog" class="command-dialog enrollment-dialog">
@@ -335,6 +354,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.5.16" defer></script>
+  <script src="/app.js?v=0.5.17" defer></script>
 </body>
 </html>

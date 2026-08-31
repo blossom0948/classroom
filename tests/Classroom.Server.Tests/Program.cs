@@ -20,7 +20,8 @@ var tests = new (string Name, Action Run)[]
     ("password rotation revokes other teacher sessions", PasswordRotationRevokesOtherSessions),
     ("firebase identities create and reuse a teacher", FirebaseIdentityCreatesTeacher),
     ("administrators can grant school-wide access", AdministratorsCanGrantSchoolWideAccess),
-    ("student app exit PINs are administrator-managed and server-verified", StudentExitPinsAreServerVerified)
+    ("student app exit PINs are administrator-managed and server-verified", StudentExitPinsAreServerVerified),
+    ("guest passwords create school-scoped read-only sessions", GuestPasswordsAreSchoolScoped)
 };
 
 var failures = 0;
@@ -493,6 +494,37 @@ static void StudentExitPinsAreServerVerified()
             "일반 교사",
             "국어");
         AssertThrows<InvalidOperationException>(() => database.SetStudentExitPin(nonAdmin.Id, "different-exit-pin"));
+    }
+    finally
+    {
+        if (Directory.Exists(fixture.RootPath))
+        {
+            Directory.Delete(fixture.RootPath, recursive: true);
+        }
+    }
+}
+
+static void GuestPasswordsAreSchoolScoped()
+{
+    var fixture = CreatePersistentFixture();
+    try
+    {
+        using var database = new ClassroomDatabase(fixture.DatabasePath);
+        database.Initialize(fixture.Options);
+        database.SetGuestPassword(fixture.TeacherId, "guest-pass");
+
+        var status = database.GetGuestPasswordStatus(fixture.Options.DevelopmentSchoolId);
+        Assert(status.Configured, "Guest password status did not report the configured password.");
+        Assert(database.VerifyGuestPassword(fixture.Options.DevelopmentSchoolId, "guest-pass"), "The configured guest password was rejected.");
+        Assert(!database.VerifyGuestPassword(fixture.Options.DevelopmentSchoolId, "wrong-pass"), "An incorrect guest password was accepted.");
+        Assert(!database.VerifyGuestPassword(Guid.NewGuid(), "guest-pass"), "A guest password crossed the school boundary.");
+        AssertThrows<InvalidOperationException>(() => database.SetGuestPassword(Guid.NewGuid(), "other-pass"));
+
+        var token = database.CreateGuestSession(fixture.Options.DevelopmentSchoolId, TimeSpan.FromMinutes(5));
+        Assert(database.TryValidateGuestSession(token, out var schoolId) && schoolId == fixture.Options.DevelopmentSchoolId,
+            "Guest session was not bound to its school.");
+        database.RevokeGuestSession(token);
+        Assert(!database.TryValidateGuestSession(token, out _), "Revoked guest session token was accepted.");
     }
     finally
     {

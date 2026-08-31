@@ -820,6 +820,17 @@ public sealed class ClassroomStore
     public IReadOnlyList<DeviceStatus> GetClassStatuses(Guid teacherId, Guid classId)
     {
         EnsureTeacherAccess(teacherId, classId);
+        return GetClassStatusesCore(classId);
+    }
+
+    public IReadOnlyList<DeviceStatus> GetClassStatusesForSchool(Guid schoolId, Guid classId)
+    {
+        EnsureSchoolClassAccess(schoolId, classId);
+        return GetClassStatusesCore(classId);
+    }
+
+    private IReadOnlyList<DeviceStatus> GetClassStatusesCore(Guid classId)
+    {
         lock (gate)
         {
             var active = FindActiveSessionLocked(classId);
@@ -945,6 +956,17 @@ public sealed class ClassroomStore
     public ClassSessionSnapshot? GetActiveSession(Guid teacherId, Guid classId)
     {
         EnsureTeacherAccess(teacherId, classId);
+        return GetActiveSessionCore(classId);
+    }
+
+    public ClassSessionSnapshot? GetActiveSessionForSchool(Guid schoolId, Guid classId)
+    {
+        EnsureSchoolClassAccess(schoolId, classId);
+        return GetActiveSessionCore(classId);
+    }
+
+    private ClassSessionSnapshot? GetActiveSessionCore(Guid classId)
+    {
         lock (gate)
         {
             return FindActiveSessionLocked(classId)?.ToSnapshot();
@@ -1047,6 +1069,20 @@ public sealed class ClassroomStore
     private void EnsureTeacherAccess(Guid teacherId, Guid classId)
     {
         _ = GetClassSchoolId(teacherId, classId);
+    }
+
+    private void EnsureSchoolClassAccess(Guid schoolId, Guid classId)
+    {
+        if (database is not null
+            && database.TryGetClassSchoolId(classId, out var classSchoolId)
+            && classSchoolId == schoolId)
+        {
+            return;
+        }
+
+        throw new ClassroomStoreException(
+            "FORBIDDEN",
+            "The selected class is outside the guest school.");
     }
 
     private void AddAuditLocked(AuditEvent entry)

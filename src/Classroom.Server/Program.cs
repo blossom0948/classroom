@@ -224,6 +224,54 @@ app.MapPost("/auth/login", (
         database.IsTeacherAdmin(account.Id)));
 });
 
+app.MapPost("/auth/guest-login", (
+    HttpContext context,
+    GuestLoginRequest? request,
+    ServerOptions serverOptions,
+    ClassroomDatabase database,
+    TeacherLoginRateLimiter rateLimiter) =>
+{
+    var schoolText = request?.SchoolId?.Trim() ?? string.Empty;
+    var rateLimitKey = $"{context.Connection.RemoteIpAddress}|GUEST|{schoolText.ToUpperInvariant()}";
+    if (!rateLimiter.TryAcquire(rateLimitKey))
+    {
+        context.Response.Headers.RetryAfter = "60";
+        return Results.Json(
+            new { code = "LOGIN_RATE_LIMITED", message = "게스트 로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요." },
+            statusCode: StatusCodes.Status429TooManyRequests);
+    }
+
+    if (request is null
+        || !Guid.TryParse(schoolText, out var schoolId)
+        || !database.VerifyGuestPassword(schoolId, request.Password))
+    {
+        return Results.Json(
+            new { code = "INVALID_GUEST_CREDENTIALS", message = "학교 또는 게스트 비밀번호가 올바르지 않습니다." },
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var lifetime = serverOptions.TeacherSessionLifetime ?? TimeSpan.FromHours(8);
+    var accessToken = database.CreateGuestSession(schoolId, lifetime);
+    return Results.Ok(new
+    {
+        accessToken,
+        expiresAtUtc = DateTimeOffset.UtcNow.Add(lifetime),
+        teacherId = (Guid?)null,
+        displayName = "게스트",
+        loginName = "guest",
+        email = "",
+        classes = database.GetClassesForSchool(schoolId),
+        isAdmin = false,
+        isGuest = true,
+        profileCompleted = true,
+        schoolSelected = true,
+        school = new { id = schoolId, name = "Classroom 학교", address = "", schoolType = "" },
+        subject = "",
+        hasPassword = false,
+        legalAccepted = true
+    });
+});
+
 app.MapPost("/auth/firebase-login", async (
     HttpContext context,
     FirebaseLoginRequest? request,
@@ -299,6 +347,26 @@ app.MapGet("/auth/me", (
     ClassroomDatabase database,
     ClassroomStore store) =>
 {
+    if (TeacherAuthentication.TryGetGuestSchoolId(context.Request, database, out var guestSchoolId))
+    {
+        return Results.Ok(new
+        {
+            teacherId = (Guid?)null,
+            displayName = "게스트",
+            loginName = "guest",
+            email = "",
+            classes = database.GetClassesForSchool(guestSchoolId),
+            isAdmin = false,
+            isGuest = true,
+            profileCompleted = true,
+            schoolSelected = true,
+            school = new { id = guestSchoolId, name = "Classroom 학교", address = "", schoolType = "" },
+            subject = "",
+            hasPassword = false,
+            legalAccepted = true
+        });
+    }
+
     if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
     {
         return Results.Unauthorized();
@@ -324,6 +392,7 @@ app.MapPost("/auth/logout", (
     if (token is not null)
     {
         database.RevokeTeacherSession(token);
+        database.RevokeGuestSession(token);
     }
 
     return Results.NoContent();
@@ -375,6 +444,11 @@ app.MapGet("/api/classes", (
     ClassroomDatabase database,
     ClassroomStore store) =>
 {
+    if (TeacherAuthentication.TryGetGuestSchoolId(context.Request, database, out var guestSchoolId))
+    {
+        return Results.Ok(database.GetClassesForSchool(guestSchoolId));
+    }
+
     if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
     {
         return Results.Unauthorized();
@@ -390,6 +464,20 @@ app.MapGet("/api/classes/{classId:guid}/session", (
     ClassroomDatabase database,
     ClassroomStore store) =>
 {
+    if (TeacherAuthentication.TryGetGuestSchoolId(context.Request, database, out var guestSchoolId))
+    {
+        try
+        {
+            return Results.Ok(store.GetActiveSessionForSchool(guestSchoolId, classId));
+        }
+        catch (ClassroomStoreException exception)
+        {
+            return Results.Json(
+                new { code = exception.Code, message = exception.Message },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+    }
+
     if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
     {
         return Results.Unauthorized();
@@ -617,6 +705,68 @@ app.MapPut("/api/admin/student-exit-pin", (
     }
 });
 
+app.MapGet("/api/admin/guest-password", (
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!database.IsTeacherAdmin(teacherId)
+        || !database.GetTeacherSchoolId(teacherId, out var schoolId))
+    {
+        return Results.Json(
+            new { code = "ADMIN_REQUIRED", message = "관리자만 게스트 비밀번호를 확인할 수 있습니다." },
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    return Results.Ok(database.GetGuestPasswordStatus(schoolId));
+});
+
+app.MapPut("/api/admin/guest-password", (
+    GuestPasswordUpdateRequest? request,
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!database.IsTeacherAdmin(teacherId))
+    {
+        return Results.Json(
+            new { code = "ADMIN_REQUIRED", message = "관리자만 게스트 비밀번호를 설정할 수 있습니다." },
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    try
+    {
+        database.SetGuestPassword(teacherId, request?.Password);
+        return database.GetTeacherSchoolId(teacherId, out var schoolId)
+            ? Results.Ok(database.GetGuestPasswordStatus(schoolId))
+            : Results.Json(
+                new { code = "ADMIN_REQUIRED", message = "관리자 학교 정보를 확인할 수 없습니다." },
+                statusCode: StatusCodes.Status403Forbidden);
+    }
+    catch (ArgumentException exception)
+    {
+        return Results.Json(
+            new { code = "INVALID_GUEST_PASSWORD", message = exception.Message },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Json(
+            new { code = "ADMIN_REQUIRED", message = exception.Message },
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+});
+
 app.MapPost("/api/devices/enroll", (
     DeviceEnrollmentRequest request,
     ClassroomStore store) =>
@@ -729,6 +879,20 @@ app.MapGet("/api/classes/{classId:guid}/students", (
     ClassroomDatabase database,
     ClassroomStore store) =>
 {
+    if (TeacherAuthentication.TryGetGuestSchoolId(context.Request, database, out var guestSchoolId))
+    {
+        try
+        {
+            return Results.Ok(store.GetClassStatusesForSchool(guestSchoolId, classId));
+        }
+        catch (ClassroomStoreException exception)
+        {
+            return Results.Json(
+                new { code = exception.Code, message = exception.Message },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+    }
+
     if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
     {
         return Results.Unauthorized();

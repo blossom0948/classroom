@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.16";
+  const APP_VERSION = "0.5.17";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const state = {
@@ -33,7 +33,8 @@
     detailDeviceId: null,
     detailView: "status",
     screenFrames: new Map(),
-    studentExitPinStatus: null
+    studentExitPinStatus: null,
+    guestPasswordStatus: null
   };
 
   const $ = (id) => document.getElementById(id);
@@ -84,6 +85,7 @@
     state.studentCodes = [];
     state.adminDirectory = null;
     state.studentExitPinStatus = null;
+    state.guestPasswordStatus = null;
     state.selectedDeviceIds.clear();
     state.weatherLoaded = false;
     state.passwordVerificationId = null;
@@ -118,25 +120,46 @@
     const session = await api("/auth/me");
     state.teacher = session;
     state.classes = session.classes || [];
+    const isGuest = session.isGuest === true;
     state.classId = state.classId && state.classes.some((item) => item.id === state.classId)
       ? state.classId
       : state.classes[0]?.id || null;
-    $("teacher-name").textContent = session.displayName || "교사";
-    $("teacher-account").textContent = session.email || session.loginName || "Teacher";
-    $("teacher-role").hidden = !session.isAdmin;
+    $("teacher-name").textContent = session.displayName || (isGuest ? "게스트" : "교사");
+    $("teacher-account").textContent = isGuest
+      ? `${session.school?.name || "학교"} · 읽기 전용`
+      : session.email || session.loginName || "Teacher";
+    $("teacher-role").textContent = isGuest ? "게스트" : "관리자";
+    $("teacher-role").classList.toggle("guest-badge", isGuest);
+    $("teacher-role").hidden = !session.isAdmin && !isGuest;
     $("admins-nav").hidden = !session.isAdmin;
+    $("student-codes-nav").hidden = isGuest;
+    $("history-nav").hidden = isGuest;
+    $("settings-nav").hidden = isGuest;
     $("admin-enroll-button").disabled = !session.isAdmin || !state.classes.length;
+    $("admin-enroll-button").hidden = isGuest;
     $("admin-enroll-button").title = state.classes.length ? "학생 코드 발급" : "먼저 관리자 메뉴에서 학급을 만들어 주세요";
-    $("student-code-permission").textContent = session.isAdmin
+    $("student-code-permission").textContent = isGuest
+      ? "게스트 · 수업 현황과 학생 활동만 읽을 수 있습니다"
+      : session.isAdmin
       ? "관리자: 코드 발급 및 재발급 가능"
       : "조회 전용 · 코드는 관리자에게 요청하세요";
+    ["start-session-button", "announcement-button", "end-session-button", "screen-wall-button", "focus-on-button", "focus-off-button", "message-button", "url-button", "app-button"].forEach((id) => {
+      const button = $(id);
+      if (button) button.hidden = isGuest;
+    });
+    $("bulk-actions").hidden = isGuest;
+    if (isGuest) {
+      state.activeSection = "class";
+      document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.section === "class"));
+      document.querySelectorAll(".section-view").forEach((section) => { section.hidden = section.id !== "class-section"; });
+    }
     const select = $("class-select");
     select.innerHTML = state.classes.length
       ? state.classes.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join("")
       : '<option value="">학급 없음</option>';
     select.value = state.classId || "";
     select.disabled = !state.classes.length;
-    $("teacher-greeting").textContent = `${session.displayName || "선생님"}선생님 안녕하세요.`;
+    $("teacher-greeting").textContent = isGuest ? "게스트로 접속했습니다." : `${session.displayName || "선생님"}선생님 안녕하세요.`;
     $("school-name").textContent = session.school?.name || "학교를 설정해 주세요";
     $("school-name").classList.toggle("unconfigured", !session.school?.name);
     $("sidebar-school-name").textContent = session.school?.name || "학교를 설정해 주세요";
@@ -192,8 +215,8 @@
     $("session-caption").textContent = state.session
       ? `${state.session.subject} · ${formatTime(state.session.startedAtUtc)} 시작`
       : "활성 수업이 없습니다.";
-    $("start-session-button").hidden = Boolean(state.session) || !state.classId;
-    $("end-session-button").hidden = !state.session;
+    $("start-session-button").hidden = Boolean(state.teacher?.isGuest) || Boolean(state.session) || !state.classId;
+    $("end-session-button").hidden = Boolean(state.teacher?.isGuest) || !state.session;
     renderSelection();
   }
 
@@ -243,8 +266,11 @@
       const battery = student.batteryPercent == null ? "배터리 —" : `배터리 ${student.batteryPercent}%`;
       const selected = state.selectedDeviceIds.has(student.deviceId);
       const risk = student.activityRisk;
+      const selector = state.teacher?.isGuest
+        ? ""
+        : `<label class="student-selector" title="명령 대상 선택"><input type="checkbox" aria-label="${escapeHtml(student.studentDisplayName)} 선택" ${selected ? "checked" : ""}></label>`;
       return `<article class="student-card${selected ? " selected" : ""}" data-device-id="${student.deviceId}">
-        <label class="student-selector" title="명령 대상 선택"><input type="checkbox" aria-label="${escapeHtml(student.studentDisplayName)} 선택" ${selected ? "checked" : ""}></label>
+        ${selector}
         <div class="student-head"><div><div class="student-name">${escapeHtml(student.studentDisplayName)}</div><div class="student-device">${escapeHtml(student.computerName)}</div></div><span class="status-dot ${statusClass}">${statusText}</span></div>
         <div class="student-activity"><span class="app-icon" aria-hidden="true">▣</span><div class="activity-copy"><div class="activity-label">현재 활동</div><div class="activity-app">${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div class="activity-domain">${escapeHtml(activityContext)}</div></div></div>
         <div class="student-meta"><span>${student.studentNumber ? `${student.studentNumber}번` : "번호 —"}</span><span>${battery}</span><span>${escapeHtml(student.networkStatus || "unknown")}</span>${student.policyApplied ? '<span class="policy-tag">🔒 집중</span>' : ""}${risk?.level === "warning" ? '<span class="risk-tag">확인 필요</span>' : ""}</div>
@@ -252,13 +278,15 @@
     }).join("");
     grid.querySelectorAll(".student-card").forEach((card) => {
       const checkbox = card.querySelector("input[type=checkbox]");
-      checkbox.addEventListener("click", (event) => event.stopPropagation());
-      checkbox.addEventListener("change", () => {
-        if (checkbox.checked) state.selectedDeviceIds.add(card.dataset.deviceId);
-        else state.selectedDeviceIds.delete(card.dataset.deviceId);
-        renderStudents();
-        renderSelection();
-      });
+      if (checkbox) {
+        checkbox.addEventListener("click", (event) => event.stopPropagation());
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) state.selectedDeviceIds.add(card.dataset.deviceId);
+          else state.selectedDeviceIds.delete(card.dataset.deviceId);
+          renderStudents();
+          renderSelection();
+        });
+      }
       card.addEventListener("click", () => openDetail(card.dataset.deviceId));
     });
   }
@@ -329,7 +357,11 @@
       return;
     }
 
-    $("detail-content").innerHTML = `${header}${riskMarkup}${statusRows}${deviceRows}<div class="detail-section stack"><button class="primary wide" id="detail-screen-button">이 학생 화면 보기</button><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>`;
+    const detailActions = state.teacher?.isGuest
+      ? '<div class="detail-section"><div class="privacy-note guest-readonly-note">게스트 계정은 수업 현황과 학생 활동을 읽기 전용으로 확인합니다.</div></div>'
+      : '<div class="detail-section stack"><button class="primary wide" id="detail-screen-button">이 학생 화면 보기</button><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>';
+    $("detail-content").innerHTML = `${header}${riskMarkup}${statusRows}${deviceRows}${detailActions}`;
+    if (state.teacher?.isGuest) return;
     $("detail-screen-button").addEventListener("click", () => openStudentScreen(student.deviceId).catch((error) => showToast(error.message)));
     $("detail-message-button").addEventListener("click", () => openCommandDialog("message", [student.deviceId]));
     $("detail-revoke-button").addEventListener("click", () => revokeDevice(student).catch((error) => showToast(error.message)));
@@ -561,15 +593,18 @@
     const list = $("admin-list");
     if (list) list.innerHTML = '<div class="empty-state">관리자 목록을 불러오는 중입니다…</div>';
     if (!state.studentCodes.length) await loadStudentCodes();
-    const [directory, exitPinStatus] = await Promise.all([
+    const [directory, exitPinStatus, guestPasswordStatus] = await Promise.all([
       api("/api/admin/teachers"),
-      api("/api/admin/student-exit-pin")
+      api("/api/admin/student-exit-pin"),
+      api("/api/admin/guest-password")
     ]);
     state.adminDirectory = directory;
     state.studentExitPinStatus = exitPinStatus;
+    state.guestPasswordStatus = guestPasswordStatus;
     renderStudentAdminOptions();
     renderAdminDirectory();
     renderStudentExitPinStatus();
+    renderGuestPasswordStatus();
   }
 
   function renderStudentExitPinStatus() {
@@ -579,6 +614,15 @@
     target.textContent = status?.configured
       ? `설정됨 · 마지막 변경 ${formatTime(status.updatedAtUtc)}`
       : "미설정 · 학생 앱은 종료 비밀번호 없이 종료할 수 없습니다.";
+  }
+
+  function renderGuestPasswordStatus() {
+    const target = $("guest-password-status");
+    if (!target) return;
+    const status = state.guestPasswordStatus;
+    target.textContent = status?.configured
+      ? `설정됨 · 마지막 변경 ${formatTime(status.updatedAtUtc)}`
+      : "미설정 · 학교 게스트 로그인을 사용하려면 비밀번호를 설정하세요.";
   }
 
   async function loadOperationsStatus() {
@@ -828,6 +872,10 @@
   }
 
   function openCommandDialog(kind, targetIds = null) {
+    if (state.teacher?.isGuest) {
+      showToast("게스트 계정은 읽기 전용입니다.");
+      return;
+    }
     if (!state.session) {
       showToast("먼저 수업을 시작하세요.");
       return;
@@ -851,6 +899,7 @@
   }
 
   async function sendCommand(kind, targetIds, extra = {}) {
+    if (state.teacher?.isGuest) throw new Error("게스트 계정은 학생 장치에 명령을 보낼 수 없습니다.");
     const targets = targetIds || state.students.map((student) => student.deviceId);
     if (!targets.length) throw new Error("대상 학생 장치가 없습니다.");
     if (!state.session) throw new Error("활성 수업이 없습니다.");
@@ -877,6 +926,10 @@
   }
 
   async function openStudentScreen(deviceId = null) {
+    if (state.teacher?.isGuest) {
+      showToast("게스트 계정에서는 화면 공유를 사용할 수 없습니다.");
+      return;
+    }
     if (!state.session) {
       showToast("먼저 수업을 시작하세요.");
       return;
@@ -1227,6 +1280,15 @@
     if (results) results.hidden = true;
   }
 
+  function openGuestLoginDialog() {
+    const dialog = $("guest-login-dialog");
+    if (!dialog) return;
+    $("guest-login-form").reset();
+    setSchoolControls("guest-school-search", "guest-school-results", "guest-school-id", null);
+    $("guest-login-error").hidden = true;
+    if (!dialog.open) dialog.showModal();
+  }
+
   function syncProfileControls(session) {
     $("profile-display-name").value = session.displayName || "";
     $("profile-subject").value = session.subject || "";
@@ -1511,6 +1573,41 @@
     }
   });
 
+  $("guest-login-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const errorTarget = $("guest-login-error");
+    errorTarget.hidden = true;
+    const schoolId = $("guest-school-id").value.trim();
+    const password = $("guest-login-password").value;
+    if (!schoolId) {
+      errorTarget.textContent = "학교 검색 결과에서 학교를 선택해 주세요.";
+      errorTarget.hidden = false;
+      return;
+    }
+    if (password.length < 6) {
+      errorTarget.textContent = "게스트 비밀번호를 입력해 주세요.";
+      errorTarget.hidden = false;
+      return;
+    }
+    setAuthBusy(form, true);
+    try {
+      const result = await api("/auth/guest-login", {
+        method: "POST",
+        body: { schoolId, password }
+      });
+      state.token = result.accessToken;
+      sessionStorage.setItem("classroom.teacherToken", state.token);
+      $("guest-login-dialog").close("success");
+      await loadTeacher();
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
+    } finally {
+      setAuthBusy(form, false);
+    }
+  });
+
   $("signup-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1587,6 +1684,11 @@
       button.disabled = false;
     }
   });
+
+  document.querySelectorAll(".guest-login-button").forEach((button) => {
+    button.addEventListener("click", openGuestLoginDialog);
+  });
+  setupSchoolSearch("guest-school-search", "guest-school-results", "guest-school-id");
 
   $("forgot-password-button").addEventListener("click", async () => {
     const email = $("login-name").value.trim();
@@ -1910,6 +2012,31 @@
       $("student-exit-pin-form").reset();
       renderStudentExitPinStatus();
       showToast("학생 앱 종료 비밀번호를 저장했습니다.");
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
+    }
+  });
+  $("guest-password-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const errorTarget = $("guest-password-error");
+    errorTarget.hidden = true;
+    const password = $("guest-password").value;
+    const confirmation = $("guest-password-confirm").value;
+    try {
+      if (password.length < 6 || password.length > 64) {
+        throw new Error("게스트 비밀번호는 6~64자로 입력해 주세요.");
+      }
+      if (password !== confirmation) {
+        throw new Error("게스트 비밀번호가 일치하지 않습니다.");
+      }
+      state.guestPasswordStatus = await api("/api/admin/guest-password", {
+        method: "PUT",
+        body: { password }
+      });
+      $("guest-password-form").reset();
+      renderGuestPasswordStatus();
+      showToast("학교 게스트 비밀번호를 저장했습니다.");
     } catch (error) {
       errorTarget.textContent = error.message;
       errorTarget.hidden = false;

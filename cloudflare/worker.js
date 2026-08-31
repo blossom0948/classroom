@@ -90,6 +90,13 @@ export class ClassroomState {
       created_at_utc TEXT NOT NULL,
       revoked_at_utc TEXT
     )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS GuestSessions (
+      token_hash TEXT PRIMARY KEY,
+      school_id TEXT NOT NULL,
+      expires_at_utc TEXT NOT NULL,
+      created_at_utc TEXT NOT NULL,
+      revoked_at_utc TEXT
+    )`);
     this.exec(`CREATE TABLE IF NOT EXISTS AdministratorGrants (
       identifier TEXT PRIMARY KEY COLLATE NOCASE,
       school_id TEXT NOT NULL,
@@ -209,9 +216,18 @@ export class ClassroomState {
       updated_by_teacher_id TEXT NOT NULL,
       updated_at_utc TEXT NOT NULL
     )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS GuestPasswords (
+      school_id TEXT PRIMARY KEY,
+      password_salt TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      password_iterations INTEGER NOT NULL,
+      updated_by_teacher_id TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    )`);
     this.exec("CREATE INDEX IF NOT EXISTS idx_devices_class ON Devices(class_id, revoked_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_codes_class ON StudentCodes(class_id, revoked_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_sessions_teacher ON TeacherSessions(teacher_id, expires_at_utc)");
+    this.exec("CREATE INDEX IF NOT EXISTS idx_guest_sessions_school ON GuestSessions(school_id, expires_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_audit_class ON AuditEvents(class_id, timestamp_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_student_admin_school ON StudentAdminGrants(school_id, active)");
 
@@ -282,6 +298,7 @@ export class ClassroomState {
       }
       if (path === "/ws/student") return this.handleStudentWebSocket(request, url, cors);
       if (path === "/auth/login" && request.method === "POST") return this.login(request, cors);
+      if (path === "/auth/guest-login" && request.method === "POST") return this.guestLogin(request, cors);
       if (path === "/auth/firebase-login" && request.method === "POST") return this.firebaseLogin(request, cors);
       if (path === "/auth/me" && request.method === "GET") return this.getMe(request, cors);
       if (path === "/auth/logout" && request.method === "POST") return this.logout(request, cors);
@@ -299,6 +316,8 @@ export class ClassroomState {
       if (path === "/api/admin/teachers" && request.method === "POST") return this.setAdministrator(request, cors);
       if (path === "/api/admin/student-exit-pin" && request.method === "GET") return this.getStudentExitPinStatus(request, cors);
       if (path === "/api/admin/student-exit-pin" && request.method === "PUT") return this.setStudentExitPin(request, cors);
+      if (path === "/api/admin/guest-password" && request.method === "GET") return this.getGuestPasswordStatus(request, cors);
+      if (path === "/api/admin/guest-password" && request.method === "PUT") return this.setGuestPassword(request, cors);
       if (path === "/api/devices/enroll-code" && request.method === "POST") return this.enrollByCode(request, cors);
       if (path === "/api/devices/enroll" && request.method === "POST") {
         return responseError("ENROLLMENT_NOT_FOUND", "학생 코드로 다시 등록해 주세요.", 401, cors);
@@ -346,6 +365,33 @@ export class ClassroomState {
       return responseError("INVALID_CREDENTIALS", reason, 401, cors);
     }
     return responseJson(await this.createSessionPayload(user), 200, cors);
+  }
+
+  async guestLogin(request, cors) {
+    const body = await readJson(request);
+    const schoolId = normalizeSchoolId(body?.schoolId);
+    const password = normalizeGuestPassword(body?.password);
+    const rateKey = `${clientIp(request)}|guest|${schoolId || "unknown"}`;
+    if (!this.consumeRateLimit(rateKey, 8, 60_000)) {
+      return responseError("LOGIN_RATE_LIMITED", "게스트 로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요.", 429, cors, { "Retry-After": "60" });
+    }
+
+    const school = schoolId ? this.one("SELECT * FROM Schools WHERE id = ?", schoolId) : null;
+    const configured = schoolId ? this.one("SELECT * FROM GuestPasswords WHERE school_id = ?", schoolId) : null;
+    const valid = Boolean(
+      school
+      && configured
+      && password
+      && await verifyPassword(password, configured.password_salt, configured.password_hash, configured.password_iterations)
+    );
+    if (!valid) {
+      return responseError("INVALID_GUEST_CREDENTIALS", "학교 또는 게스트 비밀번호가 올바르지 않습니다.", 401, cors);
+    }
+
+    const token = await randomToken();
+    const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS).toISOString();
+    this.exec("INSERT INTO GuestSessions (token_hash, school_id, expires_at_utc, created_at_utc) VALUES (?, ?, ?, ?)", await sha256Text(token), schoolId, expiresAt, isoNow());
+    return responseJson(this.serializeGuestSession(token, school, expiresAt), 200, cors);
   }
 
   async firebaseLogin(request, cors) {
@@ -400,13 +446,18 @@ export class ClassroomState {
 
   async logout(request, cors) {
     const token = bearerToken(request);
-    if (token) this.exec("UPDATE TeacherSessions SET revoked_at_utc = ? WHERE token_hash = ?", isoNow(), await sha256Text(token));
+    if (token) {
+      const tokenHash = await sha256Text(token);
+      this.exec("UPDATE TeacherSessions SET revoked_at_utc = ? WHERE token_hash = ?", isoNow(), tokenHash);
+      this.exec("UPDATE GuestSessions SET revoked_at_utc = ? WHERE token_hash = ?", isoNow(), tokenHash);
+    }
     return new Response(null, { status: 204, headers: cors });
   }
 
   async updateProfile(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 프로필을 변경할 수 없습니다.", 403, cors);
     const body = await readJson(request);
     const displayName = text(body?.displayName, 80);
     const subject = text(body?.subject, 128);
@@ -448,6 +499,7 @@ export class ClassroomState {
   async changePassword(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 비밀번호를 변경할 수 없습니다.", 403, cors);
     const body = await readJson(request);
     const newPassword = text(body?.newPassword, 256);
     if (!newPassword || newPassword.length < 6) {
@@ -471,6 +523,7 @@ export class ClassroomState {
   async startPasswordVerification(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 계정 보안을 변경할 수 없습니다.", 403, cors);
     const email = normalizeEmail(user.firebase_email);
     if (!email) return responseError("PASSWORD_EMAIL_REQUIRED", "확인 메일을 받을 이메일이 계정에 없습니다.", 400, cors);
     if (!this.consumeRateLimit(`${clientIp(request)}|password-verification|${user.id}`, 3, 10 * 60_000)) {
@@ -511,6 +564,7 @@ export class ClassroomState {
   async verifyPasswordVerification(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 계정 보안을 변경할 수 없습니다.", 403, cors);
     const body = await readJson(request);
     const verificationId = text(body?.verificationId, 80);
     const code = text(body?.code, 6);
@@ -564,10 +618,11 @@ export class ClassroomState {
   }
 
   async searchSchools(request, url, cors) {
-    const user = await this.authenticate(request);
-    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
     const query = text(url.searchParams.get("q"), 80);
     if (query.length < 2) return responseJson([], 200, cors);
+    if (!this.consumeRateLimit(`${clientIp(request)}|school-search`, 30, 60_000)) {
+      return responseError("SCHOOL_SEARCH_RATE_LIMITED", "학교 검색 요청이 많습니다. 잠시 후 다시 시도해 주세요.", 429, cors, { "Retry-After": "60" });
+    }
     const apiKey = String(this.env.NEIS_API_KEY || "").trim();
     if (!apiKey) {
       return responseError("SCHOOL_SEARCH_NOT_CONFIGURED", "학교 검색을 준비하는 중입니다. 관리자에게 NEIS 인증키 설정을 요청해 주세요.", 503, cors);
@@ -690,6 +745,7 @@ export class ClassroomState {
   async startSession(request, classId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 수업을 시작할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const body = await readJson(request);
     const subject = text(body?.subject, 128) || this.one("SELECT default_subject FROM Classes WHERE id = ?", classId)?.default_subject || "수업";
@@ -708,6 +764,7 @@ export class ClassroomState {
   async endSession(request, classId, sessionId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 수업을 종료할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const session = this.one("SELECT * FROM ClassSessions WHERE session_id = ? AND class_id = ? AND ended_at_utc IS NULL", sessionId, classId);
     if (!session) return responseError("SESSION_NOT_FOUND", "진행 중인 수업을 찾지 못했습니다.", 404, cors);
@@ -734,6 +791,7 @@ export class ClassroomState {
   async getScreens(request, classId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 화면 공유를 사용할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const now = Date.now();
     const devices = new Map(this.all("SELECT device_id, student_display_name FROM Devices WHERE class_id = ? AND revoked_at_utc IS NULL", classId)
@@ -760,6 +818,7 @@ export class ClassroomState {
   async revokeDevice(request, classId, deviceId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 장치 연결을 변경할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const device = this.one("SELECT * FROM Devices WHERE device_id = ? AND class_id = ? AND revoked_at_utc IS NULL", deviceId, classId);
     if (!device) return responseError("DEVICE_NOT_FOUND", "학생 장치를 찾지 못했습니다.", 404, cors);
@@ -845,6 +904,7 @@ export class ClassroomState {
   async getStudentCodes(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 학생 코드를 확인할 수 없습니다.", 403, cors);
     const rows = this.all(`SELECT sc.*, c.name AS class_name, c.default_subject AS class_subject, c.grade AS class_grade, c.class_number AS class_class_number, u.display_name AS created_by_display_name
       FROM StudentCodes sc
       JOIN Classes c ON c.id = sc.class_id
@@ -924,6 +984,7 @@ export class ClassroomState {
   async queueCommand(request, classId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 학생 장치에 명령을 보낼 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const body = await readJson(request);
     const activeSession = this.one("SELECT * FROM ClassSessions WHERE class_id = ? AND ended_at_utc IS NULL ORDER BY started_at_utc DESC LIMIT 1", classId);
@@ -971,6 +1032,7 @@ export class ClassroomState {
   async getCommandStatus(request, classId, requestId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 명령 기록을 확인할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const command = this.one("SELECT * FROM Commands WHERE request_id = ? AND class_id = ?", requestId, classId);
     if (!command) return responseError("COMMAND_NOT_FOUND", "명령 기록을 찾지 못했습니다.", 404, cors);
@@ -983,6 +1045,7 @@ export class ClassroomState {
   async getAudit(request, classId, url, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 감사 기록을 확인할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit")) || 100, 200));
     const entries = this.all(`SELECT * FROM AuditEvents WHERE class_id = ? ORDER BY timestamp_utc DESC LIMIT ?`, classId, limit);
@@ -1063,6 +1126,40 @@ export class ClassroomState {
       updated_at_utc = excluded.updated_at_utc`,
     user.school_id, encoded.salt, encoded.hash, PASSWORD_ITERATIONS, user.id, now);
     this.audit({ schoolId: user.school_id, teacherId: user.id, action: "STUDENT_EXIT_PIN", result: "SET" });
+    return responseJson({ configured: true, updatedAtUtc: now }, 200, cors);
+  }
+
+  async getGuestPasswordStatus(request, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest || !user.is_admin) return responseError("ADMIN_REQUIRED", "관리자만 게스트 비밀번호를 확인할 수 있습니다.", 403, cors);
+    const password = this.one("SELECT updated_at_utc FROM GuestPasswords WHERE school_id = ?", user.school_id);
+    return responseJson({
+      configured: Boolean(password),
+      updatedAtUtc: password?.updated_at_utc || null
+    }, 200, cors);
+  }
+
+  async setGuestPassword(request, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest || !user.is_admin) return responseError("ADMIN_REQUIRED", "관리자만 게스트 비밀번호를 설정할 수 있습니다.", 403, cors);
+    const body = await readJson(request);
+    const password = normalizeGuestPassword(body?.password);
+    if (!password) return responseError("INVALID_GUEST_PASSWORD", "게스트 비밀번호는 6~64자로 입력해 주세요.", 400, cors);
+    const encoded = await hashPassword(password);
+    const now = isoNow();
+    this.exec(`INSERT INTO GuestPasswords (
+      school_id, password_salt, password_hash, password_iterations, updated_by_teacher_id, updated_at_utc
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(school_id) DO UPDATE SET
+      password_salt = excluded.password_salt,
+      password_hash = excluded.password_hash,
+      password_iterations = excluded.password_iterations,
+      updated_by_teacher_id = excluded.updated_by_teacher_id,
+      updated_at_utc = excluded.updated_at_utc`,
+    user.school_id, encoded.salt, encoded.hash, PASSWORD_ITERATIONS, user.id, now);
+    this.audit({ schoolId: user.school_id, teacherId: user.id, action: "GUEST_PASSWORD", result: "SET" });
     return responseJson({ configured: true, updatedAtUtc: now }, 200, cors);
   }
 
@@ -1336,7 +1433,23 @@ export class ClassroomState {
     const now = isoNow();
     const row = this.one(`SELECT u.* FROM TeacherSessions s JOIN Users u ON u.id = s.teacher_id
       WHERE s.token_hash = ? AND s.revoked_at_utc IS NULL AND s.expires_at_utc > ?`, await sha256Text(token), now);
-    return row || null;
+    if (row) return row;
+    const guest = this.one("SELECT token_hash, school_id FROM GuestSessions WHERE token_hash = ? AND revoked_at_utc IS NULL AND expires_at_utc > ?", await sha256Text(token), now);
+    if (!guest || !this.one("SELECT id FROM Schools WHERE id = ?", guest.school_id)) return null;
+    return {
+      id: `guest:${guest.token_hash}`,
+      school_id: guest.school_id,
+      login_name: "guest",
+      display_name: "게스트",
+      subject: "",
+      firebase_email: "",
+      password_hash: null,
+      is_admin: 0,
+      profile_completed: 1,
+      school_selected: 1,
+      legal_accepted_at_utc: isoNow(),
+      is_guest: 1
+    };
   }
 
   async createSessionPayload(user) {
@@ -1344,7 +1457,27 @@ export class ClassroomState {
     const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS).toISOString();
     this.exec("INSERT INTO TeacherSessions (token_hash, teacher_id, expires_at_utc, created_at_utc) VALUES (?, ?, ?, ?)", await sha256Text(token), user.id, expiresAt, isoNow());
     const session = this.serializeTeacherSession(user);
-    return { accessToken: token, expiresAtUtc: expiresAt, teacherId: user.id, displayName: user.display_name, loginName: user.login_name, email: user.firebase_email || "", classes: session.classes, isAdmin: Boolean(user.is_admin), profileCompleted: Boolean(user.profile_completed), schoolSelected: session.schoolSelected, school: session.school, subject: user.subject || "", hasPassword: Boolean(user.password_hash), legalAccepted: Boolean(user.legal_accepted_at_utc) };
+    return { accessToken: token, expiresAtUtc: expiresAt, teacherId: user.id, displayName: user.display_name, loginName: user.login_name, email: user.firebase_email || "", classes: session.classes, isAdmin: Boolean(user.is_admin), isGuest: false, profileCompleted: Boolean(user.profile_completed), schoolSelected: session.schoolSelected, school: session.school, subject: user.subject || "", hasPassword: Boolean(user.password_hash), legalAccepted: Boolean(user.legal_accepted_at_utc) };
+  }
+
+  serializeGuestSession(token, school, expiresAtUtc) {
+    return {
+      accessToken: token,
+      expiresAtUtc,
+      teacherId: null,
+      displayName: "게스트",
+      loginName: "guest",
+      email: "",
+      classes: this.classesForTeacher({ school_id: school.id, school_selected: 1, is_admin: 0, id: "guest" }),
+      isAdmin: false,
+      isGuest: true,
+      profileCompleted: true,
+      schoolSelected: true,
+      school: { id: school.id, name: school.name, address: school.address || "", schoolType: school.school_type || "" },
+      subject: "",
+      hasPassword: false,
+      legalAccepted: true
+    };
   }
 
   serializeTeacherSession(user) {
@@ -1356,6 +1489,7 @@ export class ClassroomState {
       email: user.firebase_email || "",
       classes: this.classesForTeacher(user),
       isAdmin: Boolean(user.is_admin),
+      isGuest: Boolean(user.is_guest),
       profileCompleted: Boolean(user.profile_completed),
       schoolSelected: Boolean(user.school_selected && school),
       school: school ? { id: school.id, name: school.name, address: school.address || "", schoolType: school.school_type || "" } : null,
@@ -1514,6 +1648,21 @@ function text(value, maxLength) {
 
 function normalizeIdentifier(value) { return text(value, 254).toLowerCase(); }
 function normalizeEmail(value) { return normalizeIdentifier(value); }
+function normalizeSchoolId(value) {
+  const normalized = text(value, 120);
+  return /^(?:neis:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(normalized)
+    ? normalized
+    : "";
+}
+function normalizeGuestPassword(value) {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim();
+  return normalized.length >= 6
+    && normalized.length <= 64
+    && !/[\u0000-\u001F\u007F]/.test(normalized)
+    ? normalized
+    : "";
+}
 function normalizeJoinCode(value) { return text(value, 32).toUpperCase().replace(/[^A-Z0-9]/g, ""); }
 function normalizeStudentExitPin(value) {
   if (typeof value !== "string") return "";
