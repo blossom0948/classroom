@@ -1,7 +1,8 @@
 (() => {
-  const APP_VERSION = "0.5.23";
+  const APP_VERSION = "0.5.24";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
+  const cookieSessionEnabled = runtimeConfig.cookieSession === true;
 
   const TEACHER_TOKEN_KEY = "classroom.teacherToken";
 
@@ -18,11 +19,17 @@
   }
 
   function readTeacherToken() {
+    if (cookieSessionEnabled) return null;
     return storageGet("localStorage", TEACHER_TOKEN_KEY)
       || storageGet("sessionStorage", TEACHER_TOKEN_KEY);
   }
 
   function storeTeacherToken(token, isGuest = false) {
+    if (cookieSessionEnabled) {
+      storageRemove("localStorage", TEACHER_TOKEN_KEY);
+      storageRemove("sessionStorage", TEACHER_TOKEN_KEY);
+      return;
+    }
     if (!token) return;
     if (isGuest) {
       storageRemove("localStorage", TEACHER_TOKEN_KEY);
@@ -77,9 +84,6 @@
     studentSort: ["number", "name", "status"].includes(localStorage.getItem("classroom.studentSort"))
       ? localStorage.getItem("classroom.studentSort")
       : "number",
-    studentDensity: ["comfortable", "compact"].includes(localStorage.getItem("classroom.studentDensity"))
-      ? localStorage.getItem("classroom.studentDensity")
-      : "comfortable"
   };
 
   const $ = (id) => document.getElementById(id);
@@ -92,16 +96,24 @@
     return apiOrigin ? `${apiOrigin}${path}` : path;
   }
 
+  function hasTeacherSession() {
+    return Boolean(state.teacher || state.token);
+  }
+
   async function api(path, options = {}) {
     const headers = { Accept: "application/json", ...(options.headers || {}) };
-    if (state.token) headers.Authorization = `Bearer ${state.token}`;
+    if (!cookieSessionEnabled && state.token) headers.Authorization = `Bearer ${state.token}`;
     if (options.body && typeof options.body !== "string") {
       headers["Content-Type"] = "application/json";
       options.body = JSON.stringify(options.body);
     }
     let response;
     try {
-      response = await fetch(apiUrl(path), { ...options, headers });
+      response = await fetch(apiUrl(path), {
+        ...options,
+        headers,
+        credentials: cookieSessionEnabled ? "include" : "same-origin"
+      });
     } catch (_) {
       throw new Error("Classroom 서버에 연결할 수 없습니다. 서버 주소와 배포 상태를 확인하세요.");
     }
@@ -109,6 +121,13 @@
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("json")) payload = await response.json();
     if (response.status === 401) {
+      if (cookieSessionEnabled) {
+        fetch(apiUrl("/auth/logout"), {
+          method: "POST",
+          headers: { Accept: "application/json" },
+          credentials: "include"
+        }).catch(() => {});
+      }
       clearSession();
       throw new Error("로그인이 만료되었습니다.");
     }
@@ -155,6 +174,11 @@
     landingView.hidden = false;
     loginView.hidden = true;
     appView.hidden = true;
+  }
+
+  function applySessionToken(result, isGuest = false) {
+    state.token = cookieSessionEnabled ? null : (result?.accessToken || null);
+    storeTeacherToken(result?.accessToken, isGuest);
   }
 
   function showToast(message) {
@@ -381,7 +405,7 @@
   }
 
   function scheduleNextClassRefresh() {
-    if (!state.token) return;
+    if (!hasTeacherSession()) return;
     if (state.pollTimer) clearTimeout(state.pollTimer);
     const baseDelay = document.visibilityState === "visible" ? 2_000 : 12_000;
     const retryDelay = state.refreshFailureCount
@@ -513,16 +537,7 @@
 
   function renderStudentViewControls() {
     const sort = $("student-sort");
-    const densityButton = $("student-density-button");
-    const grid = $("student-grid");
     if (sort) sort.value = state.studentSort;
-    if (densityButton) {
-      const compact = state.studentDensity === "compact";
-      densityButton.textContent = compact ? "여유 보기" : "촘촘히 보기";
-      densityButton.setAttribute("aria-pressed", String(compact));
-      densityButton.title = compact ? "카드 간격을 넓게 표시" : "카드를 더 촘촘하게 표시";
-    }
-    if (grid) grid.dataset.density = state.studentDensity;
   }
 
   function renderRefreshStatus() {
@@ -1946,8 +1961,7 @@
       }
     });
     sessionStorage.removeItem("classroom.pendingFirebaseProfile");
-    state.token = result.accessToken;
-    storeTeacherToken(state.token);
+    applySessionToken(result);
     await loadTeacher();
   }
 
@@ -1975,8 +1989,7 @@
         await finishFirebaseLogin(credentials);
       } else {
         const result = await api("/auth/login", { method: "POST", body: { loginName, password } });
-        state.token = result.accessToken;
-        storeTeacherToken(state.token);
+        applySessionToken(result);
         await loadTeacher();
       }
     } catch (error) {
@@ -2010,8 +2023,7 @@
         method: "POST",
         body: { schoolId, password }
       });
-      state.token = result.accessToken;
-      storeTeacherToken(state.token, true);
+      applySessionToken(result, true);
       $("guest-login-dialog").close("success");
       await loadTeacher();
     } catch (error) {
@@ -2226,11 +2238,6 @@
   $("student-sort").addEventListener("change", (event) => {
     state.studentSort = event.target.value;
     localStorage.setItem("classroom.studentSort", state.studentSort);
-    renderStudents();
-  });
-  $("student-density-button").addEventListener("click", () => {
-    state.studentDensity = state.studentDensity === "comfortable" ? "compact" : "comfortable";
-    localStorage.setItem("classroom.studentDensity", state.studentDensity);
     renderStudents();
   });
   $("student-code-search").addEventListener("input", renderStudentCodes);
@@ -2522,18 +2529,18 @@
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       checkForAppUpdate();
-      if (state.token) refreshClass().catch(() => {});
+      if (hasTeacherSession()) refreshClass().catch(() => {});
     }
-    if (state.token) startClassPolling();
+    if (hasTeacherSession()) startClassPolling();
   });
   window.addEventListener("online", () => {
-    if (state.token) {
+    if (hasTeacherSession()) {
       refreshClass().catch(() => {});
       startClassPolling();
     }
   });
   window.addEventListener("offline", () => {
-    if (!state.token) return;
+    if (!hasTeacherSession()) return;
     state.lastRefreshError = "인터넷 연결이 끊겼습니다.";
     renderRefreshStatus();
   });
@@ -2549,12 +2556,14 @@
     }, 250);
   }
 
-  if (state.token) {
+  if (state.token || cookieSessionEnabled) {
     loadTeacher().catch((error) => {
       clearSession();
-      showAuth("login");
-      loginError.textContent = error.message;
-      loginError.hidden = false;
+      if (!cookieSessionEnabled) {
+        showAuth("login");
+        loginError.textContent = error.message;
+        loginError.hidden = false;
+      }
     });
   } else if (window.ClassroomFirebaseAuth?.isConfigured()) {
     window.ClassroomFirebaseAuth.consumeRedirectResult()

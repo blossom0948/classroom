@@ -7,6 +7,8 @@ const ROOT_CLASS_ID = "42ab8f3a-0e8a-47bc-a543-7b7892fa1e00";
 const ROOT_LOGIN = "blossom0948";
 const ROOT_EMAIL = "blossom0948@gmail.com";
 const SESSION_LIFETIME_MS = 1000 * 60 * 60 * 12;
+const SESSION_COOKIE_NAME = "__Host-classroom-session";
+const SESSION_COOKIE_MAX_AGE_SECONDS = Math.floor(SESSION_LIFETIME_MS / 1000);
 const ONLINE_WINDOW_MS = 75 * 1000;
 const PASSWORD_ITERATIONS = 100_000;
 const PASSWORD_VERIFICATION_LIFETIME_MS = 10 * 60 * 1000;
@@ -366,7 +368,8 @@ export class ClassroomState {
         : "아이디 또는 비밀번호가 올바르지 않습니다.";
       return responseError("INVALID_CREDENTIALS", reason, 401, cors);
     }
-    return responseJson(await this.createSessionPayload(user), 200, cors);
+    const payload = await this.createSessionPayload(user);
+    return sessionResponse(payload, 200, cors, request, payload.accessToken);
   }
 
   async guestLogin(request, cors) {
@@ -393,7 +396,8 @@ export class ClassroomState {
     const token = await randomToken();
     const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS).toISOString();
     this.exec("INSERT INTO GuestSessions (token_hash, school_id, expires_at_utc, created_at_utc) VALUES (?, ?, ?, ?)", await sha256Text(token), schoolId, expiresAt, isoNow());
-    return responseJson(this.serializeGuestSession(token, school, expiresAt), 200, cors);
+    const payload = this.serializeGuestSession(token, school, expiresAt);
+    return sessionResponse(payload, 200, cors, request, token, true);
   }
 
   async firebaseLogin(request, cors) {
@@ -437,7 +441,8 @@ export class ClassroomState {
       this.recordLegalConsent(user.id);
       user = this.one("SELECT * FROM Users WHERE id = ?", user.id);
     }
-    return responseJson(await this.createSessionPayload(user), 200, cors);
+    const payload = await this.createSessionPayload(user);
+    return sessionResponse(payload, 200, cors, request, payload.accessToken);
   }
 
   async getMe(request, cors) {
@@ -447,13 +452,15 @@ export class ClassroomState {
   }
 
   async logout(request, cors) {
-    const token = bearerToken(request);
+    const token = sessionToken(request);
     if (token) {
       const tokenHash = await sha256Text(token);
       this.exec("UPDATE TeacherSessions SET revoked_at_utc = ? WHERE token_hash = ?", isoNow(), tokenHash);
       this.exec("UPDATE GuestSessions SET revoked_at_utc = ? WHERE token_hash = ?", isoNow(), tokenHash);
     }
-    return new Response(null, { status: 204, headers: cors });
+    const headers = new Headers(cors);
+    if (shouldUseCookieSession(request)) headers.set("Set-Cookie", clearSessionCookie());
+    return new Response(null, { status: 204, headers });
   }
 
   async updateProfile(request, cors) {
@@ -517,7 +524,7 @@ export class ClassroomState {
     const encoded = await hashPassword(newPassword);
     this.exec(`UPDATE Users SET password_salt = ?, password_hash = ?, password_iterations = ?, updated_at_utc = ? WHERE id = ?`, encoded.salt, encoded.hash, PASSWORD_ITERATIONS, isoNow(), user.id);
     this.exec("UPDATE PasswordVerifications SET consumed_at_utc = ? WHERE verification_id = ?", isoNow(), verification.verification_id);
-    const currentToken = bearerToken(request);
+    const currentToken = sessionToken(request);
     if (currentToken) this.exec("UPDATE TeacherSessions SET revoked_at_utc = ? WHERE teacher_id = ? AND token_hash <> ? AND revoked_at_utc IS NULL", isoNow(), user.id, await sha256Text(currentToken));
     return new Response(null, { status: 204, headers: cors });
   }
@@ -1430,7 +1437,7 @@ export class ClassroomState {
   }
 
   async authenticate(request) {
-    const token = bearerToken(request);
+    const token = sessionToken(request);
     if (!token) return null;
     const now = isoNow();
     const row = this.one(`SELECT u.* FROM TeacherSessions s JOIN Users u ON u.id = s.teacher_id
@@ -1600,6 +1607,7 @@ function corsHeaders(request, env) {
     "Referrer-Policy": "no-referrer",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Credentials": "true",
     "Access-Control-Max-Age": "86400"
   });
   if (origin && allowed.includes(origin)) {
@@ -1624,6 +1632,30 @@ function responseError(code, message, status, cors, extraHeaders = {}) {
   return responseJson({ code, message }, status, cors, extraHeaders);
 }
 
+function shouldUseCookieSession(request) {
+  return request.headers.get("X-Classroom-Proxy") === "cloudflare-pages";
+}
+
+function sessionResponse(payload, status, cors, request, token, isGuest = false) {
+  if (!shouldUseCookieSession(request)) return responseJson(payload, status, cors);
+  const { accessToken: _accessToken, ...safePayload } = payload || {};
+  return responseJson(
+    safePayload,
+    status,
+    cors,
+    { "Set-Cookie": sessionCookie(token, isGuest) }
+  );
+}
+
+function sessionCookie(token, isGuest) {
+  const maxAge = isGuest ? "" : `; Max-Age=${SESSION_COOKIE_MAX_AGE_SECONDS}`;
+  return `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Lax${maxAge}`;
+}
+
+function clearSessionCookie() {
+  return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+}
+
 async function readJson(request) {
   const contentType = request.headers.get("Content-Type") || "";
   if (!contentType.includes("application/json")) return null;
@@ -1633,6 +1665,21 @@ async function readJson(request) {
 function bearerToken(request) {
   const authorization = request.headers.get("Authorization") || "";
   return authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : null;
+}
+
+function cookieToken(request) {
+  const cookieHeader = request.headers.get("Cookie") || "";
+  for (const item of cookieHeader.split(";")) {
+    const separator = item.indexOf("=");
+    if (separator < 0 || item.slice(0, separator).trim() !== SESSION_COOKIE_NAME) continue;
+    const value = item.slice(separator + 1).trim();
+    try { return decodeURIComponent(value) || null; } catch (_) { return null; }
+  }
+  return null;
+}
+
+function sessionToken(request) {
+  return bearerToken(request) || cookieToken(request);
 }
 
 function clientIp(request) {

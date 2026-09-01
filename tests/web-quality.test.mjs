@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [html, script, styles] = await Promise.all([
+const [html, script, styles, updater, helper] = await Promise.all([
   readFile(new URL("../src/Classroom.Server/wwwroot/index.html", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/app.js", import.meta.url), "utf8"),
-  readFile(new URL("../src/Classroom.Server/wwwroot/styles.css", import.meta.url), "utf8")
+  readFile(new URL("../src/Classroom.Server/wwwroot/styles.css", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Service/StudentUpdateWorker.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Service/StudentUpdateHelper.cs", import.meta.url), "utf8")
 ]);
 
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
@@ -29,17 +31,24 @@ assert.match(script, /Array\.isArray\(students\)/, "Malformed student responses 
 assert.doesNotMatch(script, /\$\("security-setting"\)\.textContent/, "Removed settings UI must stay null-safe.");
 assert.match(html, /id="class-sync-status"/, "The console needs a visible sync recovery status.");
 assert.match(html, /id="student-sort"/, "The class roster needs a sorting control.");
-assert.match(html, /id="student-density-button"/, "The class roster needs a density control.");
+assert.doesNotMatch(html, /id="student-density-button"/, "The unused density control should not occupy the classroom toolbar.");
 assert.match(html, /id="close-console-button"/, "Account users need an in-app close affordance.");
 assert.match(html, /id="console-close-dialog"/, "Closing the account console needs a branded confirmation dialog.");
 assert.match(html, /id="confirm-dialog"/, "Destructive classroom actions need branded confirmations.");
 assert.match(html, /id="class-select-menu"/, "The primary class picker needs a branded listbox.");
 assert.match(script, /localStorage.*TEACHER_TOKEN_KEY|TEACHER_TOKEN_KEY[\s\S]*localStorage/, "Account tokens must survive closing the console.");
+assert.match(script, /cookieSessionEnabled/, "Production sessions must use the HttpOnly cookie mode.");
+assert.match(script, /credentials: cookieSessionEnabled \? "include"/, "Cookie sessions must send same-origin credentials.");
 assert.doesNotMatch(script, /\bconfirm\(/, "Native browser confirmation prompts should not be used in the console.");
 assert.match(styles, /@media \(max-width: 820px\)/, "The mobile shell must keep a compact breakpoint.");
 assert.match(styles, /\.command-dialog\s*\{[\s\S]*max-height:/, "Dialogs must stay inside the viewport.");
 assert.match(styles, /\.class-select-menu\s*\{/, "The class picker menu must use the console visual system.");
 assert.match(styles, /#settings-section > \.password-card\s*\{[\s\S]*grid-column: 1;[\s\S]*grid-row: 3;/, "Desktop settings must keep password controls in the compact left column.");
 assert.match(styles, /\.teacher-greeting\s*\{[\s\S]*text-wrap: balance;[\s\S]*word-break: keep-all;/, "Long greetings must wrap at readable word boundaries on phones.");
+assert.match(styles, /writing-mode: horizontal-tb/, "Console labels must never fall into vertical writing mode.");
+assert.match(styles, /\.class-select-menu \{[\s\S]*z-index: 300;/, "The class picker must stay above the dashboard cards.");
+assert.match(updater, /UPDATE_APPLYING/, "Student updates must report the immediate apply state.");
+assert.doesNotMatch(updater, /MoveFileEx|DelayUntilReboot|next-windows-start|Windows를 다시 시작하면/, "Student updates must not wait for a Windows reboot.");
+assert.match(helper, /CreateProcessAsUser/, "The update helper must be able to restart the student UI in the interactive session.");
 
 console.log("PASS Classroom web quality guards and responsive UI contracts");

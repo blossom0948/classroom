@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using Blossom.Classroom.Protocol.Models;
 using Blossom.Classroom.Student.Desktop.Commands;
 using Blossom.Classroom.Student.Desktop.Configuration;
@@ -15,31 +16,27 @@ public sealed class StudentDesktopForm : Form
     private readonly Func<CancellationToken, Task<DesktopUpdateCheckResult>> updateChecker;
     private readonly Label connectionLabel = CreateLabel("● 서비스 연결 대기 중", 11, Color.DarkOrange);
     private readonly Label serverLabel = CreateLabel("● Classroom 서버 재연결 중", 11, Color.DarkOrange);
-    private readonly Label activityLabel = CreateLabel("현재 앱: 확인 중", 11, Color.FromArgb(35, 44, 58));
-    private readonly Label screenSharingLabel = CreateLabel("● 화면 공유 중 · 교사 콘솔에 저화질 화면이 표시됩니다", 11, Color.FromArgb(188, 42, 52));
-    private readonly Button helpButton = new()
-    {
-        Text = "도움 요청",
-        BackColor = Color.FromArgb(238, 243, 255),
-        FlatStyle = FlatStyle.Flat,
-        ForeColor = Color.FromArgb(49, 87, 213),
-        UseVisualStyleBackColor = false
-    };
-    private readonly Label helpLabel = CreateLabel("도움이 필요하면 선생님께 요청을 보낼 수 있습니다.", 9, Color.DimGray);
-    private readonly Button updateButton = new()
+    private readonly Label screenSharingLabel = CreateLabel("화면 공유 꺼짐 · 수업 중 필요할 때 교사 콘솔에 표시됩니다", 10, Color.FromArgb(74, 91, 117));
+    private readonly RoundedButton updateButton = new()
     {
         Text = "업데이트 확인",
-        BackColor = Color.FromArgb(56, 91, 223),
-        FlatStyle = FlatStyle.Flat,
-        ForeColor = Color.White,
-        UseVisualStyleBackColor = false
+        FillColor = Color.FromArgb(55, 96, 230),
+        HoverColor = Color.FromArgb(43, 79, 204),
+        TextColor = Color.White
     };
-    private readonly Label updateLabel = CreateLabel("자동 업데이트: 시작 후 확인 · 15분마다 재확인", 9, Color.DimGray);
+    private readonly RoundedButton exitButton = new()
+    {
+        Text = "프로그램 종료",
+        FillColor = Color.FromArgb(255, 255, 255),
+        HoverColor = Color.FromArgb(255, 242, 242),
+        TextColor = Color.FromArgb(184, 57, 68),
+        BorderColor = Color.FromArgb(241, 178, 184)
+    };
+    private readonly Label updateLabel = CreateLabel("자동 업데이트 · 시작 후와 15분마다 확인", 9, Color.FromArgb(74, 91, 117));
     private readonly Label deviceLabel;
     private readonly NotifyIcon trayIcon = new();
     private readonly System.Windows.Forms.Timer disconnectFailsafeTimer = new() { Interval = 60_000 };
     private bool screenSharingActive;
-    private bool helpRequested;
     private bool approvedExit;
     private bool exitPromptOpen;
     private FocusOverlayForm? focusOverlay;
@@ -54,78 +51,81 @@ public sealed class StudentDesktopForm : Form
         this.statusProvider = statusProvider;
         this.exitPinVerifier = exitPinVerifier;
         this.updateChecker = updateChecker;
-        deviceLabel = CreateLabel($"장치: {options.DeviceId:D}", 9, Color.DimGray);
+        deviceLabel = CreateLabel($"장치 ID  {options.DeviceId:D}", 9, Color.FromArgb(104, 121, 147));
         Text = "Classroom Student";
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = true;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(620, 468);
-        MinimumSize = new Size(620, 468);
-        BackColor = Color.White;
+        ClientSize = new Size(560, 410);
+        MinimumSize = new Size(560, 410);
+        BackColor = Color.FromArgb(241, 245, 252);
         Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
 
-        var title = CreateLabel("Classroom Student", 20, Color.FromArgb(27, 42, 68));
-        title.Font = new Font("Segoe UI Semibold", 20F, FontStyle.Bold, GraphicsUnit.Point);
-        title.Location = new Point(28, 22);
+        var header = new Panel
+        {
+            Location = new Point(0, 0),
+            Size = new Size(ClientSize.Width, 112),
+            BackColor = Color.FromArgb(20, 38, 70),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+        };
+        var title = CreateLabel("Classroom Student", 22, Color.White);
+        title.Font = new Font("Segoe UI Semibold", 22F, FontStyle.Bold, GraphicsUnit.Point);
+        title.Location = new Point(28, 21);
         title.AutoSize = true;
+        var version = CreateLabel($"학생 화면  ·  v{options.AgentVersion}", 10, Color.FromArgb(183, 205, 255));
+        version.Location = new Point(30, 67);
+        version.AutoSize = true;
+        header.Controls.AddRange([title, version]);
 
-        connectionLabel.Location = new Point(30, 72);
+        var connectionCard = new RoundedPanel
+        {
+            Location = new Point(24, 132),
+            Size = new Size(512, 78),
+            BackColor = Color.White,
+            BorderColor = Color.FromArgb(217, 226, 240),
+            CornerRadius = 16
+        };
+        var statusCaption = CreateLabel("연결 상태", 9, Color.FromArgb(104, 121, 147));
+        statusCaption.Location = new Point(16, 12);
+        statusCaption.AutoSize = true;
+        connectionLabel.Location = new Point(16, 31);
         connectionLabel.AutoSize = true;
-        serverLabel.Location = new Point(30, 101);
+        serverLabel.Location = new Point(250, 31);
         serverLabel.AutoSize = true;
-        activityLabel.Location = new Point(30, 151);
-        activityLabel.AutoSize = false;
-        activityLabel.AutoEllipsis = true;
-        activityLabel.Size = new Size(560, 54);
-        activityLabel.TextAlign = ContentAlignment.TopLeft;
+        connectionCard.Controls.AddRange([statusCaption, connectionLabel, serverLabel]);
 
-        screenSharingLabel.Location = new Point(30, 211);
+        screenSharingLabel.Location = new Point(40, 230);
         screenSharingLabel.AutoSize = false;
         screenSharingLabel.AutoEllipsis = true;
-        screenSharingLabel.Size = new Size(560, 34);
-        screenSharingLabel.Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold, GraphicsUnit.Point);
-        screenSharingLabel.Visible = false;
+        screenSharingLabel.Size = new Size(480, 24);
+        screenSharingLabel.Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold, GraphicsUnit.Point);
 
-        var transparency = CreateLabel(
-            "평소에는 현재 앱·창 제목·연결 상태만 학교 콘솔에 표시됩니다.\n교사가 수업 중 ‘화면 보기’를 켜면 이 화면에 공유 중 표시가 나타납니다.\n키 입력·오디오·임의 원격 셸은 수집하지 않습니다.",
-            10,
-            Color.FromArgb(92, 102, 118));
-        transparency.Location = new Point(30, 253);
-        transparency.AutoSize = true;
-
-        updateButton.Location = new Point(30, 330);
-        updateButton.Size = new Size(145, 34);
-        updateButton.FlatAppearance.BorderSize = 0;
-        updateButton.Click += async (_, _) => await CheckForUpdatesAsync();
-
-        helpButton.Location = new Point(185, 330);
-        helpButton.Size = new Size(126, 34);
-        helpButton.Enabled = false;
-        helpButton.FlatAppearance.BorderColor = Color.FromArgb(187, 201, 246);
-        helpButton.FlatAppearance.BorderSize = 1;
-        helpButton.Click += (_, _) => SetHelpRequested(!helpRequested, announce: true);
-
-        updateLabel.Location = new Point(323, 326);
+        updateLabel.Location = new Point(40, 263);
         updateLabel.AutoSize = false;
-        updateLabel.Size = new Size(267, 40);
+        updateLabel.Size = new Size(480, 23);
         updateLabel.TextAlign = ContentAlignment.MiddleLeft;
 
-        helpLabel.Text = "수업에 참여하면 선생님께 도움 요청을 보낼 수 있습니다.";
-        helpLabel.Location = new Point(30, 373);
-        helpLabel.AutoEllipsis = true;
-        helpLabel.Size = new Size(560, 22);
+        updateButton.Location = new Point(40, 297);
+        updateButton.Size = new Size(228, 48);
+        updateButton.BorderColor = Color.FromArgb(55, 96, 230);
+        updateButton.Click += async (_, _) => await CheckForUpdatesAsync();
 
-        deviceLabel.Location = new Point(30, 414);
-        deviceLabel.AutoSize = true;
+        exitButton.Location = new Point(292, 297);
+        exitButton.Size = new Size(228, 48);
+        exitButton.Click += (_, _) => BeginInvoke(new Action(() => _ = RequestApprovedExitAsync()));
 
-        Controls.AddRange([title, connectionLabel, serverLabel, activityLabel, screenSharingLabel, transparency, updateButton, helpButton, updateLabel, helpLabel, deviceLabel]);
+        deviceLabel.Location = new Point(40, 367);
+        deviceLabel.AutoSize = false;
+        deviceLabel.Size = new Size(480, 20);
+        deviceLabel.AutoEllipsis = true;
+
+        Controls.AddRange([header, connectionCard, screenSharingLabel, updateLabel, updateButton, exitButton, deviceLabel]);
 
         var trayMenu = new ContextMenuStrip();
         trayMenu.Items.Add("상태 열기", null, (_, _) => ShowMainWindow());
-        var managedNotice = trayMenu.Items.Add("학교 관리 중에는 학생 앱을 종료할 수 없습니다.");
-        managedNotice.Enabled = false;
+        trayMenu.Items.Add("프로그램 종료", null, (_, _) => ShowMainWindowAndRequestExit());
         trayIcon.Icon = SystemIcons.Information;
         trayIcon.Text = "Classroom Student · 학교 관리 활성화";
         trayIcon.ContextMenuStrip = trayMenu;
@@ -148,7 +148,7 @@ public sealed class StudentDesktopForm : Form
                     trayIcon.ShowBalloonTip(
                         2_000,
                         "Classroom Student",
-                        "교사가 화면 보기를 종료할 때까지 공유 상태 창이 표시됩니다.",
+                         "교사가 화면 보기를 종료할 때까지 화면 공유 상태가 유지됩니다.",
                         ToolTipIcon.Info);
                     return;
                 }
@@ -181,16 +181,9 @@ public sealed class StudentDesktopForm : Form
         {
             if (connected)
             {
-                helpButton.Enabled = sessionId != Guid.Empty;
                 if (sessionId == Guid.Empty)
                 {
                     ApplyScreenSharingState(false);
-                    SetHelpRequested(false, announce: false);
-                    helpLabel.Text = "수업에 참여하면 선생님께 도움 요청을 보낼 수 있습니다.";
-                }
-                else if (!helpRequested)
-                {
-                    helpLabel.Text = "도움이 필요하면 선생님께 요청을 보낼 수 있습니다.";
                 }
                 serverLabel.Text = sessionId == Guid.Empty
                     ? "● Classroom 서버 연결됨 · 수업 대기 중"
@@ -205,7 +198,6 @@ public sealed class StudentDesktopForm : Form
             }
             else
             {
-                helpButton.Enabled = false;
                 ApplyScreenSharingState(false);
                 serverLabel.Text = "● Classroom 서버 재연결 중";
                 serverLabel.ForeColor = Color.DarkOrange;
@@ -221,16 +213,8 @@ public sealed class StudentDesktopForm : Form
 
     public void ShowStatus(DesktopStatusData status)
     {
-        RunOnUiThread(() =>
-        {
-            var activity = status.Activity;
-            var battery = status.BatteryPercent is int value ? $"배터리 {value}%" : "배터리 확인 필요";
-            var network = status.NetworkStatus ?? "unknown";
-            var windowTitle = string.IsNullOrWhiteSpace(activity?.WindowTitle)
-                ? "현재 창 확인 필요"
-                : activity.WindowTitle;
-            activityLabel.Text = $"현재 앱  {activity?.ApplicationDisplayName ?? "확인 필요"}\n현재 창  {windowTitle}\n{battery} · 네트워크 {network}";
-        });
+        // Detailed activity belongs in the teacher console. The student window
+        // intentionally exposes only connection, version, and sharing state.
     }
 
     public Task<DesktopCommandApplyResult> ApplyCommandAsync(CommandRequest command)
@@ -350,35 +334,15 @@ public sealed class StudentDesktopForm : Form
         screenSharingActive = enabled;
         statusProvider.SetScreenSharing(enabled);
         screenSharingLabel.Visible = enabled;
+        screenSharingLabel.Text = enabled
+            ? "● 화면 공유 중 · 교사 콘솔에 저화질 화면이 표시됩니다"
+            : "화면 공유 꺼짐 · 수업 중 필요할 때 교사 콘솔에 표시됩니다";
+        screenSharingLabel.ForeColor = enabled
+            ? Color.FromArgb(188, 42, 52)
+            : Color.FromArgb(74, 91, 117);
         trayIcon.Text = enabled
             ? "Classroom Student · 화면 공유 중"
             : "Classroom Student · 학교 관리 활성화";
-    }
-
-    private void SetHelpRequested(bool requested, bool announce)
-    {
-        helpRequested = requested;
-        statusProvider.SetHelpRequested(requested);
-        helpButton.Text = requested ? "요청 취소" : "도움 요청";
-        helpButton.BackColor = requested
-            ? Color.FromArgb(196, 72, 63)
-            : Color.FromArgb(238, 243, 255);
-        helpButton.ForeColor = requested ? Color.White : Color.FromArgb(49, 87, 213);
-        helpButton.FlatAppearance.BorderColor = requested
-            ? Color.FromArgb(196, 72, 63)
-            : Color.FromArgb(187, 201, 246);
-        helpLabel.ForeColor = requested ? Color.FromArgb(170, 56, 49) : Color.DimGray;
-        helpLabel.Text = requested
-            ? "● 선생님께 도움 요청을 보냈습니다. 해결되면 요청 취소를 눌러 주세요."
-            : "도움이 필요하면 선생님께 요청을 보낼 수 있습니다.";
-        if (announce)
-        {
-            trayIcon.ShowBalloonTip(
-                2_500,
-                "Classroom Student",
-                requested ? "선생님께 도움 요청을 보냈습니다." : "도움 요청을 취소했습니다.",
-                ToolTipIcon.Info);
-        }
     }
 
     private void ShowMainWindow()
@@ -387,6 +351,12 @@ public sealed class StudentDesktopForm : Form
         WindowState = FormWindowState.Normal;
         Activate();
         BringToFront();
+    }
+
+    private void ShowMainWindowAndRequestExit()
+    {
+        ShowMainWindow();
+        BeginInvoke(new Action(() => _ = RequestApprovedExitAsync()));
     }
 
     private async Task RequestApprovedExitAsync()
@@ -456,10 +426,10 @@ public sealed class StudentDesktopForm : Form
             updateLabel.Text = result.Message;
             updateLabel.ForeColor = !result.Success
                 ? Color.FromArgb(188, 42, 52)
-                : result.RestartRequired
-                    ? Color.DarkOrange
+                : result.Code == "UPDATE_APPLYING"
+                    ? Color.FromArgb(55, 96, 230)
                     : Color.SeaGreen;
-            if (result.RestartRequired)
+            if (result.Success && result.Code == "UPDATE_APPLYING")
             {
                 trayIcon.ShowBalloonTip(2_500, "Classroom Student", result.Message, ToolTipIcon.Info);
             }
@@ -510,6 +480,166 @@ public sealed class StudentDesktopForm : Form
         {
             action();
         }
+    }
+
+    private sealed class RoundedPanel : Panel
+    {
+        private int cornerRadius = 16;
+        private Color borderColor = Color.Transparent;
+
+        public int CornerRadius
+        {
+            get => cornerRadius;
+            set { cornerRadius = Math.Max(0, value); Invalidate(); }
+        }
+
+        public Color BorderColor
+        {
+            get => borderColor;
+            set { borderColor = value; Invalidate(); }
+        }
+
+        public RoundedPanel()
+        {
+            SetStyle(
+                ControlStyles.UserPaint
+                | ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.OptimizedDoubleBuffer,
+                true);
+        }
+
+        protected override void OnPaint(PaintEventArgs eventArgs)
+        {
+            base.OnPaint(eventArgs);
+            eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            var bounds = ClientRectangle;
+            bounds.Width--;
+            bounds.Height--;
+            using var path = CreatePath(bounds, CornerRadius);
+            using var fill = new SolidBrush(BackColor);
+            eventArgs.Graphics.FillPath(fill, path);
+            if (BorderColor != Color.Transparent)
+            {
+                using var border = new Pen(BorderColor, 1F);
+                eventArgs.Graphics.DrawPath(border, path);
+            }
+        }
+    }
+
+    private sealed class RoundedButton : Button
+    {
+        private Color fillColor = Color.FromArgb(55, 96, 230);
+        private Color hoverColor = Color.FromArgb(43, 79, 204);
+        private Color textColor = Color.White;
+        private Color borderColor = Color.Transparent;
+        private bool hovered;
+
+        public Color FillColor
+        {
+            get => fillColor;
+            set { fillColor = value; Invalidate(); }
+        }
+
+        public Color HoverColor
+        {
+            get => hoverColor;
+            set { hoverColor = value; Invalidate(); }
+        }
+
+        public Color TextColor
+        {
+            get => textColor;
+            set { textColor = value; Invalidate(); }
+        }
+
+        public Color BorderColor
+        {
+            get => borderColor;
+            set { borderColor = value; Invalidate(); }
+        }
+
+        public RoundedButton()
+        {
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            TabStop = true;
+            Cursor = Cursors.Hand;
+            Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold, GraphicsUnit.Point);
+            SetStyle(
+                ControlStyles.UserPaint
+                | ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.OptimizedDoubleBuffer,
+                true);
+        }
+
+        protected override void OnMouseEnter(EventArgs eventArgs)
+        {
+            hovered = true;
+            Invalidate();
+            base.OnMouseEnter(eventArgs);
+        }
+
+        protected override void OnMouseLeave(EventArgs eventArgs)
+        {
+            hovered = false;
+            Invalidate();
+            base.OnMouseLeave(eventArgs);
+        }
+
+        protected override void OnEnabledChanged(EventArgs eventArgs)
+        {
+            Invalidate();
+            base.OnEnabledChanged(eventArgs);
+        }
+
+        protected override void OnPaint(PaintEventArgs eventArgs)
+        {
+            base.OnPaint(eventArgs);
+            eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            var bounds = ClientRectangle;
+            bounds.Inflate(-1, -1);
+            using var path = CreatePath(bounds, 14);
+            var background = Enabled
+                ? hovered ? HoverColor : FillColor
+                : Color.FromArgb(225, 231, 241);
+            using var fill = new SolidBrush(background);
+            eventArgs.Graphics.FillPath(fill, path);
+            if (BorderColor != Color.Transparent)
+            {
+                using var border = new Pen(Enabled ? BorderColor : Color.FromArgb(205, 214, 229), 1F);
+                eventArgs.Graphics.DrawPath(border, path);
+            }
+
+            var color = Enabled ? TextColor : Color.FromArgb(142, 155, 175);
+            TextRenderer.DrawText(
+                eventArgs.Graphics,
+                Text,
+                Font,
+                ClientRectangle,
+                color,
+                TextFormatFlags.HorizontalCenter
+                | TextFormatFlags.VerticalCenter
+                | TextFormatFlags.NoPrefix
+                | TextFormatFlags.EndEllipsis);
+        }
+    }
+
+    private static GraphicsPath CreatePath(Rectangle bounds, int radius)
+    {
+        var path = new GraphicsPath();
+        if (radius <= 0)
+        {
+            path.AddRectangle(bounds);
+            return path;
+        }
+
+        var diameter = Math.Min(radius * 2, Math.Min(bounds.Width, bounds.Height));
+        path.AddArc(bounds.X, bounds.Y, diameter, diameter, 180, 90);
+        path.AddArc(bounds.Right - diameter, bounds.Y, diameter, diameter, 270, 90);
+        path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+        path.AddArc(bounds.X, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     private static Label CreateLabel(string text, float size, Color color) => new()
@@ -604,7 +734,7 @@ public sealed class StudentDesktopForm : Form
             };
             var copy = new Label
             {
-                Text = "관리자가 설정한 종료 비밀번호를 입력하면\n학생 앱을 종료합니다. Windows를 다시 시작하면 자동으로 다시 실행됩니다.",
+                Text = "관리자가 설정한 종료 비밀번호를 입력하면\n학생 앱을 종료합니다.",
                 AutoSize = true,
                 ForeColor = Color.FromArgb(92, 102, 118),
                 Location = new Point(30, 66)

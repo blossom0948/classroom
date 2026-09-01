@@ -70,11 +70,12 @@ Teacher Console이 표시된다. 개발 DB 최초 계정은 다음과 같다.
 비밀번호: ChangeMe!Classroom123
 ```
 
-첫 실행 후 Teacher Console의 설정에서 비밀번호를 변경한다. 일반 계정의 로그인
-token은 설치 앱을 다시 열어도 로그인 상태를 복원할 수 있도록 브라우저의
-`localStorage`에 저장되고, 서버에는 해시만 보관된다. 게스트 token은 현재 탭의
-`sessionStorage`에만 저장된다. 개발 기본 계정은 파일럿 전용이며 외부에 노출하지
-않는다.
+첫 실행 후 Teacher Console의 설정에서 비밀번호를 변경한다. 운영 Pages에서는 일반
+계정 세션을 `HttpOnly; Secure; SameSite=Lax` 쿠키로 유지하므로 브라우저의
+JavaScript나 저장소에서 세션 토큰을 읽을 수 없다. 쿠키는 12시간 후 만료되고
+로그아웃 시 서버에서 폐기된다. 게스트 세션은 세션 쿠키로 유지되어 브라우저를
+닫으면 사라진다. 로컬 개발 서버는 테스트 편의를 위해서만 bearer token 저장소
+fallback을 사용한다. 개발 기본 계정은 파일럿 전용이며 외부에 노출하지 않는다.
 
 Teacher Console에서 할 수 있는 일:
 
@@ -87,7 +88,9 @@ Teacher Console에서 할 수 있는 일:
 7. 등록 장치 연결 해제(revoke)
 
 학생 Desktop이 연결된 경우 명령 결과가 `APPLIED`가 되고, 연결되지 않은
-경우 성공으로 위장하지 않고 `STUDENT_DESKTOP_OFFLINE`으로 기록된다.
+경우 성공으로 위장하지 않고 `STUDENT_DESKTOP_OFFLINE`으로 기록된다. 학생 서비스는
+검증된 패키지를 별도 업데이트 도우미에서 교체하므로 학생 앱의 수동 업데이트와
+자동 업데이트 모두 Windows 재부팅 없이 서비스와 화면을 순서대로 다시 시작한다.
 
 ## 실제 파일럿 순서
 

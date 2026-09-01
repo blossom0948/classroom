@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net.Http.Json;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using Blossom.Classroom.Student.Service.Commands;
 using Blossom.Classroom.Student.Service.Configuration;
@@ -9,11 +8,11 @@ using Blossom.Classroom.Student.Service.Configuration;
 namespace Blossom.Classroom.Student.Service;
 
 /// <summary>
-/// Stages signed-in-school-device updates without interrupting a lesson. Files
-/// are replaced by Windows during the next boot, before the automatic service
-/// and per-user desktop watchdog start. The service checks on startup and at a
-/// short interval, so no student action or reinstall is required; running
-/// binaries are never overwritten in place.
+/// Downloads and validates signed-in-school-device updates without requiring a
+/// Windows restart. A separate executable from the validated staging folder
+/// stops the running service, replaces the service and desktop payload, and
+/// starts them again. The currently running binaries are never overwritten by
+/// the process that has them open.
 /// </summary>
 public sealed class StudentUpdateWorker(
     StudentAgentOptions options,
@@ -162,44 +161,53 @@ public sealed class StudentUpdateWorker(
 
         var updateRoot = Path.Combine(installRoot, ".updates", availableVersionText);
         var markerPath = Path.Combine(updateRoot, "pending.json");
-        if (File.Exists(markerPath))
+        var payloadRoot = Path.Combine(updateRoot, "payload");
+        if (File.Exists(markerPath) && Directory.Exists(payloadRoot))
         {
+            if (TryLaunchUpdateHelper(payloadRoot, installRoot, availableVersionText))
+            {
+                return UpdateApplyingResult(currentVersionText, availableVersionText);
+            }
+
             return new StudentUpdateCheckResult(
-                true,
-                "UPDATE_PENDING",
-                $"v{availableVersionText} 업데이트가 준비되어 있습니다. Windows를 다시 시작하면 적용됩니다.",
+                false,
+                "UPDATE_HELPER_START_FAILED",
+                "업데이트 도우미를 시작하지 못했습니다. 잠시 후 자동으로 다시 시도합니다.",
                 currentVersionText,
                 availableVersionText,
-                true);
+                false);
         }
 
         Directory.CreateDirectory(updateRoot);
         var zipPath = Path.Combine(updateRoot, "Classroom-Windows-x64.zip.download");
-        var payloadRoot = Path.Combine(updateRoot, "payload");
         await DownloadPackageAsync(client, new Uri(manifest.PackageUrl), zipPath, cancellationToken);
         ExtractStudentPayload(zipPath, payloadRoot);
         VerifyPayloadVersion(payloadRoot, availableVersion);
-        SchedulePayload(payloadRoot, installRoot);
         await File.WriteAllTextAsync(
             markerPath,
             JsonSerializer.Serialize(new
             {
                 version = availableVersion.ToString(3),
                 stagedAtUtc = DateTimeOffset.UtcNow,
-                activation = "next-windows-start"
+                activation = "immediate-helper"
             }),
             cancellationToken);
         TryDelete(zipPath);
+        if (!TryLaunchUpdateHelper(payloadRoot, installRoot, availableVersionText))
+        {
+            return new StudentUpdateCheckResult(
+                false,
+                "UPDATE_HELPER_START_FAILED",
+                "업데이트 도우미를 시작하지 못했습니다. 잠시 후 자동으로 다시 시도합니다.",
+                currentVersionText,
+                availableVersionText,
+                false);
+        }
+
         logger.LogInformation(
-            "Classroom Student {Version} is staged and will activate automatically at the next Windows start.",
+            "Classroom Student {Version} is applying immediately through the isolated update helper.",
             availableVersionText);
-        return new StudentUpdateCheckResult(
-            true,
-            "UPDATE_STAGED",
-            $"v{availableVersionText} 업데이트를 준비했습니다. Windows를 다시 시작하면 적용됩니다.",
-            currentVersionText,
-            availableVersionText,
-            true);
+        return UpdateApplyingResult(currentVersionText, availableVersionText);
     }
 
     private static async Task DownloadPackageAsync(
@@ -287,32 +295,63 @@ public sealed class StudentUpdateWorker(
         }
     }
 
-    private static void SchedulePayload(string payloadRoot, string installRoot)
-    {
-        ScheduleDirectory(
-            Path.Combine(payloadRoot, "student-service"),
-            Path.Combine(installRoot, "service"));
-        ScheduleDirectory(
-            Path.Combine(payloadRoot, "student-desktop"),
-            Path.Combine(installRoot, "desktop"));
-    }
+    private static StudentUpdateCheckResult UpdateApplyingResult(
+        string currentVersionText,
+        string availableVersionText) =>
+        new(
+            true,
+            "UPDATE_APPLYING",
+            $"v{availableVersionText} 업데이트를 적용 중입니다. 잠시 후 학생 앱이 다시 연결됩니다.",
+            currentVersionText,
+            availableVersionText,
+            false);
 
-    private static void ScheduleDirectory(string sourceRoot, string destinationRoot)
+    private static bool TryLaunchUpdateHelper(
+        string payloadRoot,
+        string installRoot,
+        string version)
     {
-        foreach (var source in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+        var helper = Path.Combine(payloadRoot, "student-service", "Classroom.Student.Service.exe");
+        if (!File.Exists(helper))
         {
-            var relative = Path.GetRelativePath(sourceRoot, source);
-            var destination = Path.Combine(destinationRoot, relative);
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            if (!MoveFileEx(
-                source,
-                destination,
-                MoveFileFlags.ReplaceExisting | MoveFileFlags.DelayUntilReboot))
+            return false;
+        }
+
+        var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
             {
-                throw new System.ComponentModel.Win32Exception(
-                    Marshal.GetLastWin32Error(),
-                    $"Could not schedule Classroom update file: {relative}");
+                FileName = helper,
+                WorkingDirectory = Path.GetDirectoryName(helper)!,
+                UseShellExecute = false,
+                CreateNoWindow = true
             }
+        };
+        process.StartInfo.ArgumentList.Add("--classroom-update-helper");
+        process.StartInfo.ArgumentList.Add("--install-root");
+        process.StartInfo.ArgumentList.Add(installRoot);
+        process.StartInfo.ArgumentList.Add("--payload-root");
+        process.StartInfo.ArgumentList.Add(payloadRoot);
+        process.StartInfo.ArgumentList.Add("--parent-pid");
+        process.StartInfo.ArgumentList.Add(Environment.ProcessId.ToString());
+        process.StartInfo.ArgumentList.Add("--version");
+        process.StartInfo.ArgumentList.Add(version);
+
+        try
+        {
+            return process.Start();
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+        finally
+        {
+            process.Dispose();
         }
     }
 
@@ -352,14 +391,4 @@ public sealed class StudentUpdateWorker(
 
     private sealed record UpdateManifest(string Version, string PackageUrl);
 
-    [Flags]
-    private enum MoveFileFlags : uint
-    {
-        ReplaceExisting = 0x1,
-        DelayUntilReboot = 0x4
-    }
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool MoveFileEx(string existingFileName, string newFileName, MoveFileFlags flags);
 }

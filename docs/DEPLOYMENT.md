@@ -17,8 +17,10 @@ classroom-api.blossom0948.cloud
 
 공개 서비스의 API와 영속 데이터는 Cloudflare에서 실행된다. 따라서 선생님 PC,
 로컬 Windows 서비스, Cloudflare Tunnel이 꺼져 있어도 `classroom-2en.pages.dev`의
-로그인·수업·학생 코드·장치 상태 API는 중단되지 않는다. 콘솔의 운영 설정은
-`config.js`에서 `classroom-api.blossom0948.cloud`로 직접 연결한다.
+로그인·수업·학생 코드·장치 상태 API는 중단되지 않는다. 운영 콘솔은 Pages와
+같은 출처의 API를 사용하고 Pages Function이 `classroom-api.blossom0948.cloud`로
+프록시하므로, 교사 세션 쿠키가 브라우저 JavaScript에 노출되지 않는다. 로컬
+개발 환경에서만 직접 bearer 토큰 방식으로 동작한다.
 
 ## 1. Cloudflare Worker 운영
 
@@ -99,10 +101,9 @@ Google 로그인은 학교 환경에서 popup 차단을 피하기 위해 redirec
 | Production environment variable | `CLASSROOM_BACKEND_ORIGIN=https://classroom-api.blossom0948.cloud` |
 
 이 변수는 Pages Function이 `/auth`, `/api`, `/health`, `/ws/student` 요청을
-Cloudflare Worker로 보낼 때 사용하는 선택적 프록시 설정이다. 운영 콘솔은
-고정 API 주소로 직접 연결하므로 Git 연동이나 직접 Pages 배포에서 이 변수 누락이
-로그인 자체를 막지 않는다. Pages Function 프록시를 사용할 경우에는 값을 반드시
-설정한다. `main`에 push하면 Pages가 정적 콘솔·PWA를 다시 빌드하여 자동 배포한다.
+Cloudflare Worker로 보낼 때 사용하는 프록시 설정이다. 운영에서는 이 값을
+반드시 설정해야 HttpOnly 세션 쿠키와 same-origin 요청이 정상적으로 동작한다.
+`main`에 push하면 Pages가 정적 콘솔·PWA를 다시 빌드하여 자동 배포한다.
 
 ## 4. 배포 검증
 
@@ -118,7 +119,7 @@ Invoke-WebRequest https://classroom-2en.pages.dev/
 
 - `/` → 200, Teacher Console HTML 및 PWA manifest
 - 두 `/health/ready` → `status: ready`, `database: durable-object-sqlite`
-- 이메일 가입·Google 로그인 → Firebase session 교환 → Classroom bearer token 발급
+- 이메일 가입·Google 로그인 → Firebase session 교환 → 운영에서는 HttpOnly 세션 쿠키 발급
 - 학생 코드는 재발급하기 전까지 유지되며, 재발급하면 기존 학생 장치 token은 해제
 - Student Setup 기본 서버 → `https://classroom-api.blossom0948.cloud`
 - Student Service → `/ws/student?deviceId=...`에서 WebSocket 연결

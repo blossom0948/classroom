@@ -38,4 +38,19 @@ try {
   globalThis.fetch = originalFetch;
 }
 
+globalThis.fetch = async () => new Response("signed in", {
+  status: 200,
+  headers: { "Set-Cookie": "__Host-classroom-session=test; Path=/; Secure; HttpOnly" }
+});
+try {
+  const login = await onRequest({
+    request: new Request("https://classroom-2en.pages.dev/auth/login", { method: "POST" }),
+    env: { CLASSROOM_BACKEND_ORIGIN: "https://classroom-origin.example" },
+    next: () => new Response("unexpected")
+  });
+  assert.equal(login.headers.get("Set-Cookie"), "__Host-classroom-session=test; Path=/; Secure; HttpOnly");
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
 console.log("PASS Cloudflare Pages static fallback and backend proxy routing");
