@@ -16,7 +16,7 @@ public sealed class StudentDesktopForm : Form
     private readonly Func<CancellationToken, Task<DesktopUpdateCheckResult>> updateChecker;
     private readonly Label connectionLabel = CreateLabel("● 서비스 연결 대기 중", 11, Color.DarkOrange);
     private readonly Label serverLabel = CreateLabel("● Classroom 서버 재연결 중", 11, Color.DarkOrange);
-    private readonly Label screenSharingLabel = CreateLabel("화면 공유 꺼짐 · 수업 중 필요할 때 교사 콘솔에 표시됩니다", 10, Color.FromArgb(74, 91, 117));
+    private readonly Label screenSharingLabel = CreateLabel("● Windows 시작 시 자동 연결 · 화면 공유 대기", 10, Color.FromArgb(62, 92, 165));
     private readonly RoundedButton updateButton = new()
     {
         Text = "업데이트 확인",
@@ -58,31 +58,31 @@ public sealed class StudentDesktopForm : Form
         MaximizeBox = false;
         MinimizeBox = true;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(560, 410);
-        MinimumSize = new Size(560, 410);
+        ClientSize = new Size(560, 400);
+        MinimumSize = new Size(560, 400);
         BackColor = Color.FromArgb(241, 245, 252);
         Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
 
         var header = new Panel
         {
             Location = new Point(0, 0),
-            Size = new Size(ClientSize.Width, 112),
+            Size = new Size(ClientSize.Width, 102),
             BackColor = Color.FromArgb(20, 38, 70),
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
         var title = CreateLabel("Classroom Student", 22, Color.White);
         title.Font = new Font("Segoe UI Semibold", 22F, FontStyle.Bold, GraphicsUnit.Point);
-        title.Location = new Point(28, 21);
+        title.Location = new Point(28, 18);
         title.AutoSize = true;
         var version = CreateLabel($"학생 화면  ·  v{options.AgentVersion}", 10, Color.FromArgb(183, 205, 255));
-        version.Location = new Point(30, 67);
+        version.Location = new Point(30, 61);
         version.AutoSize = true;
         header.Controls.AddRange([title, version]);
 
         var connectionCard = new RoundedPanel
         {
-            Location = new Point(24, 132),
-            Size = new Size(512, 78),
+            Location = new Point(24, 120),
+            Size = new Size(512, 108),
             BackColor = Color.White,
             BorderColor = Color.FromArgb(217, 226, 240),
             CornerRadius = 16
@@ -92,36 +92,35 @@ public sealed class StudentDesktopForm : Form
         statusCaption.AutoSize = true;
         connectionLabel.Location = new Point(16, 31);
         connectionLabel.AutoSize = true;
-        serverLabel.Location = new Point(250, 31);
+        serverLabel.Location = new Point(16, 53);
         serverLabel.AutoSize = true;
-        connectionCard.Controls.AddRange([statusCaption, connectionLabel, serverLabel]);
-
-        screenSharingLabel.Location = new Point(40, 230);
+        screenSharingLabel.Location = new Point(16, 76);
         screenSharingLabel.AutoSize = false;
         screenSharingLabel.AutoEllipsis = true;
-        screenSharingLabel.Size = new Size(480, 24);
-        screenSharingLabel.Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold, GraphicsUnit.Point);
+        screenSharingLabel.Size = new Size(480, 20);
+        screenSharingLabel.Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold, GraphicsUnit.Point);
+        connectionCard.Controls.AddRange([statusCaption, connectionLabel, serverLabel, screenSharingLabel]);
 
-        updateLabel.Location = new Point(40, 263);
+        updateLabel.Location = new Point(40, 244);
         updateLabel.AutoSize = false;
         updateLabel.Size = new Size(480, 23);
         updateLabel.TextAlign = ContentAlignment.MiddleLeft;
 
-        updateButton.Location = new Point(40, 297);
+        updateButton.Location = new Point(40, 270);
         updateButton.Size = new Size(228, 48);
         updateButton.BorderColor = Color.FromArgb(55, 96, 230);
         updateButton.Click += async (_, _) => await CheckForUpdatesAsync();
 
-        exitButton.Location = new Point(292, 297);
+        exitButton.Location = new Point(292, 270);
         exitButton.Size = new Size(228, 48);
         exitButton.Click += (_, _) => BeginInvoke(new Action(() => _ = RequestApprovedExitAsync()));
 
-        deviceLabel.Location = new Point(40, 367);
+        deviceLabel.Location = new Point(40, 350);
         deviceLabel.AutoSize = false;
         deviceLabel.Size = new Size(480, 20);
         deviceLabel.AutoEllipsis = true;
 
-        Controls.AddRange([header, connectionCard, screenSharingLabel, updateLabel, updateButton, exitButton, deviceLabel]);
+        Controls.AddRange([header, connectionCard, updateLabel, updateButton, exitButton, deviceLabel]);
 
         var trayMenu = new ContextMenuStrip();
         trayMenu.Items.Add("상태 열기", null, (_, _) => ShowMainWindow());
@@ -142,16 +141,6 @@ public sealed class StudentDesktopForm : Form
             if (eventArgs.CloseReason == CloseReason.UserClosing && !approvedExit)
             {
                 eventArgs.Cancel = true;
-                if (screenSharingActive)
-                {
-                    ShowMainWindow();
-                    trayIcon.ShowBalloonTip(
-                        2_000,
-                        "Classroom Student",
-                         "교사가 화면 보기를 종료할 때까지 화면 공유 상태가 유지됩니다.",
-                        ToolTipIcon.Info);
-                    return;
-                }
                 BeginInvoke(new Action(() => _ = RequestApprovedExitAsync()));
             }
         };
@@ -333,13 +322,13 @@ public sealed class StudentDesktopForm : Form
     {
         screenSharingActive = enabled;
         statusProvider.SetScreenSharing(enabled);
-        screenSharingLabel.Visible = enabled;
+        screenSharingLabel.Visible = true;
         screenSharingLabel.Text = enabled
             ? "● 화면 공유 중 · 교사 콘솔에 저화질 화면이 표시됩니다"
-            : "화면 공유 꺼짐 · 수업 중 필요할 때 교사 콘솔에 표시됩니다";
+            : "● Windows 시작 시 자동 연결 · 화면 공유 대기";
         screenSharingLabel.ForeColor = enabled
             ? Color.FromArgb(188, 42, 52)
-            : Color.FromArgb(74, 91, 117);
+            : Color.FromArgb(62, 92, 165);
         trayIcon.Text = enabled
             ? "Classroom Student · 화면 공유 중"
             : "Classroom Student · 학교 관리 활성화";

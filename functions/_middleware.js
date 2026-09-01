@@ -36,12 +36,23 @@ export async function onRequest(context) {
   headers.set("X-Classroom-Proxy", "cloudflare-pages");
 
   try {
-    return await fetch(new Request(backendOrigin, {
+    const upstream = await fetch(new Request(backendOrigin, {
       method: context.request.method,
       headers,
       body: context.request.body,
       redirect: "manual"
     }));
+    // Re-wrap the response so the Pages origin deliberately passes the
+    // backend's HttpOnly session cookie through to the browser.  `Headers`
+    // preserves Set-Cookie while also preventing authentication responses
+    // from being cached by an intermediary.
+    const responseHeaders = new Headers(upstream.headers);
+    responseHeaders.set("Cache-Control", "no-store");
+    return new Response(upstream.body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: responseHeaders
+    });
   } catch {
     return Response.json(
       { code: "BACKEND_UNAVAILABLE", message: "Classroom backend is temporarily unavailable." },

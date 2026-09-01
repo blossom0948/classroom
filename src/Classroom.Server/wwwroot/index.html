@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-  <link rel="stylesheet" href="/styles.css?v=0.5.26">
+  <link rel="stylesheet" href="/styles.css?v=0.5.27">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -106,7 +106,6 @@
         <button class="nav-item active" data-section="class" aria-label="수업"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg></span><span class="nav-label">수업</span></button>
         <button id="student-codes-nav" class="nav-item" data-section="student-codes" aria-label="학생 코드"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5h16v9H4z"></path><path d="M8 10.5h5M8 13.5h3"></path><circle cx="17" cy="12" r="1.7"></circle></svg></span><span class="nav-label">학생 코드</span></button>
         <button id="admins-nav" class="nav-item" data-section="admins" aria-label="관리자" hidden><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.4-2.8 7.8-7 10-4.2-2.2-7-5.6-7-10V6z"></path><path d="M9.3 12.2l1.8 1.8 3.8-4"></path></svg></span><span class="nav-label">관리자</span></button>
-        <button id="history-nav" class="nav-item" data-section="history" aria-label="기록"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4.7 8A8 8 0 1 1 4 14"></path><path d="M4.7 4v4h4"></path><path d="M12 8v4l2.7 1.7"></path></svg></span><span class="nav-label">기록</span></button>
         <button id="settings-nav" class="nav-item" data-section="settings" aria-label="설정"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"></path><circle cx="14" cy="7" r="2"></circle><circle cx="6" cy="17" r="2"></circle></svg></span><span class="nav-label">설정</span></button>
       </nav>
       <div class="sidebar-bottom">
@@ -144,8 +143,8 @@
       </header>
 
       <section id="class-section" class="section-view">
-        <div class="hero-row">
-          <div><div class="eyebrow">LIVE CLASSROOM</div><h2>수업 현황</h2><p id="session-caption" class="muted">활성 수업이 없습니다.</p></div>
+        <div class="class-command-strip" aria-label="수업 제어">
+          <div class="session-command-copy"><span class="eyebrow">LIVE CLASSROOM</span><p id="session-caption" class="muted">활성 수업이 없습니다.</p></div>
           <div class="class-status-actions"><button id="start-session-button" class="primary">수업 시작</button><button id="announcement-button" class="secondary">전체 공지</button><button id="end-session-button" class="danger-outline" hidden>수업 종료</button></div>
         </div>
         <div class="class-metrics" aria-label="수업 요약"><article class="metric-card"><span class="metric-label">등록 학생</span><strong id="total-count">0</strong><small>학급 장치</small></article><article class="metric-card metric-online"><span class="metric-label">온라인</span><strong id="metric-online-count">0</strong><small>현재 연결</small></article><article class="metric-card metric-offline"><span class="metric-label">오프라인</span><strong id="offline-count">0</strong><small>연결 끊김</small></article><article class="metric-card metric-attention"><span class="metric-label">확인 필요</span><strong id="needs-attention-count">0</strong><small>상태 점검</small></article></div>
@@ -158,26 +157,13 @@
           <div id="bulk-actions" class="bulk-actions"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button><button id="screen-wall-button" class="secondary screen-wall-open">화면 보기</button><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">집중 해제</button><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL 열기</button><button id="app-button" class="secondary">앱 실행</button></div>
         </div>
         <div id="class-sync-status" class="class-sync-status" role="status" aria-live="polite" hidden><span class="class-sync-icon" aria-hidden="true">↻</span><span id="class-sync-message"></span><button id="class-sync-retry" class="ghost-button" type="button">다시 시도</button></div>
-        <div id="student-grid" class="student-grid" aria-live="off"></div>
-        <section id="screen-wall-section" class="screen-wall-section" hidden aria-labelledby="screen-wall-title">
-          <div class="screen-wall-inline-heading">
-            <div>
-              <div class="eyebrow">LIVE SCREEN WALL</div>
-              <h3 id="screen-wall-title">학생 화면 보기</h3>
-              <p id="screen-wall-caption" class="muted">화면 공유를 켠 학생의 저화질 화면을 초당 한 번씩 갱신합니다.</p>
-            </div>
-            <div class="screen-wall-inline-actions">
-              <span id="screen-wall-status" class="screen-wall-status" role="status" aria-live="polite">0명 공유 중</span>
-              <button id="screen-wall-fullscreen" class="secondary" type="button">전체 화면</button>
-              <button id="screen-wall-stop" class="danger-outline" type="button">화면 보기 닫기</button>
-            </div>
-          </div>
-          <div id="screen-wall-grid" class="screen-wall-grid" role="region" aria-label="학생 화면 타일"></div>
-          <div class="screen-wall-inline-footer">
-            <span id="screen-wall-updated" class="muted small">아직 화면을 받지 못했습니다.</span>
-            <span class="screen-sharing-notice">화면 공유 중에는 학생 앱에 공유 상태가 표시됩니다.</span>
-          </div>
+        <div id="monitor-session-bar" class="monitor-session-bar" role="status" aria-live="polite" hidden><div><span class="monitor-session-dot" aria-hidden="true"></span><strong id="monitor-session-status">학생 화면을 준비하는 중입니다.</strong><small id="monitor-session-updated">초당 한 번씩 갱신됩니다.</small></div><div class="monitor-session-actions"><button id="screen-wall-fullscreen" class="secondary" type="button">전체 화면</button><button id="screen-wall-stop" class="danger-outline" type="button">화면 보기 닫기</button></div></div>
+        <section id="monitor-stage" class="monitor-stage" aria-label="학생 화면">
+          <button id="monitor-fullscreen-exit" class="monitor-fullscreen-exit" type="button">전체 화면 나가기</button>
+          <div id="student-grid" class="student-grid" aria-live="off"></div>
+          <nav id="monitor-pagination" class="monitor-pagination" aria-label="학생 화면 페이지" hidden></nav>
         </section>
+        <button id="monitor-fullscreen-fab" class="monitor-fullscreen-fab" type="button" aria-label="학생 화면 전체 화면으로 보기" hidden><span aria-hidden="true">⛶</span><span>전체 화면</span></button>
       </section>
 
       <section id="student-codes-section" class="section-view" hidden>
@@ -237,11 +223,6 @@
         </form>
       </section>
 
-      <section id="history-section" class="section-view" hidden>
-        <div class="hero-row"><div><h2>수업 기록</h2><p class="muted">삭제할 수 없는 서버 감사 이벤트입니다.</p></div><button id="refresh-audit-button" class="secondary">새로고침</button></div>
-        <div id="audit-list" class="audit-list"></div>
-      </section>
-
       <section id="settings-section" class="section-view" hidden>
         <div class="hero-row"><div><h2>설정</h2><p class="muted">프로필, 보안, 앱 설치와 개인정보 경계를 관리합니다.</p></div></div>
         <form id="profile-form" class="settings-card profile-card stack">
@@ -259,14 +240,14 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.26</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.27</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
           <div class="update-card-actions"><span id="update-status" class="muted small" role="status" aria-live="polite">업데이트 상태를 확인하는 중입니다.</span><div><button id="settings-install-button" type="button" class="secondary" hidden>앱 설치</button><button id="check-update-button" type="button" class="primary">업데이트 확인</button></div></div>
         </article>
-        <article class="settings-card legal-card"><span class="settings-icon">⚖</span><h3>약관과 개인정보</h3><p>서비스 이용 중 수집하는 정보와 처리 기준을 언제든 확인할 수 있습니다.</p><div class="theme-options"><button type="button" class="secondary" data-legal-document="terms">이용약관</button><button type="button" class="secondary" data-legal-document="privacy">개인정보처리방침</button></div></article>
       </section>
+      <footer class="console-footer"><span>Classroom · 학교 수업 운영 도구</span><span class="console-footer-links"><button type="button" data-legal-document="terms">이용약관</button><span aria-hidden="true">·</span><button type="button" data-legal-document="privacy">개인정보처리방침</button></span></footer>
     </main>
 
   <aside id="detail-pane" class="detail-pane" hidden>
@@ -402,6 +383,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.5.26" defer></script>
+  <script src="/app.js?v=0.5.27" defer></script>
 </body>
 </html>

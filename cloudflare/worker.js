@@ -1633,7 +1633,10 @@ function responseError(code, message, status, cors, extraHeaders = {}) {
 }
 
 function shouldUseCookieSession(request) {
-  return request.headers.get("X-Classroom-Proxy") === "cloudflare-pages";
+  // Only the known Pages proxy may opt into the host-only cookie response.
+  // Direct Worker API calls retain the compatibility bearer-token payload.
+  return request.headers.get("X-Classroom-Proxy") === "cloudflare-pages"
+    && request.headers.get("X-Forwarded-Host") === "classroom-2en.pages.dev";
 }
 
 function sessionResponse(payload, status, cors, request, token, isGuest = false) {

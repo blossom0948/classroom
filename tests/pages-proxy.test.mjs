@@ -20,7 +20,8 @@ const originalFetch = globalThis.fetch;
 globalThis.fetch = async (request) => Response.json({
   url: request.url,
   forwardedProto: request.headers.get("X-Forwarded-Proto"),
-  forwardedHost: request.headers.get("X-Forwarded-Host")
+  forwardedHost: request.headers.get("X-Forwarded-Host"),
+  classroomProxy: request.headers.get("X-Classroom-Proxy")
 });
 try {
   const proxied = await onRequest({
@@ -34,6 +35,8 @@ try {
   assert.equal(payload.url, "https://classroom-origin.example/api/classes?active=true");
   assert.equal(payload.forwardedProto, "https");
   assert.equal(payload.forwardedHost, "classroom-2en.pages.dev");
+  assert.equal(payload.classroomProxy, "cloudflare-pages");
+  assert.equal(proxied.headers.get("Cache-Control"), "no-store");
 } finally {
   globalThis.fetch = originalFetch;
 }
