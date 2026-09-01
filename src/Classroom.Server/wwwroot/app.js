@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.25";
+  const APP_VERSION = "0.5.26";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -327,7 +327,10 @@
     $("teacher-role").textContent = isGuest ? "게스트" : "관리자";
     $("teacher-role").classList.toggle("guest-badge", isGuest);
     $("teacher-role").hidden = !session.isAdmin && !isGuest;
-    $("close-console-button").hidden = isGuest;
+    // The installed shell owns the Windows title-bar close action. Keeping a
+    // second in-page close icon crowded the responsive header without adding
+    // a reliable browser close path, so it intentionally stays out of view.
+    $("close-console-button").hidden = true;
     $("admins-nav").hidden = !session.isAdmin;
     $("student-codes-nav").hidden = false;
     $("history-nav").hidden = isGuest;

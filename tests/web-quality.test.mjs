@@ -33,7 +33,8 @@ assert.doesNotMatch(script, /\$\("security-setting"\)\.textContent/, "Removed se
 assert.match(html, /id="class-sync-status"/, "The console needs a visible sync recovery status.");
 assert.match(html, /id="student-sort"/, "The class roster needs a sorting control.");
 assert.doesNotMatch(html, /id="student-density-button"/, "The unused density control should not occupy the classroom toolbar.");
-assert.match(html, /id="close-console-button"/, "Account users need an in-app close affordance.");
+assert.match(html, /id="close-console-button"/, "The installed shell keeps a compatibility close-action hook.");
+assert.match(script, /\$\("close-console-button"\)\.hidden = true;/, "The redundant in-page close icon must not crowd responsive console headers.");
 assert.match(html, /id="console-close-dialog"/, "Closing the account console needs a branded confirmation dialog.");
 assert.match(html, /id="confirm-dialog"/, "Destructive classroom actions need branded confirmations.");
 assert.match(html, /id="class-select-menu"/, "The primary class picker needs a branded listbox.");
@@ -49,7 +50,10 @@ assert.match(styles, /\.class-select-menu\s*\{/, "The class picker menu must use
 assert.match(styles, /#settings-section > \.password-card\s*\{[\s\S]*grid-column: 1;[\s\S]*grid-row: 3;/, "Desktop settings must keep password controls in the compact left column.");
 assert.match(styles, /\.teacher-greeting\s*\{[\s\S]*text-wrap: balance;[\s\S]*word-break: keep-all;/, "Long greetings must wrap at readable word boundaries on phones.");
 assert.match(styles, /writing-mode: horizontal-tb/, "Console labels must never fall into vertical writing mode.");
+assert.match(styles, /#landing-view \*,[\s\S]*#login-view \*,[\s\S]*#app-view \*/, "Every console surface must explicitly retain horizontal text flow.");
 assert.match(styles, /\.class-select-menu \{[\s\S]*z-index: 300;/, "The class picker must stay above the dashboard cards.");
+assert.match(styles, /@media \(min-width: 821px\) and \(max-width: 1100px\)[\s\S]*\.teacher-heading[\s\S]*grid-template-columns: minmax\(0, 1fr\);/, "Narrow desktop headers must stack context instead of crushing the greeting.");
+assert.match(styles, /@media \(max-width: 390px\)[\s\S]*\.brand > span:last-child \{ display: inline; \}/, "Compact phones must keep the Classroom wordmark visible without a vertical fallback.");
 assert.match(updater, /UPDATE_APPLYING/, "Student updates must report the immediate apply state.");
 assert.doesNotMatch(updater, /MoveFileEx|DelayUntilReboot|next-windows-start|Windows를 다시 시작하면/, "Student updates must not wait for a Windows reboot.");
 assert.match(helper, /CreateProcessAsUser/, "The update helper must be able to restart the student UI in the interactive session.");

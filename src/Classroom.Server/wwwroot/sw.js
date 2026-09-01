@@ -1,7 +1,7 @@
 // Bump this whenever the app shell changes so an already-installed school
 // browser drops the previous Firebase configuration and JavaScript bundle.
-const CACHE_NAME = "classroom-console-v20";
-const APP_SHELL = ["/", "/index.html", "/styles.css?v=0.5.25", "/app.js?v=0.5.25", "/config.js", "/firebase-auth.js", "/manifest.webmanifest", "/version.json", "/icons/classroom.svg"];
+const CACHE_NAME = "classroom-console-v21";
+const APP_SHELL = ["/", "/index.html", "/styles.css?v=0.5.26", "/app.js?v=0.5.26", "/config.js", "/firebase-auth.js", "/manifest.webmanifest", "/version.json", "/icons/classroom.svg"];
 // URL.pathname never contains the query string. Keeping query-bearing entries
 // in this set made old app.js/styles.css responses cache-first indefinitely.
 const NETWORK_FIRST_PATHS = new Set(["/", "/index.html", "/styles.css", "/app.js", "/config.js", "/firebase-auth.js", "/manifest.webmanifest", "/version.json", "/icons/classroom.svg"]);
