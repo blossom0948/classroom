@@ -4,6 +4,13 @@ function shouldProxy(pathname) {
   return PROXY_PATHS.some((prefix) => pathname === prefix.replace(/\/$/, "") || pathname.startsWith(prefix));
 }
 
+function readSetCookies(headers) {
+  if (typeof headers.getSetCookie === "function") return headers.getSetCookie();
+  if (typeof headers.getAll === "function") return headers.getAll("Set-Cookie");
+  const value = headers.get("Set-Cookie");
+  return value ? [value] : [];
+}
+
 export async function onRequest(context) {
   const incomingUrl = new URL(context.request.url);
   if (!shouldProxy(incomingUrl.pathname)) {
@@ -42,17 +49,17 @@ export async function onRequest(context) {
       body: context.request.body,
       redirect: "manual"
     }));
-    // Re-wrap the response so the Pages origin deliberately passes the
-    // backend's HttpOnly session cookie through to the browser.  `Headers`
-    // preserves Set-Cookie while also preventing authentication responses
-    // from being cached by an intermediary.
-    const responseHeaders = new Headers(upstream.headers);
-    responseHeaders.set("Cache-Control", "no-store");
-    return new Response(upstream.body, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers: responseHeaders
-    });
+    // Preserve Set-Cookie explicitly. Cloudflare's runtime keeps it as a
+    // special multi-value header, so a generic Headers copy is not enough
+    // when this optional same-site cookie transport is enabled.
+    const response = new Response(upstream.body, upstream);
+    const cookies = readSetCookies(upstream.headers);
+    if (cookies.length) {
+      response.headers.delete("Set-Cookie");
+      for (const cookie of cookies) response.headers.append("Set-Cookie", cookie);
+    }
+    response.headers.set("Cache-Control", "no-store");
+    return response;
   } catch {
     return Response.json(
       { code: "BACKEND_UNAVAILABLE", message: "Classroom backend is temporarily unavailable." },

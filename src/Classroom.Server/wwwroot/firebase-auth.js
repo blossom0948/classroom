@@ -1,6 +1,22 @@
 (() => {
   const firebaseConfig = window.CLASSROOM_CONFIG?.firebase || {};
   const requiredKeys = ["apiKey", "authDomain", "projectId", "appId"];
+  const redirectPendingKey = "classroom.firebaseRedirectPending";
+
+  function setRedirectPending(pending) {
+    try {
+      if (pending) sessionStorage.setItem(redirectPendingKey, "1");
+      else sessionStorage.removeItem(redirectPendingKey);
+    } catch (_) {
+      // Private browsing or managed browsers can deny storage. Firebase still
+      // returns its normal redirect result in that case.
+    }
+  }
+
+  function hasRedirectPending() {
+    try { return sessionStorage.getItem(redirectPendingKey) === "1"; }
+    catch (_) { return false; }
+  }
 
   function isConfigured() {
     return Boolean(window.firebase)
@@ -59,6 +75,29 @@
     console.error(`[Classroom] Firebase auth failure stage=${stage} code=${error?.code || "unknown"} message=${error?.message || "unknown"}`);
   }
 
+  function waitForRedirectUser(auth, timeoutMs = 3_500) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let unsubscribe = null;
+      let timeout = null;
+      const finish = (user) => {
+        if (settled) return;
+        settled = true;
+        if (timeout) window.clearTimeout(timeout);
+        if (unsubscribe) unsubscribe();
+        resolve(user || null);
+      };
+      unsubscribe = auth.onAuthStateChanged((user) => finish(user));
+      // Firebase normally calls the listener asynchronously, but release it
+      // correctly even if a browser supplies the current user immediately.
+      if (settled) {
+        unsubscribe();
+        return;
+      }
+      timeout = window.setTimeout(() => finish(auth.currentUser), timeoutMs);
+    });
+  }
+
   async function signInEmail(email, password) {
     try {
       const credential = await getAuth().signInWithEmailAndPassword(email.trim(), password);
@@ -100,9 +139,15 @@
       ].includes(error?.code);
       if (shouldUseRedirect) {
         try {
+          // Persist a tiny intent marker before leaving this document. Some
+          // managed browsers resolve Firebase's redirect result a moment
+          // after the app script starts; the marker lets us wait for that
+          // authenticated user instead of falling through to the landing.
+          setRedirectPending(true);
           await auth.signInWithRedirect(provider);
           return null;
         } catch (redirectError) {
+          setRedirectPending(false);
           logAuthFailure("google-redirect-fallback", redirectError);
           throw friendlyError(redirectError);
         }
@@ -112,10 +157,15 @@
   }
 
   async function consumeRedirectResult() {
+    const auth = getAuth();
+    const redirectPending = hasRedirectPending();
     try {
-      const result = await getAuth().getRedirectResult();
-      return result?.user ? toSessionPayload(result.user) : null;
+      const result = await auth.getRedirectResult();
+      const user = result?.user || auth.currentUser || (redirectPending ? await waitForRedirectUser(auth) : null);
+      setRedirectPending(false);
+      return user ? toSessionPayload(user) : null;
     } catch (error) {
+      setRedirectPending(false);
       logAuthFailure("google-redirect-result", error);
       throw friendlyError(error);
     }

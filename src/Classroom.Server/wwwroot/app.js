@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.27";
+  const APP_VERSION = "0.5.28";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -2167,6 +2167,9 @@
       const credentials = await firebaseClient().signInGoogle();
       if (credentials) await finishFirebaseLogin(credentials, signupProfile);
     } catch (error) {
+      // api() clears an expired partial session. Return to the correct form
+      // so an OAuth exchange error never leaves the user stranded on landing.
+      showAuth(signupMode ? "signup" : "login");
       if (error.code === "auth/popup-closed-by-user" || error.code === "auth/cancelled-popup-request") {
         setFirebaseStatus("Google 로그인을 취소했습니다.");
       } else {

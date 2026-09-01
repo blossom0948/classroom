@@ -1,11 +1,13 @@
 const isLocalClassroom = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
 window.CLASSROOM_CONFIG = Object.freeze({
-  // Production requests travel through the Pages proxy. That lets the
-  // browser keep the authentication token in an HttpOnly, Secure host cookie
-  // instead of exposing a bearer token to localStorage.
-  apiOrigin: window.location.origin,
-  cookieSession: !isLocalClassroom,
+  // The Pages proxy cannot reliably retain a newly issued session cookie
+  // after the Firebase Google redirect on every managed browser.  Keep the
+  // public console on the established, server-revocable API bearer route so
+  // a completed Google sign-in reaches the classroom instead of landing.
+  // Cookie mode remains available for a future custom same-site deployment.
+  apiOrigin: isLocalClassroom ? window.location.origin : "https://classroom-api.blossom0948.cloud",
+  cookieSession: false,
   studentInstallerUrl: "https://github.com/blossom0948/classroom/releases/latest/download/Classroom.Student.Setup.exe",
   firebase: {
     apiKey: "AIzaSyAYjzmqcVVIgBFgpzji7MOn2NVfl-B2N3c",

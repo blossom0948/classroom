@@ -42,8 +42,8 @@ assert.match(html, /id="class-select-menu"/, "The primary class picker needs a b
 assert.match(script, /if \(cookieSessionEnabled\) return null;/, "Secure-cookie mode must not read a teacher bearer token from web storage.");
 assert.match(script, /storageRemove\("localStorage", TEACHER_TOKEN_KEY\)/, "Switching to secure cookies must clear old persistent bearer tokens.");
 assert.match(script, /credentials: cookieSessionEnabled \? "include"/, "Cookie sessions must send same-origin credentials when enabled.");
-assert.match(config, /apiOrigin:\s*window\.location\.origin/, "The public console must use its Pages origin proxy for secure sessions.");
-assert.match(config, /cookieSession:\s*!isLocalClassroom/, "Production must opt into the secure cookie session while local development retains its fallback.");
+assert.match(config, /apiOrigin:\s*isLocalClassroom \? window\.location\.origin : "https:\/\/classroom-api\.blossom0948\.cloud"/, "The public console must use the proven direct API session route.");
+assert.match(config, /cookieSession:\s*false/, "The public console must avoid the Pages cookie path until a same-site deployment is available.");
 assert.match(script, /async function consumePendingFirebaseRedirect\(\)/, "Google redirect credentials must be consumed before session restoration.");
 assert.match(script, /if \(await consumePendingFirebaseRedirect\(\)\) return;/, "Google redirect completion must not be sent back to landing by an early session check.");
 assert.doesNotMatch(script, /\bconfirm\(/, "Native browser confirmation prompts should not be used in the console.");

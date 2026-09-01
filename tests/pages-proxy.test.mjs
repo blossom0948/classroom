@@ -43,7 +43,10 @@ try {
 
 globalThis.fetch = async () => new Response("signed in", {
   status: 200,
-  headers: { "Set-Cookie": "__Host-classroom-session=test; Path=/; Secure; HttpOnly" }
+  headers: [
+    ["Set-Cookie", "__Host-classroom-session=test; Path=/; Secure; HttpOnly"],
+    ["Set-Cookie", "classroom-preference=light; Path=/; Secure"]
+  ]
 });
 try {
   const login = await onRequest({
@@ -51,7 +54,11 @@ try {
     env: { CLASSROOM_BACKEND_ORIGIN: "https://classroom-origin.example" },
     next: () => new Response("unexpected")
   });
-  assert.equal(login.headers.get("Set-Cookie"), "__Host-classroom-session=test; Path=/; Secure; HttpOnly");
+  const cookies = typeof login.headers.getSetCookie === "function"
+    ? login.headers.getSetCookie()
+    : [login.headers.get("Set-Cookie")];
+  assert.ok(cookies.includes("__Host-classroom-session=test; Path=/; Secure; HttpOnly"));
+  assert.ok(cookies.includes("classroom-preference=light; Path=/; Secure"));
 } finally {
   globalThis.fetch = originalFetch;
 }
