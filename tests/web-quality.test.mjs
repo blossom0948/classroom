@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [html, script, styles, updater, helper] = await Promise.all([
+const [html, script, styles, config, updater, helper] = await Promise.all([
   readFile(new URL("../src/Classroom.Server/wwwroot/index.html", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/app.js", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/styles.css", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Server/wwwroot/config.js", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Service/StudentUpdateWorker.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Service/StudentUpdateHelper.cs", import.meta.url), "utf8")
 ]);
@@ -37,8 +38,10 @@ assert.match(html, /id="console-close-dialog"/, "Closing the account console nee
 assert.match(html, /id="confirm-dialog"/, "Destructive classroom actions need branded confirmations.");
 assert.match(html, /id="class-select-menu"/, "The primary class picker needs a branded listbox.");
 assert.match(script, /localStorage.*TEACHER_TOKEN_KEY|TEACHER_TOKEN_KEY[\s\S]*localStorage/, "Account tokens must survive closing the console.");
-assert.match(script, /cookieSessionEnabled/, "Production sessions must use the HttpOnly cookie mode.");
-assert.match(script, /credentials: cookieSessionEnabled \? "include"/, "Cookie sessions must send same-origin credentials.");
+assert.match(script, /cookieSessionEnabled/, "The console must retain the optional cookie-session compatibility path.");
+assert.match(script, /credentials: cookieSessionEnabled \? "include"/, "Cookie sessions must send same-origin credentials when enabled.");
+assert.match(config, /apiOrigin:[\s\S]*classroom-api\.blossom0948\.cloud/, "The public console must use the verified API origin for login compatibility.");
+assert.match(config, /cookieSession:\s*false/, "The public console must keep the verified bearer session path enabled.");
 assert.doesNotMatch(script, /\bconfirm\(/, "Native browser confirmation prompts should not be used in the console.");
 assert.match(styles, /@media \(max-width: 820px\)/, "The mobile shell must keep a compact breakpoint.");
 assert.match(styles, /\.command-dialog\s*\{[\s\S]*max-height:/, "Dialogs must stay inside the viewport.");

@@ -1,11 +1,11 @@
 const isLocalClassroom = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
 window.CLASSROOM_CONFIG = Object.freeze({
-  // Production Pages routes API calls through the same origin so the session
-  // can stay in an HttpOnly cookie. Local development keeps the direct API
-  // fallback for the existing bearer-token test workflow.
-  apiOrigin: isLocalClassroom ? window.location.origin : window.location.origin,
-  cookieSession: !isLocalClassroom,
+  // Keep the production bearer session on the existing API origin. This is
+  // compatible with already-installed consoles and avoids losing a fresh
+  // login when a Pages proxy cannot persist a Set-Cookie response.
+  apiOrigin: isLocalClassroom ? window.location.origin : "https://classroom-api.blossom0948.cloud",
+  cookieSession: false,
   studentInstallerUrl: "https://github.com/blossom0948/classroom/releases/latest/download/Classroom.Student.Setup.exe",
   firebase: {
     apiKey: "AIzaSyAYjzmqcVVIgBFgpzji7MOn2NVfl-B2N3c",

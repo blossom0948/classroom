@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.24";
+  const APP_VERSION = "0.5.25";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
