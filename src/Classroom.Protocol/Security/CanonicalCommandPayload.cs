@@ -22,7 +22,9 @@ public static class CanonicalCommandPayload
             $"approvedAppId={Encode(command.ApprovedAppId)}",
             $"displaySeconds={command.DisplaySeconds?.ToString() ?? "-"}",
             $"requiresAcknowledgement={command.RequiresAcknowledgement.ToString().ToLowerInvariant()}",
-            $"focusEnabled={command.FocusEnabled?.ToString().ToLowerInvariant() ?? "-"}");
+            $"focusEnabled={command.FocusEnabled?.ToString().ToLowerInvariant() ?? "-"}",
+            $"screenShareEnabled={command.ScreenShareEnabled?.ToString().ToLowerInvariant() ?? "-"}",
+            $"screenShareIntervalMilliseconds={command.ScreenShareIntervalMilliseconds?.ToString() ?? "-"}");
     }
 
     private static string Encode(string? value) =>

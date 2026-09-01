@@ -16,19 +16,28 @@ public sealed record DesktopStatusData(
     bool PolicyApplied,
     ScreenFrame? ScreenFrame = null,
     bool ScreenSharingEnabled = false,
-    bool NeedsHelp = false);
+    bool NeedsHelp = false,
+    int ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds);
 
 public sealed class WindowsStudentStatusProvider
 {
     private int policyApplied;
     private int screenSharingEnabled;
     private int helpRequested;
+    private int screenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds;
 
     public void SetPolicyApplied(bool applied) =>
         Interlocked.Exchange(ref policyApplied, applied ? 1 : 0);
 
-    public void SetScreenSharing(bool enabled) =>
+    public void SetScreenSharing(bool enabled, int? intervalMilliseconds = null)
+    {
+        var effectiveInterval = enabled && intervalMilliseconds is >= ProtocolConstants.ScreenShareMinimumIntervalMilliseconds
+            and <= ProtocolConstants.ScreenShareMaximumIntervalMilliseconds
+            ? intervalMilliseconds.Value
+            : ProtocolConstants.ScreenShareStandardIntervalMilliseconds;
+        Interlocked.Exchange(ref screenShareIntervalMilliseconds, effectiveInterval);
         Interlocked.Exchange(ref screenSharingEnabled, enabled ? 1 : 0);
+    }
 
     public void SetHelpRequested(bool requested) =>
         Interlocked.Exchange(ref helpRequested, requested ? 1 : 0);
@@ -43,7 +52,8 @@ public sealed class WindowsStudentStatusProvider
             Volatile.Read(ref policyApplied) == 1,
             sharing ? CapturePrimaryScreen() : null,
             sharing,
-            Volatile.Read(ref helpRequested) == 1);
+            Volatile.Read(ref helpRequested) == 1,
+            Volatile.Read(ref screenShareIntervalMilliseconds));
     }
 
     private static ScreenFrame? CapturePrimaryScreen()
@@ -62,7 +72,14 @@ public sealed class WindowsStudentStatusProvider
                 graphics.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size, CopyPixelOperation.SourceCopy);
             }
 
-            foreach (var targetWidth in new[] { 480, 400, 320 })
+            var attemptedSizes = new HashSet<(int Width, int Height)>();
+            foreach (var (targetWidth, qualities) in new[]
+            {
+                (ProtocolConstants.MaxScreenFrameWidth, new long[] { 58, 50, 42 }),
+                (1_024, new long[] { 62, 54, 46 }),
+                (800, new long[] { 64, 56, 48 }),
+                (640, new long[] { 66, 58, 50 })
+            })
             {
                 var width = Math.Min(targetWidth, source.Width);
                 var height = Math.Max(1, (int)Math.Round(source.Height * (width / (double)source.Width)));
@@ -72,16 +89,22 @@ public sealed class WindowsStudentStatusProvider
                     width = Math.Max(1, (int)Math.Round(source.Width * (height / (double)source.Height)));
                 }
 
+                if (!attemptedSizes.Add((width, height)))
+                {
+                    continue;
+                }
+
                 using var thumbnail = new Bitmap(width, height, PixelFormat.Format24bppRgb);
                 using (var graphics = Graphics.FromImage(thumbnail))
                 {
-                    graphics.CompositingQuality = CompositingQuality.HighSpeed;
-                    graphics.InterpolationMode = InterpolationMode.Low;
-                    graphics.SmoothingMode = SmoothingMode.HighSpeed;
+                    graphics.CompositingQuality = CompositingQuality.HighQuality;
+                    graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                    graphics.SmoothingMode = SmoothingMode.HighQuality;
                     graphics.DrawImage(source, new Rectangle(0, 0, width, height));
                 }
 
-                foreach (var quality in new long[] { 36, 28, 20 })
+                foreach (var quality in qualities)
                 {
                     var bytes = EncodeJpeg(thumbnail, quality);
                     if (bytes.Length <= ProtocolConstants.MaxScreenFrameBytes)

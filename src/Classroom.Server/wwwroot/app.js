@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.28";
+  const APP_VERSION = "0.5.29";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -485,8 +485,10 @@
         const targetIds = state.screenShareTargetIds || [];
         const received = targetIds.filter((deviceId) => isUsableScreenFrame(state.screenFrames.get(deviceId))).length;
         $("monitor-session-status").textContent = `${received}/${targetIds.length}명 화면 수신 중`;
+        const refreshMilliseconds = monitorRefreshIntervalMs(targetIds.length);
+        const refreshLabel = refreshMilliseconds < 1_000 ? "약 0.75초" : "약 1초";
         $("monitor-session-updated").textContent = received
-          ? "초당 한 번씩 갱신됩니다. 학생을 누르면 크게 볼 수 있습니다."
+          ? `최대 720p 자동 화질 · ${refreshLabel}마다 갱신됩니다. 학생을 누르면 크게 볼 수 있습니다.`
           : "첫 화면을 기다리는 중입니다. 학생 앱 연결 상태를 확인해 주세요.";
       }
     }
@@ -630,16 +632,25 @@
       const riskNotice = attention
         ? `<div class="activity-risk ${escapeHtml(attention.kind)}"><span aria-hidden="true">!</span><span>${escapeHtml(attention.detail)}</span></div>`
         : "";
+      const quickMessage = state.teacher?.isGuest
+        ? ""
+        : `<button class="student-card-message" type="button" data-student-message="${escapeHtml(student.deviceId)}" aria-label="${escapeHtml(student.studentDisplayName)} 학생에게 개인 메시지 보내기" title="${escapeHtml(student.studentDisplayName)} 학생에게 개인 메시지">메시지</button>`;
       return `<article class="student-card${selected ? " selected" : ""}" data-device-id="${escapeHtml(student.deviceId)}">
         ${selector}
         <div class="student-head"><div><div class="student-name">${escapeHtml(student.studentDisplayName)}</div><div class="student-device">${escapeHtml(student.computerName)}</div></div><span class="status-dot ${statusClass}">${statusText}</span></div>
         <div class="student-activity"><span class="app-icon" aria-hidden="true">▣</span><div class="activity-copy"><div class="activity-label">현재 활동</div><div class="activity-app">${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</div><div class="activity-domain">${escapeHtml(activityContext)}</div>${riskNotice}</div></div>
-        <div class="student-meta"><span>${student.studentNumber ? `${student.studentNumber}번` : "번호 —"}</span><span>${battery}</span><span>${escapeHtml(student.networkStatus || "unknown")}</span>${student.policyApplied ? '<span class="policy-tag">🔒 집중</span>' : ""}${attention ? `<span class="risk-tag ${escapeHtml(attention.kind)}">${escapeHtml(attention.label)}</span>` : ""}</div>
+        <div class="student-card-footer"><div class="student-meta"><span>${student.studentNumber ? `${student.studentNumber}번` : "번호 —"}</span><span>${battery}</span><span>${escapeHtml(student.networkStatus || "unknown")}</span>${student.policyApplied ? '<span class="policy-tag">🔒 집중</span>' : ""}${attention ? `<span class="risk-tag ${escapeHtml(attention.kind)}">${escapeHtml(attention.label)}</span>` : ""}</div>${quickMessage}</div>
       </article>`;
     }).join("");
     bindStudentSelection(grid);
     grid.querySelectorAll(".student-card").forEach((card) => {
       card.addEventListener("click", () => openDetail(card.dataset.deviceId));
+    });
+    grid.querySelectorAll("[data-student-message]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openCommandDialog("message", [button.dataset.studentMessage]);
+      });
     });
   }
 
@@ -685,6 +696,33 @@
       && /^[A-Za-z0-9+/=]+$/.test(frame.screenFrame.base64Data);
   }
 
+  function monitorRefreshIntervalMs(targetCount = state.screenShareTargetIds?.length || 0) {
+    // A classroom wall stays stable at one second once it reaches a typical
+    // full class. Small selections get a visibly faster, 0.75-second update.
+    return targetCount > 12 ? 1_000 : 750;
+  }
+
+  function screenFrameDimensions(frame) {
+    const width = Number(frame?.screenFrame?.width);
+    const height = Number(frame?.screenFrame?.height);
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) return null;
+    return { width, height };
+  }
+
+  function screenFrameStyle(frame) {
+    const dimensions = screenFrameDimensions(frame);
+    return dimensions
+      ? ` style="--screen-aspect-ratio: ${dimensions.width} / ${dimensions.height}"`
+      : "";
+  }
+
+  function screenFrameMeta(frame) {
+    const dimensions = screenFrameDimensions(frame);
+    return dimensions
+      ? `${dimensions.width} × ${dimensions.height} · 자동 화질`
+      : "최대 720p · 자동 화질";
+  }
+
   function monitorPageSize() {
     if (window.innerWidth <= 640) return 4;
     if (window.innerWidth <= 1120) return 8;
@@ -716,6 +754,9 @@
         ? `<span class="screen-risk-label ${escapeHtml(attention.kind)}">${escapeHtml(attention.label)}</span>`
         : "";
       const number = student.studentNumber ? `${student.studentNumber}번` : "번호 —";
+      const quickMessage = state.teacher?.isGuest
+        ? ""
+        : `<button class="student-monitor-message" type="button" data-student-message="${escapeHtml(student.deviceId)}" aria-label="${escapeHtml(student.studentDisplayName)} 학생에게 개인 메시지 보내기" title="${escapeHtml(student.studentDisplayName)} 학생에게 개인 메시지">메시지</button>`;
       return `<article class="student-monitor-card${selected ? " selected" : ""}" data-device-id="${escapeHtml(student.deviceId)}">
         ${studentSelectorMarkup(student, selected)}
         <button class="student-monitor-preview" type="button" data-monitor-open="${escapeHtml(student.deviceId)}" aria-label="${escapeHtml(student.studentDisplayName)} 학생 화면 크게 보기">
@@ -723,12 +764,19 @@
           ${risk}
           <span class="monitor-screen-frame">${image}</span>
         </button>
+        ${quickMessage}
         <div class="student-monitor-hinge"><span>${escapeHtml(number)}</span><strong>${escapeHtml(student.studentDisplayName)}</strong></div>
       </article>`;
     }).join("");
     bindStudentSelection(grid);
     grid.querySelectorAll("[data-monitor-open]").forEach((button) => {
       button.addEventListener("click", () => openDetail(button.dataset.monitorOpen, "screen"));
+    });
+    grid.querySelectorAll("[data-student-message]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openCommandDialog("message", [button.dataset.studentMessage]);
+      });
     });
     renderMonitorPagination(targetStudents.length, pageSize);
   }
@@ -792,7 +840,7 @@
       const image = isUsableScreenFrame(frame)
         ? `<img src="data:image/jpeg;base64,${frame.screenFrame.base64Data}" alt="${escapeHtml(student.studentDisplayName)} 학생 화면">`
         : '<div class="screen-frame-empty">학생 화면을 불러오는 중입니다…</div>';
-      $("detail-content").innerHTML = `<div class="screen-detail-layout"><section class="detail-screen-column"><div class="screen-detail-caption"><span class="eyebrow">LIVE STUDENT SCREEN</span><strong>${escapeHtml(student.studentDisplayName)} 학생 화면</strong></div><section id="detail-screen-stage" class="detail-screen-stage"><div class="detail-screen-toolbar"><span class="screen-live-dot">● 화면 공유 중</span><span class="muted small">초당 갱신</span></div><div class="detail-screen-frame">${image}</div></section></section><aside class="detail-screen-inspector">${header}${riskMarkup}${statusRows}${deviceRows}<div class="detail-section detail-screen-actions"><button id="detail-screen-fullscreen" class="primary wide" type="button">전체 화면</button><button id="detail-screen-stop" class="danger-action wide" type="button">화면 공유 종료</button></div></aside></div>`;
+      $("detail-content").innerHTML = `<div class="screen-detail-layout"><section class="detail-screen-column"><div class="screen-detail-caption"><span class="eyebrow">LIVE STUDENT SCREEN</span><strong>${escapeHtml(student.studentDisplayName)} 학생 화면</strong></div><section id="detail-screen-stage" class="detail-screen-stage"><div class="detail-screen-toolbar"><span class="screen-live-dot">● 화면 공유 중</span><span class="muted small">${screenFrameMeta(frame)} · ${monitorRefreshIntervalMs()}ms 갱신</span></div><div class="detail-screen-frame"${screenFrameStyle(frame)}>${image}</div></section></section><aside class="detail-screen-inspector">${header}${riskMarkup}${statusRows}${deviceRows}<div class="detail-section detail-screen-actions"><button id="detail-screen-fullscreen" class="primary wide" type="button">전체 화면</button><button id="detail-screen-stop" class="danger-action wide" type="button">화면 공유 종료</button></div></aside></div>`;
       $("detail-screen-fullscreen").addEventListener("click", () => openDetailScreenFullscreen().catch(() => showToast("전체 화면을 사용할 수 없습니다.")));
       $("detail-screen-stop").addEventListener("click", () => stopScreenSharing().catch((error) => showToast(error.message)));
       return;
@@ -1310,10 +1358,21 @@
     }
     state.commandKind = kind;
     state.commandTargetIds = Array.isArray(targetIds) ? [...targetIds] : null;
-    $("dialog-title").textContent = kind === "url" ? "URL 열기" : kind === "app" ? "승인된 앱 실행" : "메시지 보내기";
+    const directStudent = kind === "message" && state.commandTargetIds?.length === 1
+      ? state.students.find((student) => student.deviceId === state.commandTargetIds[0])
+      : null;
+    $("dialog-title").textContent = kind === "url"
+      ? "URL 열기"
+      : kind === "app"
+        ? "승인된 앱 실행"
+        : directStudent
+          ? "개인 메시지 보내기"
+          : "메시지 보내기";
     const targetCount = state.commandTargetIds?.length || state.students.length;
     $("command-audience").textContent = state.commandTargetIds?.length
-      ? `선택한 학생 ${targetCount}명에게만 전달합니다.`
+      ? directStudent
+        ? `${directStudent.studentDisplayName} 학생에게만 전달합니다.`
+        : `선택한 학생 ${targetCount}명에게만 전달합니다.`
       : `등록된 학생 전체 ${targetCount}명에게 전달합니다.`;
     $("url-field").hidden = kind !== "url";
     $("app-field").hidden = kind !== "app";
@@ -1393,10 +1452,14 @@
     state.detailView = "status";
     renderScreenWall();
     try {
-      await sendCommand("screenShare", state.screenShareTargetIds, { screenShareEnabled: true });
+      const refreshInterval = monitorRefreshIntervalMs(state.screenShareTargetIds.length);
+      await sendCommand("screenShare", state.screenShareTargetIds, {
+        screenShareEnabled: true,
+        screenShareIntervalMilliseconds: refreshInterval
+      });
       await refreshScreenWall();
       if (state.screenWallTimer) clearInterval(state.screenWallTimer);
-      state.screenWallTimer = setInterval(() => refreshScreenWall().catch(() => {}), 1000);
+      state.screenWallTimer = setInterval(() => refreshScreenWall().catch(() => {}), refreshInterval);
       if (deviceId) openDetail(deviceId, "screen");
     } catch (error) {
       await stopScreenSharing();
@@ -1710,12 +1773,12 @@
     terms: {
       kicker: "TERMS OF SERVICE",
       title: "Classroom 이용약관",
-      html: `<p>시행일: 2026년 8월 30일</p><h3>1. 서비스 목적</h3><p>Classroom은 학교 수업에서 학생 PC의 연결 상태를 확인하고, 수업 안내·집중 모드·승인된 링크 및 앱 실행을 전달하기 위한 교사용 운영 도구입니다.</p><h3>2. 계정과 권한</h3><p>교사 계정은 본인만 사용해야 하며, 관리자는 학교 운영에 필요한 범위에서 다른 교사의 관리자 권한을 지정하거나 해제할 수 있습니다. 학생 코드는 학생 PC 등록 목적으로만 사용해야 하며, 노출된 코드는 즉시 재발급해야 합니다.</p><h3>3. 허용되는 기능 범위</h3><p>서비스는 수업 운영에 필요한 상태 확인과 명령 전달을 제공합니다. 교사가 수업 중 화면 보기를 직접 켠 경우에만 학생 PC의 저화질 화면이 표시되며, 학생 앱에도 화면 공유 중임을 표시합니다. 키 입력, 오디오 수집, 임의 원격 셸 실행, 개인 파일 열람 기능은 제공하지 않습니다.</p><h3>4. 학교의 책임</h3><p>학교·교육기관은 학생과 보호자에게 서비스 사용 사실, 관리 범위, 자체 운영 기준을 알리고 필요한 동의 절차를 갖추어야 합니다.</p><h3>5. 이용 제한</h3><p>타인의 계정을 사용하거나, 학생의 교육 목적과 무관한 감시·통제에 서비스를 이용해서는 안 됩니다. 보안상 우려가 있는 이용은 제한될 수 있습니다.</p>`
+      html: `<p>시행일: 2026년 8월 30일</p><h3>1. 서비스 목적</h3><p>Classroom은 학교 수업에서 학생 PC의 연결 상태를 확인하고, 수업 안내·집중 모드·승인된 링크 및 앱 실행을 전달하기 위한 교사용 운영 도구입니다.</p><h3>2. 계정과 권한</h3><p>교사 계정은 본인만 사용해야 하며, 관리자는 학교 운영에 필요한 범위에서 다른 교사의 관리자 권한을 지정하거나 해제할 수 있습니다. 학생 코드는 학생 PC 등록 목적으로만 사용해야 하며, 노출된 코드는 즉시 재발급해야 합니다.</p><h3>3. 허용되는 기능 범위</h3><p>서비스는 수업 운영에 필요한 상태 확인과 명령 전달을 제공합니다. 교사가 수업 중 화면 보기를 직접 켠 경우에만 학생 PC의 최대 720p 자동 화질 화면이 표시되며, 학생 앱에도 화면 공유 중임을 표시합니다. 키 입력, 오디오 수집, 임의 원격 셸 실행, 개인 파일 열람 기능은 제공하지 않습니다.</p><h3>4. 학교의 책임</h3><p>학교·교육기관은 학생과 보호자에게 서비스 사용 사실, 관리 범위, 자체 운영 기준을 알리고 필요한 동의 절차를 갖추어야 합니다.</p><h3>5. 이용 제한</h3><p>타인의 계정을 사용하거나, 학생의 교육 목적과 무관한 감시·통제에 서비스를 이용해서는 안 됩니다. 보안상 우려가 있는 이용은 제한될 수 있습니다.</p>`
     },
     privacy: {
       kicker: "PRIVACY NOTICE",
       title: "개인정보처리방침",
-      html: `<p>시행일: 2026년 8월 30일</p><h3>1. 수집하는 정보</h3><p>교사 계정의 이메일·이름·담당 과목, 학급명, 학생 표시 이름, 학생 PC 이름·연결 시각·현재 앱·창 제목·설정된 웹 도메인·배터리·네트워크 상태, 수업 명령 및 감사 기록을 처리합니다. 교사가 수업 중 화면 보기를 켠 동안에는 저화질 화면 프레임을 일시 처리합니다.</p><h3>2. 이용 목적</h3><p>교사 인증, 학급 운영, 학생 PC 등록, 수업 안내 전달, 연결 상태와 수업 참여 화면 확인, 보안 감사 및 장애 대응에만 사용합니다.</p><h3>3. 보관 기간</h3><p>교사·학생·수업 데이터는 학교 관리자가 삭제하거나 서비스 운영 목적이 종료될 때까지 보관합니다. 화면 프레임은 데이터베이스나 감사 기록에 저장하지 않고 메모리에서 약 15초 이내에 만료합니다. 세부 보관 기간은 학교의 정보보호·기록 관리 규정에 맞춰 운영해야 합니다.</p><h3>4. 안전성</h3><p>인증 토큰은 서버에 해시 형태로 보관하며, 전송은 HTTPS/WSS로 보호합니다. 화면 공유 중에는 학생 앱에 이를 명확히 표시하고, 서비스는 키 입력·오디오·개인 파일·임의 원격 셸을 수집하거나 실행하지 않습니다.</p><h3>5. 이용자 권리와 문의</h3><p>정보 주체는 학교 관리자에게 열람·정정·삭제 요청을 할 수 있습니다. 실제 학교 도입 전에는 해당 학교의 개인정보 보호책임자와 연락처를 별도로 고지해야 합니다.</p>`
+      html: `<p>시행일: 2026년 8월 30일</p><h3>1. 수집하는 정보</h3><p>교사 계정의 이메일·이름·담당 과목, 학급명, 학생 표시 이름, 학생 PC 이름·연결 시각·현재 앱·창 제목·설정된 웹 도메인·배터리·네트워크 상태, 수업 명령 및 감사 기록을 처리합니다. 교사가 수업 중 화면 보기를 켠 동안에는 최대 720p 자동 화질 화면 프레임을 일시 처리합니다.</p><h3>2. 이용 목적</h3><p>교사 인증, 학급 운영, 학생 PC 등록, 수업 안내 전달, 연결 상태와 수업 참여 화면 확인, 보안 감사 및 장애 대응에만 사용합니다.</p><h3>3. 보관 기간</h3><p>교사·학생·수업 데이터는 학교 관리자가 삭제하거나 서비스 운영 목적이 종료될 때까지 보관합니다. 화면 프레임은 데이터베이스나 감사 기록에 저장하지 않고 메모리에서 약 15초 이내에 만료합니다. 세부 보관 기간은 학교의 정보보호·기록 관리 규정에 맞춰 운영해야 합니다.</p><h3>4. 안전성</h3><p>인증 토큰은 서버에 해시 형태로 보관하며, 전송은 HTTPS/WSS로 보호합니다. 화면 공유 중에는 학생 앱에 이를 명확히 표시하고, 서비스는 키 입력·오디오·개인 파일·임의 원격 셸을 수집하거나 실행하지 않습니다.</p><h3>5. 이용자 권리와 문의</h3><p>정보 주체는 학교 관리자에게 열람·정정·삭제 요청을 할 수 있습니다. 실제 학교 도입 전에는 해당 학교의 개인정보 보호책임자와 연락처를 별도로 고지해야 합니다.</p>`
     }
   };
 

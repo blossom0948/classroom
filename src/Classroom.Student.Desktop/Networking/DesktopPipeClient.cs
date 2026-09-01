@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Blossom.Classroom.Core.Desktop;
 using Blossom.Classroom.Core.Serialization;
+using Blossom.Classroom.Protocol;
 using Blossom.Classroom.Protocol.Models;
 using Blossom.Classroom.Student.Desktop.Commands;
 using Blossom.Classroom.Student.Desktop.Configuration;
@@ -302,8 +303,12 @@ public sealed class DesktopPipeClient(
                     status.PolicyApplied,
                     status.ScreenFrame,
                     status.ScreenSharingEnabled,
-                    status.NeedsHelp));
-            await Task.Delay(options.StatusInterval, cancellationToken);
+                    status.NeedsHelp,
+                    status.ScreenShareIntervalMilliseconds));
+            var nextStatus = status.ScreenSharingEnabled
+                ? TimeSpan.FromMilliseconds(status.ScreenShareIntervalMilliseconds)
+                : options.StatusInterval;
+            await Task.Delay(nextStatus, cancellationToken);
         }
     }
 
@@ -445,7 +450,8 @@ public sealed class DesktopPipeClient(
         bool PolicyApplied,
         ScreenFrame? ScreenFrame,
         bool ScreenSharingEnabled,
-        bool NeedsHelp = false);
+        bool NeedsHelp = false,
+        int ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds);
 
     private sealed record DesktopServerStatusMessage(
         string Kind,

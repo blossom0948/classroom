@@ -65,6 +65,15 @@ assert.match(script, /function renderMonitorGrid\(/, "Student monitors must rend
 assert.match(script, /function monitorPageSize\(\)/, "Large classes need predictable monitor-wall pagination.");
 assert.match(styles, /\.student-monitor-hinge\s*\{/, "Monitor tiles must expose a compact lower-right student label.");
 assert.match(styles, /\.monitor-stage:fullscreen, \.monitor-stage\.fullscreen-mode/, "Monitor fullscreen needs a browser and in-page fallback.");
+assert.match(script, /function monitorRefreshIntervalMs\(/, "Screen polling must choose a classroom-safe refresh cadence.");
+assert.match(script, /screenShareIntervalMilliseconds: refreshInterval/, "The teacher console must pass the selected screen cadence to student apps.");
+assert.match(script, /data-student-message/, "A teacher must be able to message one student without opening screen view.");
+assert.match(script, /개인 메시지 보내기/, "A one-student command must be clearly identified as a personal message.");
+assert.match(styles, /#class-section > \.class-metrics\s*\{[\s\S]*margin: 0 0 16px !important;[\s\S]*position: static !important;/, "Metric cards must stay in normal flow beneath the session strip.");
+assert.match(styles, /#detail-pane\.screen-mode\s*\{[\s\S]*inset: 0 !important;[\s\S]*z-index: 1200 !important;/, "Student-screen detail must cover the console rather than overlap the header.");
+assert.match(styles, /aspect-ratio: var\(--screen-aspect-ratio, 16 \/ 9\) !important;/, "The detailed student screen must keep its captured aspect ratio.");
+assert.match(styles, /@media \(prefers-contrast: more\)/, "The Liquid Glass layer needs an opaque high-contrast fallback.");
+assert.match(styles, /@supports \(\(backdrop-filter: blur\(12px\)\)/, "Glass materials need a feature-query fallback.");
 assert.doesNotMatch(html, /class="settings-card legal-card"/, "Terms and privacy must live in the compact footer, not a standalone settings card.");
 assert.match(html, /class="console-footer"/, "The compact terms/privacy footer must remain visible.");
 assert.match(updater, /UPDATE_APPLYING/, "Student updates must report the immediate apply state.");

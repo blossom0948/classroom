@@ -157,6 +157,14 @@ public static class ProtocolValidation
                 {
                     throw new ProtocolValidationException("ScreenShareEnabled is required.");
                 }
+
+                if (command.ScreenShareIntervalMilliseconds is not null
+                    && command.ScreenShareIntervalMilliseconds is < ProtocolConstants.ScreenShareMinimumIntervalMilliseconds
+                        or > ProtocolConstants.ScreenShareMaximumIntervalMilliseconds)
+                {
+                    throw new ProtocolValidationException(
+                        $"ScreenShareIntervalMilliseconds must be between {ProtocolConstants.ScreenShareMinimumIntervalMilliseconds} and {ProtocolConstants.ScreenShareMaximumIntervalMilliseconds}.");
+                }
                 break;
             default:
                 throw new ProtocolValidationException("Unknown Classroom command kind.");

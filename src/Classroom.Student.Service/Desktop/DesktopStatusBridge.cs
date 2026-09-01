@@ -7,6 +7,7 @@ using System.Text.Json;
 using Blossom.Classroom.Core.Desktop;
 using Blossom.Classroom.Core.Security;
 using Blossom.Classroom.Core.Serialization;
+using Blossom.Classroom.Protocol;
 using Blossom.Classroom.Protocol.Models;
 using Blossom.Classroom.Protocol.Validation;
 using Blossom.Classroom.Student.Service.Commands;
@@ -365,6 +366,12 @@ public sealed class DesktopStatusBridge(
                         ProtocolValidation.ValidateScreenFrame(status.ScreenFrame);
                     }
 
+                    if (status.ScreenShareIntervalMilliseconds is < ProtocolConstants.ScreenShareMinimumIntervalMilliseconds
+                        or > ProtocolConstants.ScreenShareMaximumIntervalMilliseconds)
+                    {
+                        throw new ProtocolValidationException("Desktop screen-share interval is invalid.");
+                    }
+
                     lock (gate)
                     {
                         latest = new StudentStatusData(
@@ -374,7 +381,8 @@ public sealed class DesktopStatusBridge(
                             status.PolicyApplied,
                             status.ScreenFrame,
                             status.ScreenSharingEnabled,
-                            status.NeedsHelp);
+                            status.NeedsHelp,
+                            status.ScreenShareIntervalMilliseconds);
                     }
 
                     break;
@@ -560,7 +568,8 @@ public sealed class DesktopStatusBridge(
         bool PolicyApplied,
         ScreenFrame? ScreenFrame,
         bool ScreenSharingEnabled,
-        bool NeedsHelp = false);
+        bool NeedsHelp = false,
+        int ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds);
 
     private sealed record DesktopServerStatusMessage(
         string Kind,

@@ -20,7 +20,8 @@ public sealed record CommandRequest(
     int? DisplaySeconds = null,
     bool RequiresAcknowledgement = true,
     bool? FocusEnabled = null,
-    bool? ScreenShareEnabled = null);
+    bool? ScreenShareEnabled = null,
+    int? ScreenShareIntervalMilliseconds = null);
 
 public sealed record CommandAck(
     Guid RequestId,

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using Blossom.Classroom.Protocol;
 using Blossom.Classroom.Protocol.Models;
 using Blossom.Classroom.Student.Desktop.Commands;
 using Blossom.Classroom.Student.Desktop.Configuration;
@@ -308,23 +309,28 @@ public sealed class StudentDesktopForm : Form
     private DesktopCommandApplyResult SetScreenSharing(CommandRequest command)
     {
         var enabled = command.ScreenShareEnabled is true;
-        ApplyScreenSharingState(enabled);
+        var intervalMilliseconds = command.ScreenShareIntervalMilliseconds
+            ?? ProtocolConstants.ScreenShareStandardIntervalMilliseconds;
+        ApplyScreenSharingState(enabled, intervalMilliseconds);
         if (enabled)
         {
             ShowMainWindow();
-            return new DesktopCommandApplyResult(true, "SCREEN_SHARE_ENABLED", "Low-resolution screen sharing enabled.");
+            return new DesktopCommandApplyResult(
+                true,
+                "SCREEN_SHARE_ENABLED",
+                "Adaptive screen sharing enabled (up to 720p).");
         }
 
         return new DesktopCommandApplyResult(true, "SCREEN_SHARE_DISABLED", "Screen sharing disabled.");
     }
 
-    private void ApplyScreenSharingState(bool enabled)
+    private void ApplyScreenSharingState(bool enabled, int? intervalMilliseconds = null)
     {
         screenSharingActive = enabled;
-        statusProvider.SetScreenSharing(enabled);
+        statusProvider.SetScreenSharing(enabled, intervalMilliseconds);
         screenSharingLabel.Visible = true;
         screenSharingLabel.Text = enabled
-            ? "● 화면 공유 중 · 교사 콘솔에 저화질 화면이 표시됩니다"
+            ? "● 화면 공유 중 · 최대 720p로 자동 조정됩니다"
             : "● Windows 시작 시 자동 연결 · 화면 공유 대기";
         screenSharingLabel.ForeColor = enabled
             ? Color.FromArgb(188, 42, 52)

@@ -3,13 +3,19 @@ namespace Blossom.Classroom.Protocol;
 public static class ProtocolConstants
 {
     public const int Version = 1;
-    public const int MaxMessageBytes = 64 * 1024;
+    // Screen frames travel through both the desktop IPC channel and the
+    // student WebSocket. Keep one shared ceiling so a valid adaptive 720p
+    // frame cannot be accepted by one hop and rejected by the next.
+    public const int MaxMessageBytes = 128 * 1024;
     public const int MaxTargetDevices = 30;
     public const int MaxTextLength = 2_000;
     public const int MaxDisplaySeconds = 3_600;
-    public const int MaxScreenFrameBytes = 36 * 1024;
-    public const int MaxScreenFrameWidth = 640;
-    public const int MaxScreenFrameHeight = 480;
+    public const int MaxScreenFrameBytes = 72 * 1024;
+    public const int MaxScreenFrameWidth = 1_280;
+    public const int MaxScreenFrameHeight = 720;
+    public const int ScreenShareMinimumIntervalMilliseconds = 750;
+    public const int ScreenShareStandardIntervalMilliseconds = 1_000;
+    public const int ScreenShareMaximumIntervalMilliseconds = 3_000;
     public const int HeartbeatIntervalSeconds = 10;
 
     public const string DeviceEnrollmentRequest = "DEVICE_ENROLLMENT_REQUEST";

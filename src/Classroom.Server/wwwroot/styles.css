@@ -2680,3 +2680,622 @@ body { background: #f3f6fb; }
 }
 @keyframes classroom-command-in { from { opacity: .72; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .topbar, .class-command-strip, .class-metrics, .toolbar { animation: none; } }
+
+/* 0.5.29 — an accessible Liquid Glass refinement.
+   Glass is reserved for navigation, temporary actions, and sign-in. The
+   monitor wall and classroom data stay deliberately solid, so contrast does
+   not depend on a blurred background or a teacher's display settings. */
+:root {
+  --liquid-ink: #12213d;
+  --liquid-muted: #5d6f90;
+  --liquid-blue: #2f5deb;
+  --liquid-blue-strong: #1f45c9;
+  --liquid-violet: #7657e9;
+  --liquid-line: rgba(166, 183, 215, .62);
+  --liquid-glass: rgba(255, 255, 255, .72);
+  --liquid-content: rgba(255, 255, 255, .94);
+  --liquid-shadow: 0 18px 48px rgba(25, 49, 95, .12);
+  --liquid-ease: cubic-bezier(.22, .8, .24, 1);
+  --liquid-fast: 180ms;
+  --liquid-standard: 360ms;
+}
+
+#app-view {
+  isolation: isolate;
+  position: relative;
+}
+
+#app-view .app-shell {
+  background:
+    radial-gradient(circle at 85% -8%, rgba(114, 139, 255, .2), transparent 34rem),
+    radial-gradient(circle at 4% 100%, rgba(113, 224, 205, .12), transparent 29rem),
+    linear-gradient(142deg, #edf3ff 0%, #f7f9fd 47%, #eef4ff 100%);
+}
+
+/* Desktop navigation is a single rich control layer, not a flat wall. */
+@media (min-width: 821px) {
+  #app-view .app-shell {
+    gap: 18px;
+    grid-template-columns: 250px minmax(0, 1fr);
+    padding: 16px 18px 16px 16px;
+  }
+
+  #app-view .sidebar {
+    background:
+      radial-gradient(circle at 16% 4%, rgba(129, 154, 255, .31), transparent 15rem),
+      linear-gradient(159deg, #1b2c4a 0%, #172642 56%, #111d34 100%);
+    border: 1px solid rgba(172, 194, 255, .22);
+    border-radius: 31px;
+    box-shadow: 0 26px 70px rgba(14, 31, 61, .25), inset 0 1px 0 rgba(255, 255, 255, .11);
+    height: calc(100dvh - 32px);
+    margin: 0;
+    max-height: calc(100dvh - 32px);
+    top: 16px;
+  }
+
+  #app-view .sidebar-bottom {
+    background: rgba(255, 255, 255, .065);
+    border-color: rgba(217, 227, 255, .12);
+    border-radius: 18px;
+  }
+
+  #app-view .nav {
+    background: rgba(5, 17, 38, .24);
+    border-color: rgba(218, 229, 255, .11);
+    border-radius: 20px;
+  }
+
+  #app-view .nav-item { border-radius: 14px; }
+  #app-view .nav-item.active {
+    background: linear-gradient(110deg, rgba(108, 136, 255, .42), rgba(79, 104, 216, .2));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .13), 0 10px 23px rgba(4, 14, 32, .19);
+  }
+}
+
+/* The greeting is context, not a second dashboard. Date and weather stay near
+   the teacher's name; the unnecessary full-width glass band is intentionally
+   removed. */
+#app-view .topbar {
+  align-items: flex-start;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  gap: 18px;
+  padding: 10px 3px 22px;
+  z-index: 90;
+}
+
+#app-view .teacher-heading {
+  align-items: flex-end;
+  display: flex;
+  flex: 1 1 auto;
+  gap: clamp(18px, 2.2vw, 36px);
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+#app-view .teacher-heading-main { flex: 0 1 auto; min-width: 0; }
+#app-view .school-name { color: #315fdf; font-size: 13px; font-weight: 860; }
+#app-view .teacher-greeting {
+  color: var(--liquid-ink);
+  font-size: clamp(29px, 2.55vw, 39px);
+  font-weight: 860;
+  letter-spacing: -.065em;
+  line-height: 1.13;
+  text-wrap: balance;
+}
+
+#app-view .class-picker { gap: 12px; margin-top: 15px; }
+#app-view .class-select-button {
+  background: rgba(245, 248, 255, .9);
+  border-color: rgba(166, 184, 220, .74);
+  border-radius: 15px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .92), 0 5px 16px rgba(47, 78, 139, .07);
+  color: #182b4b;
+  min-height: 48px;
+}
+
+#app-view .class-subject { color: var(--liquid-blue); font-weight: 850; }
+#app-view .topbar .header-context.today-info {
+  align-items: center;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  display: grid;
+  gap: 4px 10px;
+  grid-template-columns: auto minmax(0, max-content);
+  margin: 0 !important;
+  padding: 4px 0 5px;
+}
+
+#app-view .today-info strong {
+  color: #213557;
+  font-size: clamp(18px, 1.5vw, 23px);
+  font-weight: 840;
+}
+
+#app-view .weather-info {
+  align-items: center;
+  display: grid;
+  gap: 0 6px;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+}
+
+#app-view .weather-icon { color: #5f7fed; font-size: 25px; grid-row: 1 / -1; }
+#app-view .weather-description { color: #213557; font-size: 14px !important; font-weight: 830; }
+#app-view .weather-temperature { color: var(--liquid-muted); font-size: 12px; font-weight: 760; }
+
+#app-view .top-actions { align-items: center; gap: 8px; }
+#app-view .icon-button {
+  background: rgba(255, 255, 255, .76);
+  border-color: rgba(171, 188, 220, .65);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 7px 18px rgba(30, 61, 119, .07);
+  min-height: 42px;
+}
+
+/* A normal document flow owns the session strip and metrics. This explicitly
+   removes the old negative metric margin that made the two panels overlap. */
+#class-section > .class-command-strip {
+  background: linear-gradient(135deg, rgba(255, 255, 255, .91), rgba(234, 241, 255, .86));
+  border-color: rgba(170, 189, 224, .68);
+  border-radius: 21px;
+  box-shadow: 0 14px 36px rgba(35, 65, 122, .09), inset 0 1px 0 rgba(255, 255, 255, .94);
+  margin: 0 0 15px !important;
+  min-height: 72px;
+  padding: 14px 17px 14px 19px;
+  position: relative;
+  z-index: 1;
+}
+
+#class-section > .class-metrics {
+  align-items: stretch;
+  margin: 0 0 16px !important;
+  position: static !important;
+  z-index: auto !important;
+}
+
+#class-section > .class-metrics .metric-card {
+  background: linear-gradient(150deg, rgba(255, 255, 255, .98), rgba(247, 250, 255, .94));
+  border-color: rgba(184, 199, 225, .68);
+  border-radius: 18px;
+  box-shadow: 0 10px 26px rgba(35, 62, 112, .075), inset 0 1px 0 white;
+  min-height: 94px;
+  overflow: hidden;
+  padding: 15px 17px;
+}
+
+#class-section > .class-metrics .metric-card::before { height: 4px; }
+#class-section > .class-metrics .metric-card strong { color: var(--liquid-ink); font-size: 28px; }
+#class-section > .class-metrics .metric-card small { color: var(--liquid-muted); font-size: 11px; }
+
+#app-view .toolbar,
+#app-view .monitor-session-bar {
+  background: rgba(255, 255, 255, .8);
+  border-color: rgba(180, 196, 224, .65);
+  box-shadow: 0 9px 24px rgba(35, 61, 111, .06), inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+#app-view .toolbar { border-radius: 18px; padding: 10px; }
+#app-view .monitor-session-bar { border-radius: 18px; margin: 14px 0; padding: 12px 14px 12px 16px; }
+
+/* Student screens are content surfaces: no live backdrop blur and no stretched
+   image. The hidden lower controls leave the screen itself completely clear. */
+#app-view .student-monitor-preview {
+  border-color: rgba(104, 133, 191, .78);
+  border-radius: 20px;
+  box-shadow: 0 15px 30px rgba(17, 41, 83, .16), inset 0 1px 0 rgba(255, 255, 255, .1);
+}
+
+#app-view .monitor-screen-frame { background: #0d1a30; }
+#app-view .student-monitor-card { padding-bottom: 19px; }
+#app-view .student-monitor-message {
+  background: rgba(255, 255, 255, .97);
+  border: 1px solid rgba(162, 182, 222, .88);
+  border-radius: 11px;
+  bottom: 0;
+  box-shadow: 0 8px 17px rgba(24, 49, 93, .12);
+  color: #2854ca;
+  font-size: 11px;
+  font-weight: 830;
+  left: 8px;
+  min-height: 32px;
+  padding: 6px 9px;
+  position: absolute;
+  z-index: 5;
+}
+
+#app-view .student-monitor-hinge {
+  background: linear-gradient(135deg, #edf3ff, #ffffff);
+  border-color: rgba(146, 171, 225, .88);
+  border-radius: 13px 0 13px 13px;
+  min-height: 33px;
+  padding: 7px 10px;
+}
+
+#app-view .student-card-footer {
+  align-items: center;
+  border-top: 1px solid rgba(218, 227, 241, .88);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-top: auto;
+  min-width: 0;
+  padding-top: 11px;
+}
+
+#app-view .student-card-footer .student-meta {
+  border: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+#app-view .student-card-message {
+  background: rgba(240, 245, 255, .95);
+  border: 1px solid rgba(145, 170, 225, .82);
+  border-radius: 10px;
+  color: #2854ca;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 820;
+  min-height: 34px;
+  padding: 6px 9px;
+}
+
+/* The student screen inspector becomes one true workspace. It sits above the
+   whole console rather than sharing z-index space with the greeting/header. */
+#detail-pane.screen-mode {
+  background: linear-gradient(135deg, rgba(249, 252, 255, .98), rgba(237, 244, 255, .98));
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  box-sizing: border-box;
+  inset: 0 !important;
+  max-height: none !important;
+  min-height: 100dvh;
+  overflow: hidden;
+  padding: clamp(18px, 2.1vw, 32px);
+  position: fixed;
+  width: auto !important;
+  z-index: 1200 !important;
+}
+
+#detail-pane.screen-mode .close-button {
+  align-items: center;
+  background: rgba(255, 255, 255, .9);
+  border: 1px solid rgba(170, 189, 222, .75);
+  border-radius: 14px;
+  box-shadow: 0 8px 22px rgba(34, 61, 107, .12);
+  color: #263b60;
+  display: inline-flex;
+  font-size: 26px;
+  height: 43px;
+  justify-content: center;
+  padding: 0;
+  right: clamp(18px, 2.1vw, 32px);
+  top: clamp(18px, 2.1vw, 32px);
+  width: 43px;
+  z-index: 4;
+}
+
+#detail-pane.screen-mode .screen-detail-layout {
+  gap: clamp(18px, 2vw, 30px);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  height: 100%;
+  min-height: 0;
+  padding-right: 58px;
+}
+
+#detail-pane.screen-mode .detail-screen-column { min-height: 0; }
+#detail-pane.screen-mode .screen-detail-caption { min-height: 26px; padding: 1px 0; }
+#detail-pane.screen-mode .detail-screen-stage {
+  align-self: flex-start;
+  background: #101d34;
+  border-color: rgba(90, 124, 188, .74);
+  border-radius: 22px;
+  flex: 0 1 auto;
+  margin: 12px 0 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+#detail-pane.screen-mode .detail-screen-toolbar {
+  min-height: 42px;
+  padding: 10px 14px;
+}
+
+#detail-pane.screen-mode .detail-screen-frame {
+  aspect-ratio: var(--screen-aspect-ratio, 16 / 9) !important;
+  background: #0a172c;
+  flex: 0 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+#detail-pane.screen-mode .detail-screen-frame img {
+  background: #0a172c;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+#detail-pane.screen-mode .detail-screen-inspector {
+  background: rgba(255, 255, 255, .76);
+  border-left: 1px solid rgba(182, 198, 225, .72);
+  border-radius: 19px;
+  min-height: 0;
+  overflow: auto;
+  padding: 11px 16px 13px;
+}
+
+#detail-pane.screen-mode .detail-screen-actions { grid-template-columns: 1fr 1fr; }
+#detail-pane.screen-mode .detail-screen-stage:fullscreen,
+#detail-pane.screen-mode .detail-screen-stage.fullscreen-mode {
+  border-radius: 0;
+  height: 100dvh;
+  margin: 0;
+  width: 100dvw;
+}
+#detail-pane.screen-mode .detail-screen-stage:fullscreen .detail-screen-frame,
+#detail-pane.screen-mode .detail-screen-stage.fullscreen-mode .detail-screen-frame {
+  aspect-ratio: auto !important;
+  flex: 1 1 auto;
+  height: auto;
+}
+
+/* Sign-in has a richer glass material, while labels and fields remain opaque
+   enough for older displays and lower vision users. */
+.auth-shell {
+  background:
+    radial-gradient(circle at 8% 12%, rgba(106, 130, 255, .55), transparent 31rem),
+    radial-gradient(circle at 92% 76%, rgba(94, 218, 182, .32), transparent 32rem),
+    linear-gradient(145deg, #152848 0%, #294970 48%, #173953 100%);
+  min-height: 100dvh;
+  overflow: hidden;
+  position: relative;
+}
+
+.auth-shell::before {
+  background: linear-gradient(118deg, rgba(255, 255, 255, .14), transparent 42%);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.auth-topbar,
+.auth-layout { position: relative; z-index: 1; }
+.auth-topbar {
+  background: rgba(12, 27, 53, .28);
+  border: 1px solid rgba(230, 239, 255, .18);
+  border-radius: 19px;
+  margin: 18px auto 0;
+  max-width: 1220px;
+  padding: 15px 19px;
+}
+.auth-topbar .landing-brand { color: white; }
+.auth-topbar .brand-mark { background: linear-gradient(140deg, #7293ff, #6958e9); box-shadow: 0 8px 19px rgba(47, 84, 215, .35); }
+.auth-topnote { color: rgba(239, 246, 255, .8); font-size: 12px; font-weight: 700; }
+.auth-layout {
+  gap: clamp(54px, 8vw, 120px);
+  grid-template-columns: minmax(0, 1fr) minmax(390px, 454px);
+  max-width: 1100px;
+  padding: clamp(48px, 7vh, 84px) 34px 88px;
+}
+.auth-copy .eyebrow { color: #c4d1ff; }
+.auth-copy h1 { color: white; font-size: clamp(42px, 4.4vw, 61px); line-height: 1.05; }
+.auth-copy h1 em { color: #bfcaff; font-style: normal; }
+.auth-copy > p { color: rgba(239, 246, 255, .84); font-size: 16px; line-height: 1.75; max-width: 390px; }
+.auth-benefits { color: rgba(244, 248, 255, .9); font-size: 13px; gap: 14px; }
+.auth-card {
+  background: linear-gradient(145deg, rgba(252, 255, 255, .88), rgba(234, 246, 255, .78));
+  border: 1px solid rgba(255, 255, 255, .72);
+  border-radius: 28px;
+  box-shadow: 0 28px 72px rgba(5, 18, 42, .32), inset 0 1px 0 rgba(255, 255, 255, .96);
+  padding: 34px;
+}
+.auth-card-heading h2 { color: #152b50; font-size: 30px; }
+.auth-lock { background: linear-gradient(145deg, #e6edff, #fff); border: 1px solid rgba(144, 168, 226, .65); border-radius: 13px; height: 39px; width: 39px; }
+.auth-tabs { border-bottom-color: rgba(177, 195, 222, .62); gap: 23px; }
+.auth-tab { font-size: 14px; min-height: 43px; padding-bottom: 12px; }
+.auth-card input,
+.auth-card select,
+.auth-card textarea {
+  background: rgba(255, 255, 255, .9);
+  border-color: rgba(161, 181, 218, .83);
+  border-radius: 13px;
+  color: #1b2e50;
+  min-height: 48px;
+}
+.auth-card label { color: #304766; font-size: 13px; font-weight: 800; }
+.auth-card .primary,
+.auth-card .guest-login-button {
+  border-radius: 14px;
+  min-height: 50px;
+}
+.auth-card .primary { background: linear-gradient(135deg, #4f73f0, #684ee6); box-shadow: 0 13px 27px rgba(70, 84, 211, .27); }
+.auth-card .google-button { background: rgba(255, 255, 255, .86); border-radius: 13px; min-height: 48px; }
+.auth-card .auth-footnote { color: #566a88; font-size: 11px; }
+
+@supports ((backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px))) {
+  .auth-topbar,
+  .auth-card,
+  #app-view .sidebar,
+  #app-view .nav,
+  #app-view .icon-button,
+  #app-view .toolbar,
+  #app-view .monitor-session-bar,
+  #class-section > .class-command-strip {
+    -webkit-backdrop-filter: blur(18px) saturate(1.14);
+    backdrop-filter: blur(18px) saturate(1.14);
+  }
+}
+
+@supports not ((backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px))) {
+  .auth-topbar { background: rgba(12, 27, 53, .82); }
+  .auth-card { background: #f7fbff; }
+  #app-view .toolbar,
+  #app-view .monitor-session-bar,
+  #class-section > .class-command-strip { background: #f9fbff; }
+}
+
+/* Clear focus treatment and an opaque contrast fallback are part of the visual
+   system, not an optional afterthought. */
+#app-view :is(button, input, select, textarea, [tabindex]):focus-visible,
+.auth-shell :is(button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid rgba(47, 93, 235, .62);
+  outline-offset: 3px;
+}
+
+@media (prefers-contrast: more) {
+  #app-view .toolbar,
+  #app-view .monitor-session-bar,
+  #class-section > .class-command-strip,
+  #class-section > .class-metrics .metric-card,
+  .auth-card,
+  .auth-topbar {
+    background: #ffffff !important;
+    border-color: #62789f !important;
+    box-shadow: none !important;
+  }
+
+  .auth-topbar .landing-brand,
+  .auth-topnote { color: #11213e; }
+  .auth-shell { background: #edf3ff; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  #app-view .icon-button,
+  #app-view .student-card-message,
+  #app-view .student-monitor-message,
+  #class-section > .class-command-strip,
+  #class-section > .class-metrics .metric-card,
+  .auth-card .primary,
+  .auth-card .google-button {
+    transition: box-shadow var(--liquid-fast) var(--liquid-ease), transform var(--liquid-fast) var(--liquid-ease), background var(--liquid-fast) var(--liquid-ease), border-color var(--liquid-fast) var(--liquid-ease);
+  }
+
+  #app-view .icon-button:hover,
+  #app-view .student-card-message:hover,
+  #app-view .student-monitor-message:hover,
+  #class-section > .class-metrics .metric-card:hover,
+  .auth-card .primary:hover,
+  .auth-card .google-button:hover { transform: translateY(-2px); }
+
+  #class-section > .class-command-strip:hover { box-shadow: 0 18px 41px rgba(35, 65, 122, .12), inset 0 1px 0 rgba(255, 255, 255, .94); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  #login-view:not([hidden]) .auth-copy { animation: liquid-copy-in 560ms var(--liquid-ease) both; }
+  #login-view:not([hidden]) .auth-card { animation: liquid-card-in 600ms var(--liquid-ease) 50ms both; }
+  #app-view:not([hidden]) .sidebar { animation: liquid-rail-in 480ms var(--liquid-ease) both; }
+  #app-view .section-view:not([hidden]) { animation: liquid-section-in var(--liquid-standard) var(--liquid-ease) both; }
+  #class-section > .class-command-strip { animation: liquid-section-in 420ms var(--liquid-ease) both; }
+  #class-section > .class-metrics { animation: liquid-section-in 440ms var(--liquid-ease) 35ms both; }
+}
+
+@keyframes liquid-copy-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes liquid-card-in {
+  from { opacity: 0; transform: translateY(18px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes liquid-rail-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes liquid-section-in {
+  from { opacity: .72; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 980px) {
+  #detail-pane.screen-mode { overflow: auto; }
+  #detail-pane.screen-mode .screen-detail-layout {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: 100%;
+    padding-right: 0;
+    padding-top: 54px;
+  }
+  #detail-pane.screen-mode .detail-screen-inspector { border-left: 0; border-top: 1px solid rgba(182, 198, 225, .72); overflow: visible; }
+  #detail-pane.screen-mode .detail-screen-stage { max-width: 1080px; }
+}
+
+@media (max-width: 820px) {
+  #app-view .app-shell { background: linear-gradient(152deg, #eef4ff, #f8faff 48%, #edf5ff); }
+  #app-view .topbar { gap: 13px; padding: 8px 4px 18px; }
+  #app-view .teacher-heading { align-items: flex-start; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+  #app-view .teacher-heading-main { width: 100%; }
+  #app-view .teacher-greeting { font-size: clamp(27px, 7.3vw, 34px); }
+  #app-view .topbar .header-context.today-info { justify-content: flex-start; width: fit-content; }
+  #app-view .top-actions { position: absolute; right: 3px; top: 7px; }
+  #app-view .top-actions .icon-button span { display: none; }
+  #app-view .class-picker { margin-top: 12px; }
+  #app-view .class-select-button { min-height: 46px; }
+
+  #class-section > .class-command-strip { align-items: stretch; border-radius: 18px; margin-bottom: 13px !important; padding: 13px; }
+  #class-section > .class-metrics { gap: 10px; margin-bottom: 14px !important; }
+  #class-section > .class-metrics .metric-card { border-radius: 16px; min-height: 87px; padding: 13px; }
+  #class-section > .class-metrics .metric-card strong { font-size: 26px; }
+
+  #app-view .nav {
+    background: rgba(255, 255, 255, .9);
+    border-color: rgba(177, 194, 223, .7);
+    box-shadow: 0 16px 42px rgba(33, 57, 107, .18), inset 0 1px 0 rgba(255, 255, 255, .9);
+    left: 50%;
+    max-width: 560px;
+    transform: translateX(-50%);
+    width: calc(100% - 22px);
+  }
+
+  #app-view .student-card-footer { align-items: flex-start; flex-direction: column; }
+  #app-view .student-card-message { align-self: stretch; min-height: 40px; }
+  #app-view .student-monitor-message { font-size: 10px; left: 5px; padding: 5px 7px; }
+  #app-view .student-monitor-hinge { right: 4px; }
+  #detail-pane.screen-mode { padding: 16px 14px calc(96px + env(safe-area-inset-bottom)); }
+  #detail-pane.screen-mode .close-button { right: 14px; top: 14px; }
+  #detail-pane.screen-mode .screen-detail-layout { padding-top: 48px; }
+  #detail-pane.screen-mode .detail-screen-frame { max-height: none; }
+  #detail-pane.screen-mode .detail-screen-inspector { border-radius: 16px; padding: 13px; }
+}
+
+@media (max-width: 620px) {
+  .auth-topbar { border-radius: 0; margin: 0; padding: 17px 20px; }
+  .auth-topnote { display: none; }
+  .auth-layout { display: block; min-height: 0; padding: 38px 20px 48px; }
+  .auth-copy { text-align: left; }
+  .auth-copy h1 { font-size: clamp(37px, 11.5vw, 48px); margin: 14px 0; }
+  .auth-copy > p { font-size: 15px; line-height: 1.65; }
+  .auth-benefits { display: none; }
+  .auth-card { margin-top: 28px; padding: 26px 20px; }
+  .auth-card-heading h2 { font-size: 27px; }
+  .auth-tab { font-size: 14px; }
+  .auth-card .primary,
+  .auth-card .google-button,
+  .auth-card .guest-login-button { min-height: 52px; }
+  #detail-pane.screen-mode .detail-screen-actions { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #login-view .auth-copy,
+  #login-view .auth-card,
+  #app-view .sidebar,
+  #app-view .section-view,
+  #class-section > .class-command-strip,
+  #class-section > .class-metrics { animation: none !important; }
+
+  #app-view .icon-button:hover,
+  #app-view .student-card-message:hover,
+  #app-view .student-monitor-message:hover,
+  #class-section > .class-metrics .metric-card:hover,
+  .auth-card .primary:hover,
+  .auth-card .google-button:hover { transform: none; }
+}

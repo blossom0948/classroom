@@ -130,6 +130,11 @@ static void ScreenFrameValidationWorks()
         frame,
         true);
     ProtocolValidation.ValidateHeartbeat(heartbeat);
+    ProtocolValidation.ValidateScreenFrame(frame with
+    {
+        Width = ProtocolConstants.MaxScreenFrameWidth,
+        Height = ProtocolConstants.MaxScreenFrameHeight
+    });
     AssertThrows<ProtocolValidationException>(() =>
         ProtocolValidation.ValidateHeartbeat(heartbeat with { ScreenSharingEnabled = false }));
     AssertThrows<ProtocolValidationException>(() =>
@@ -150,6 +155,7 @@ static void MessageCommandWorks()
     var canonical = CanonicalCommandPayload.Create(command);
     Assert(canonical.StartsWith("CLASSROOM-COMMAND-V1\n", StringComparison.Ordinal), "Canonical prefix changed.");
     Assert(canonical.Contains("kind=MESSAGE"), "Command kind was not canonicalized.");
+    Assert(canonical.Contains("screenShareIntervalMilliseconds=-"), "Command timing must be canonicalized.");
     Assert(!canonical.EndsWith('\n'), "Canonical payload has a trailing newline.");
 }
 
@@ -196,6 +202,15 @@ static void ScreenShareCommandWorks()
     ProtocolValidation.ValidateCommand(command);
     AssertThrows<ProtocolValidationException>(() =>
         ProtocolValidation.ValidateCommand(command with { ScreenShareEnabled = null }));
+    ProtocolValidation.ValidateCommand(command with
+    {
+        ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareMinimumIntervalMilliseconds
+    });
+    AssertThrows<ProtocolValidationException>(() =>
+        ProtocolValidation.ValidateCommand(command with
+        {
+            ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareMinimumIntervalMilliseconds - 1
+        }));
 }
 
 static void TargetLimitsAreEnforced()

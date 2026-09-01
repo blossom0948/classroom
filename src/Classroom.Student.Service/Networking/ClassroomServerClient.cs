@@ -208,7 +208,7 @@ public sealed class ClassroomServerClient(
                     status.NeedsHelp),
                 cancellationToken);
             var nextHeartbeat = status.ScreenSharingEnabled
-                ? TimeSpan.FromSeconds(1)
+                ? TimeSpan.FromMilliseconds(status.ScreenShareIntervalMilliseconds)
                 : options.HeartbeatInterval;
             await Task.Delay(nextHeartbeat, cancellationToken);
         }

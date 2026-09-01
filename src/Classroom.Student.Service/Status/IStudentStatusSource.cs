@@ -1,3 +1,4 @@
+using Blossom.Classroom.Protocol;
 using Blossom.Classroom.Protocol.Models;
 
 namespace Blossom.Classroom.Student.Service.Status;
@@ -9,7 +10,8 @@ public sealed record StudentStatusData(
     bool PolicyApplied,
     ScreenFrame? ScreenFrame = null,
     bool ScreenSharingEnabled = false,
-    bool NeedsHelp = false)
+    bool NeedsHelp = false,
+    int ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds)
 {
     public static StudentStatusData Empty { get; } = new(null, null, "unknown", false);
 }
