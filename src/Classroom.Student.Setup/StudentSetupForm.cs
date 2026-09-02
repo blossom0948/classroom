@@ -14,9 +14,15 @@ namespace Blossom.Classroom.Student.Setup;
 
 internal sealed class StudentSetupForm : Form
 {
-    private const string AgentVersion = "0.5.32";
+    private const string AgentVersion = "0.5.33";
     private const int JoinCodeLength = 8;
-    private const string StudentPackageUrl = "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip";
+    private static readonly string[] StudentPackageUrls =
+    [
+        "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Student-x64.zip",
+        // Keep the full package as a compatibility fallback for a cached or
+        // managed setup executable from a release before the student bundle.
+        "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip"
+    ];
     private const string InstallRootName = "Blossom Classroom Student";
     private readonly Uri serverOrigin;
     private readonly TextBox codeInput;
@@ -494,33 +500,66 @@ internal sealed class StudentSetupForm : Form
             $"classroom-student-package-{Guid.NewGuid():N}");
         Directory.CreateDirectory(packageRoot);
         var zipPath = Path.Combine(packageRoot, "Classroom-Windows-x64.zip");
-        try
-        {
-            using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-            using var response = await client.GetAsync(
-                StudentPackageUrl,
-                HttpCompletionOption.ResponseHeadersRead);
-            response.EnsureSuccessStatusCode();
-            await using (var output = File.Create(zipPath))
-            {
-                await response.Content.CopyToAsync(output);
-            }
+        Exception? lastException = null;
+        using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd($"Blossom-Classroom-Student-Setup/{AgentVersion}");
 
-            ZipFile.ExtractToDirectory(zipPath, packageRoot);
-            TryDelete(zipPath);
-            if (!HasStudentPayload(packageRoot))
-            {
-                throw new InvalidOperationException("학생용 설치 구성 요소를 내려받았지만 패키지가 올바르지 않습니다.");
-            }
-
-            return packageRoot;
-        }
-        catch
+        foreach (var packageUrl in StudentPackageUrls)
         {
-            TryDeleteDirectory(packageRoot);
-            throw new InvalidOperationException(
-                "학생용 구성 요소를 내려받지 못했습니다. 인터넷 연결 또는 학교 네트워크 정책을 확인해 주세요.");
+            for (var attempt = 1; attempt <= 3; attempt++)
+            {
+                // Start each attempt from a clean temporary directory so a
+                // partial archive can never poison the next retry or fallback.
+                TryDeleteDirectory(packageRoot);
+                Directory.CreateDirectory(packageRoot);
+                try
+                {
+                    using var response = await client.GetAsync(
+                        packageUrl,
+                        HttpCompletionOption.ResponseHeadersRead);
+                    response.EnsureSuccessStatusCode();
+                    await using (var output = File.Create(zipPath))
+                    {
+                        await response.Content.CopyToAsync(output);
+                    }
+
+                    ZipFile.ExtractToDirectory(zipPath, packageRoot);
+                    TryDelete(zipPath);
+                    if (!HasStudentPayload(packageRoot))
+                    {
+                        throw new InvalidDataException("학생용 설치 구성 요소가 패키지에 없습니다.");
+                    }
+
+                    return packageRoot;
+                }
+                catch (Exception exception) when (
+                    exception is HttpRequestException
+                    or TaskCanceledException
+                    or IOException
+                    or InvalidDataException
+                    or UnauthorizedAccessException
+                    or NotSupportedException)
+                {
+                    lastException = exception;
+                    TryDelete(zipPath);
+                    if (attempt < 3)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(attempt * 2));
+                    }
+                }
+            }
         }
+
+        TryDeleteDirectory(packageRoot);
+        var reason = lastException switch
+        {
+            TaskCanceledException => "다운로드 시간이 초과되었습니다.",
+            HttpRequestException => "학교 네트워크에서 파일 다운로드가 차단되었거나 연결이 끊겼습니다.",
+            InvalidDataException => "다운로드된 설치 파일이 손상되었거나 올바른 패키지가 아닙니다.",
+            _ => "파일 저장 권한 또는 디스크 공간을 확인해 주세요."
+        };
+        throw new InvalidOperationException(
+            $"학생용 구성 요소를 내려받지 못했습니다. {reason} 네트워크 연결을 확인한 뒤 다시 시도해 주세요.");
     }
 
     private static string ReadInstallLog(string path)

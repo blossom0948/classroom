@@ -99,6 +99,10 @@ assert.match(styles, /@supports \(\(backdrop-filter: blur\(12px\)\)/, "Glass mat
 assert.doesNotMatch(html, /class="settings-card legal-card"/, "Terms and privacy must live in the compact footer, not a standalone settings card.");
 assert.match(html, /class="console-footer"/, "The compact terms/privacy footer must remain visible.");
 assert.match(updater, /UPDATE_APPLYING/, "Student updates must report the immediate apply state.");
+assert.match(updater, /Classroom-Student-x64\.zip/, "Student updates must use the student-only package when available.");
+assert.match(setupForm, /Classroom-Student-x64\.zip/, "Student setup must prefer the student-only package.");
+assert.match(setupForm, /TimeSpan\.FromMinutes\(20\)/, "Student setup downloads need enough time for managed school networks.");
+assert.match(setupForm, /attempt <= 3/, "Student setup downloads must retry transient failures.");
 assert.doesNotMatch(updater, /MoveFileEx|DelayUntilReboot|next-windows-start|Windows를 다시 시작하면/, "Student updates must not wait for a Windows reboot.");
 assert.match(helper, /CreateProcessAsUser/, "The update helper must be able to restart the student UI in the interactive session.");
 assert.match(desktopProgram, /classroom-background/, "The student UI needs an explicit background startup mode.");

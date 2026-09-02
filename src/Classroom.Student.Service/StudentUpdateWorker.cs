@@ -128,8 +128,8 @@ public sealed class StudentUpdateWorker(
                 false);
         }
 
-        using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("Blossom-Classroom-Student-Updater/0.4");
+        using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Blossom-Classroom-Student-Updater/0.5");
         var manifest = await client.GetFromJsonAsync<UpdateManifest>(
             $"{ManifestUrl}?deviceUpdate={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
             cancellationToken);
@@ -378,9 +378,12 @@ public sealed class StudentUpdateWorker(
         Uri.TryCreate(value, UriKind.Absolute, out var uri)
         && uri.Scheme == Uri.UriSchemeHttps
         && uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
-        && uri.AbsolutePath.Equals(
-            "/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip",
-            StringComparison.Ordinal);
+        && (uri.AbsolutePath.Equals(
+                "/blossom0948/classroom/releases/latest/download/Classroom-Student-x64.zip",
+                StringComparison.Ordinal)
+            || uri.AbsolutePath.Equals(
+                "/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip",
+                StringComparison.Ordinal));
 
     private static void TryDelete(string path)
     {

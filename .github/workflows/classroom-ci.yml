@@ -78,6 +78,19 @@ jobs:
           }
           Copy-Item $setupExe (Join-Path $root 'Classroom.Student.Setup.exe') -Force
 
+          $studentPackageRoot = Join-Path $env:RUNNER_TEMP 'classroom-student-package'
+          if (Test-Path -LiteralPath $studentPackageRoot) {
+            Remove-Item -LiteralPath $studentPackageRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $studentPackageRoot -Force | Out-Null
+          Copy-Item (Join-Path $package 'student-service') (Join-Path $studentPackageRoot 'student-service') -Recurse -Force
+          Copy-Item (Join-Path $package 'student-desktop') (Join-Path $studentPackageRoot 'student-desktop') -Recurse -Force
+          Compress-Archive -Path (Join-Path $studentPackageRoot '*') `
+            -DestinationPath (Join-Path $root 'Classroom-Student-x64.zip') -Force
+          if (-not (Test-Path -LiteralPath (Join-Path $root 'Classroom-Student-x64.zip'))) {
+            throw 'Classroom student archive was not produced.'
+          }
+
           Copy-Item scripts/install/* $package -Force
           Copy-Item docs/CLASSROOM_MVP.md $package -Force
           Copy-Item docs/DEPLOYMENT.md $package -Force
@@ -101,5 +114,6 @@ jobs:
         with:
           files: |
             artifacts/classroom/Classroom-Windows-x64.zip
+            artifacts/classroom/Classroom-Student-x64.zip
             artifacts/classroom/Classroom.Student.Setup.exe
           generate_release_notes: true
