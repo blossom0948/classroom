@@ -8,7 +8,7 @@ window.CLASSROOM_CONFIG = Object.freeze({
   // Cookie mode remains available for a future custom same-site deployment.
   apiOrigin: isLocalClassroom ? window.location.origin : "https://classroom-api.blossom0948.cloud",
   cookieSession: false,
-  studentInstallerUrl: "https://github.com/blossom0948/classroom/releases/latest/download/Classroom.Student.Setup.exe",
+  studentInstallerUrl: "https://classroom-2en.pages.dev/student",
   firebase: {
     apiKey: "AIzaSyAYjzmqcVVIgBFgpzji7MOn2NVfl-B2N3c",
     authDomain: "classroom-production-52ae6.firebaseapp.com",

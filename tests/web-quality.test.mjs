@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [html, script, styles, config, updater, helper, desktopProgram, watchdog, desktopOptions, setupProgram, setupForm, elevatedInstaller, installScript] = await Promise.all([
+const [html, script, styles, config, updater, helper, desktopProgram, watchdog, desktopOptions, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript] = await Promise.all([
   readFile(new URL("../src/Classroom.Server/wwwroot/index.html", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/app.js", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/styles.css", import.meta.url), "utf8"),
@@ -14,7 +14,8 @@ const [html, script, styles, config, updater, helper, desktopProgram, watchdog, 
   readFile(new URL("../src/Classroom.Student.Setup/Program.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Setup/StudentSetupForm.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Setup/ElevatedStudentInstaller.cs", import.meta.url), "utf8"),
-  readFile(new URL("../scripts/install/Install-ClassroomStudent.ps1", import.meta.url), "utf8")
+  readFile(new URL("../scripts/install/Install-ClassroomStudent.ps1", import.meta.url), "utf8"),
+  readFile(new URL("../scripts/deploy/build-pages.mjs", import.meta.url), "utf8")
 ]);
 
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
@@ -59,6 +60,9 @@ assert.match(html, /id="school-login-button"/, "The normal teacher sign-in must 
 assert.match(html, /id="admin-auth-panel" hidden/, "Email, password, and Google alternatives must start behind admin login.");
 assert.match(html, /id="admin-login-choice"/, "The normal sign-in needs an explicit administrator entry.");
 assert.match(html, /id="landing-student-installer-button"/, "The student installer must be downloadable without teacher authentication.");
+assert.match(config, /studentInstallerUrl:\s*"https:\/\/classroom-2en\.pages\.dev\/student"/, "The console must advertise the short student installer URL.");
+assert.match(buildPagesScript, /join\(outputRoot, "_redirects"\)/, "The Pages build must publish the short student installer redirect.");
+assert.match(buildPagesScript, /\/student\s+https:\/\/github\.com\/blossom0948\/classroom\/releases\/latest\/download\/Classroom\.Student\.Setup\.exe\s+302/, "The short student URL must follow the latest published installer.");
 assert.match(script, /function showAuth\(mode = "school"\)/, "The default auth route must be the school login.");
 assert.match(script, /\$\("school-login-button"\)\.addEventListener\("click", openGuestLoginDialog\)/, "School login must open the school guest access flow.");
 assert.doesNotMatch(html, /id="login-guest-button"/, "The duplicate school guest button should not be visible beside school login.");

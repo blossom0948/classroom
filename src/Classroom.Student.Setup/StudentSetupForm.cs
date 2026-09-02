@@ -14,7 +14,7 @@ namespace Blossom.Classroom.Student.Setup;
 
 internal sealed class StudentSetupForm : Form
 {
-    private const string AgentVersion = "0.5.31";
+    private const string AgentVersion = "0.5.32";
     private const int JoinCodeLength = 8;
     private const string StudentPackageUrl = "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip";
     private const string InstallRootName = "Blossom Classroom Student";

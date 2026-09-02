@@ -3275,7 +3275,8 @@ body { background: #f3f6fb; }
   .auth-card .google-button:hover { transform: none; }
 }
 
-/* 0.5.31 — make the normal teacher path unmistakably school-first.  Password
+/* 0.5.32 — keep the normal teacher path school-first and give the student
+   installer a short stable public address.  Password
    and Google alternatives remain available only behind the explicit admin
    entry, while the public student installer stays reachable without a login. */
 .landing-nav-actions {

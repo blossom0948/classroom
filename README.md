@@ -89,7 +89,7 @@ foreach ($test in $tests) {
 기존 `Install-ClassroomStudent.cmd`와 JSON 흐름은 관리형 배포·복구를 위해 호환용으로 남아 있다.
 
 기존 관리형 배포용 [최신 Classroom-Windows-x64.zip](https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip)도 계속 제공한다.
-단일 설치 앱은 [Classroom.Student.Setup.exe](https://github.com/blossom0948/classroom/releases/latest/download/Classroom.Student.Setup.exe)에서 받을 수 있다.
+단일 설치 앱은 짧은 주소 [classroom-2en.pages.dev/student](https://classroom-2en.pages.dev/student)에서 받을 수 있다. 이 주소는 항상 최신 설치 앱으로 연결된다.
 
 학생 코드는 학교 관리자만 발급·재발급할 수 있고, 모든 선생님은 왼쪽 `학생 코드`
 탭에서 학년·반별 코드를 확인할 수 있다. 코드가 외부에 노출되었거나 학생 PC를

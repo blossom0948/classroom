@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.31";
+  const APP_VERSION = "0.5.32";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -1344,7 +1344,7 @@
   }
 
   function downloadStudentInstaller() {
-    const url = runtimeConfig.studentInstallerUrl || "https://github.com/blossom0948/classroom/releases/latest/download/Classroom.Student.Setup.exe";
+    const url = runtimeConfig.studentInstallerUrl || "https://classroom-2en.pages.dev/student";
     window.open(url, "_blank", "noopener,noreferrer");
     showToast("학생용 설치 패키지 다운로드를 시작했습니다.");
   }

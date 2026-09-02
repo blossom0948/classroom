@@ -15,6 +15,14 @@ for (const fileName of ["index.html", "styles.css", "app.js", "config.js", "fire
 }
 await cp(join(sourceRoot, "icons"), join(outputRoot, "icons"), { recursive: true });
 
+// Keep the student download address short and stable.  The redirect target
+// follows the latest GitHub release, so existing school handouts never need
+// to change when a new installer is published.
+await writeFile(join(outputRoot, "_redirects"), [
+  "/student https://github.com/blossom0948/classroom/releases/latest/download/Classroom.Student.Setup.exe 302",
+  "/student/ https://github.com/blossom0948/classroom/releases/latest/download/Classroom.Student.Setup.exe 302"
+].join("\n") + "\n");
+
 await writeFile(join(outputRoot, "_headers"), `/*
   Cache-Control: no-cache
   Content-Security-Policy: default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self' https://classroom-api.blossom0948.cloud https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://www.googleapis.com https://apis.google.com https://www.gstatic.com https://www.google.com https://*.firebaseapp.com https://accounts.google.com https://api.open-meteo.com; frame-src https://*.firebaseapp.com https://accounts.google.com; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
