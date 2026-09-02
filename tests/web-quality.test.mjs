@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [html, script, styles, config, updater, helper] = await Promise.all([
+const [html, script, styles, config, updater, helper, desktopProgram, watchdog, desktopOptions, setupProgram, setupForm, elevatedInstaller, installScript] = await Promise.all([
   readFile(new URL("../src/Classroom.Server/wwwroot/index.html", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/app.js", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/styles.css", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/config.js", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Service/StudentUpdateWorker.cs", import.meta.url), "utf8"),
-  readFile(new URL("../src/Classroom.Student.Service/StudentUpdateHelper.cs", import.meta.url), "utf8")
+  readFile(new URL("../src/Classroom.Student.Service/StudentUpdateHelper.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Desktop/Program.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Desktop/StudentDesktopWatchdog.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Desktop/Configuration/StudentDesktopOptions.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Setup/Program.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Setup/StudentSetupForm.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Setup/ElevatedStudentInstaller.cs", import.meta.url), "utf8"),
+  readFile(new URL("../scripts/install/Install-ClassroomStudent.ps1", import.meta.url), "utf8")
 ]);
 
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
@@ -47,6 +54,13 @@ assert.match(config, /cookieSession:\s*false/, "The public console must avoid th
 assert.match(script, /async function consumePendingFirebaseRedirect\(\)/, "Google redirect credentials must be consumed before session restoration.");
 assert.match(script, /if \(await consumePendingFirebaseRedirect\(\)\) return;/, "Google redirect completion must not be sent back to landing by an early session check.");
 assert.doesNotMatch(script, /\bconfirm\(/, "Native browser confirmation prompts should not be used in the console.");
+assert.match(html, /id="school-login-panel"/, "Normal teacher sign-in needs a dedicated school-account entry.");
+assert.match(html, /id="school-login-button"/, "The normal teacher sign-in must expose one school login action.");
+assert.match(html, /id="admin-auth-panel" hidden/, "Email, password, and Google alternatives must start behind admin login.");
+assert.match(html, /id="admin-login-choice"/, "The normal sign-in needs an explicit administrator entry.");
+assert.match(html, /id="landing-student-installer-button"/, "The student installer must be downloadable without teacher authentication.");
+assert.match(script, /function showAuth\(mode = "school"\)/, "The default auth route must be the school login.");
+assert.match(script, /runGoogleLogin\("school-login-button", "school"\)/, "School login must use the existing verified Google exchange.");
 assert.match(styles, /@media \(max-width: 820px\)/, "The mobile shell must keep a compact breakpoint.");
 assert.match(styles, /\.command-dialog\s*\{[\s\S]*max-height:/, "Dialogs must stay inside the viewport.");
 assert.match(styles, /\.class-select-menu\s*\{/, "The class picker menu must use the console visual system.");
@@ -79,5 +93,13 @@ assert.match(html, /class="console-footer"/, "The compact terms/privacy footer m
 assert.match(updater, /UPDATE_APPLYING/, "Student updates must report the immediate apply state.");
 assert.doesNotMatch(updater, /MoveFileEx|DelayUntilReboot|next-windows-start|Windows를 다시 시작하면/, "Student updates must not wait for a Windows reboot.");
 assert.match(helper, /CreateProcessAsUser/, "The update helper must be able to restart the student UI in the interactive session.");
+assert.match(desktopProgram, /classroom-background/, "The student UI needs an explicit background startup mode.");
+assert.match(watchdog, /Arguments = "--classroom-background"/, "The watchdog must launch the student UI without showing its window.");
+assert.match(desktopOptions, /StudentDesktopConfigurationStore\.TryLoad/, "The tray process must recover enrollment from machine-level configuration.");
+assert.match(setupProgram, /TryStartExistingInstallation/, "Rerunning the installer must reuse an existing enrollment.");
+assert.match(setupForm, /백그라운드에서 실행 중입니다/, "Successful enrollment must not leave a setup completion window open.");
+assert.match(elevatedInstaller, /StudentDesktopConfigurationStore\.Save/, "The elevated installer must persist the tray configuration.");
+assert.match(elevatedInstaller, /SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run/, "The elevated installer must register machine startup.");
+assert.match(installScript, /desktop-config\.json/, "The manual installer must persist the same startup configuration.");
 
 console.log("PASS Classroom web quality guards and responsive UI contracts");

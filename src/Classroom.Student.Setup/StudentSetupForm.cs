@@ -14,7 +14,7 @@ namespace Blossom.Classroom.Student.Setup;
 
 internal sealed class StudentSetupForm : Form
 {
-    private const string AgentVersion = "0.5.29";
+    private const string AgentVersion = "0.5.30";
     private const int JoinCodeLength = 8;
     private const string StudentPackageUrl = "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip";
     private const string InstallRootName = "Blossom Classroom Student";
@@ -216,13 +216,7 @@ internal sealed class StudentSetupForm : Form
                 TryDelete(configPath);
             }
 
-            SetStatus("설치가 완료되었습니다. Classroom이 실행됩니다.", isError: false);
-            MessageBox.Show(
-                this,
-                "학생 PC 등록과 설치가 완료되었습니다.\n이 창을 닫아도 Classroom 서비스는 계속 실행됩니다.",
-                "Classroom 설치 완료",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            SetStatus("설치가 완료되었습니다. Classroom이 백그라운드에서 실행 중입니다.", isError: false);
             Close();
         }
         catch (Win32Exception exception) when (exception.NativeErrorCode == 1223)
@@ -344,8 +338,8 @@ internal sealed class StudentSetupForm : Form
             installSucceeded = true;
             SetStatus(
                 desktopStarted
-                    ? "설치가 완료되었습니다. Classroom이 실행됩니다."
-                    : "설치가 완료되었습니다. 바탕화면의 Classroom을 실행해 주세요.",
+                    ? "설치가 완료되었습니다. Classroom이 백그라운드에서 실행 중입니다."
+                    : "설치가 완료되었습니다. Windows 로그인 시 백그라운드에서 자동 연결됩니다.",
                 isError: false);
         }
         finally

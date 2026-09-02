@@ -3299,3 +3299,120 @@ body { background: #f3f6fb; }
   .auth-card .primary:hover,
   .auth-card .google-button:hover { transform: none; }
 }
+
+/* 0.5.30 — make the normal teacher path unmistakably school-first.  Password
+   and Google alternatives remain available only behind the explicit admin
+   entry, while the public student installer stays reachable without a login. */
+.landing-nav-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.landing-nav-actions .secondary { white-space: nowrap; }
+.school-login-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+.school-login-copy {
+  background: linear-gradient(145deg, rgba(237, 244, 255, .86), rgba(255, 255, 255, .55));
+  border: 1px solid rgba(165, 187, 230, .48);
+  border-radius: 18px;
+  padding: 19px 18px 17px;
+}
+.auth-panel-kicker {
+  color: #5874dc;
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+.school-login-copy h3 {
+  color: #142b50;
+  font-size: 23px;
+  letter-spacing: -.055em;
+  line-height: 1.2;
+  margin: 9px 0 8px;
+}
+.school-login-copy p {
+  color: #536987;
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0;
+}
+.school-login-button {
+  align-items: center;
+  display: grid !important;
+  gap: 10px;
+  grid-template-columns: 30px minmax(0, 1fr) 20px;
+  justify-content: initial !important;
+  padding: 13px 17px !important;
+  text-align: left;
+}
+.school-login-button > span:nth-child(2) { text-align: center; }
+.school-login-symbol {
+  align-items: center;
+  background: rgba(255, 255, 255, .22);
+  border: 1px solid rgba(255, 255, 255, .4);
+  border-radius: 9px;
+  display: inline-flex;
+  font-size: 16px;
+  font-weight: 900;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+.school-login-links {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  min-width: 0;
+  padding-top: 2px;
+}
+.school-login-links .inline-link { font-size: 11px; min-height: 30px; }
+.admin-login-choice { color: #3e5bc5; font-weight: 850; }
+.school-login-status { margin-top: 0; }
+.auth-mode-header {
+  align-items: center;
+  background: rgba(238, 244, 255, .72);
+  border: 1px solid rgba(165, 187, 230, .44);
+  border-radius: 14px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+.auth-mode-header strong {
+  color: #18345d;
+  display: block;
+  font-size: 17px;
+  margin-top: 3px;
+}
+.auth-mode-header .inline-link { font-size: 11px; white-space: nowrap; }
+#admin-auth-panel .auth-tabs { margin-top: 17px; }
+#admin-auth-panel .auth-divider { margin-bottom: 14px; }
+#admin-auth-panel .auth-footnote { margin-top: 13px; }
+
+@media (max-width: 620px) {
+  .landing-nav-actions { gap: 6px; }
+  #landing-student-installer-button {
+    font-size: 0;
+    min-width: 36px;
+    padding-left: 9px;
+    padding-right: 9px;
+  }
+  #landing-student-installer-button::after { content: "↓"; font-size: 17px; line-height: 1; }
+  .school-login-copy h3 { font-size: 21px; }
+  .school-login-links { flex-wrap: wrap; gap: 6px 14px; }
+  .auth-mode-header { align-items: flex-start; }
+  .auth-mode-header .inline-link { white-space: normal; text-align: right; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .school-login-button,
+  .school-login-copy { transition: none !important; }
+}

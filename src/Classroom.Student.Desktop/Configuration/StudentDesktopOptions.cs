@@ -1,3 +1,5 @@
+using Blossom.Classroom.Core.Desktop;
+
 namespace Blossom.Classroom.Student.Desktop.Configuration;
 
 public sealed record StudentDesktopOptions(
@@ -9,13 +11,22 @@ public sealed record StudentDesktopOptions(
 {
     public static StudentDesktopOptions FromEnvironment()
     {
+        StudentDesktopConfigurationStore.TryLoad(out var persisted);
         var deviceIdValue = Environment.GetEnvironmentVariable("CLASSROOM_DEVICE_ID");
+        if (string.IsNullOrWhiteSpace(deviceIdValue))
+        {
+            deviceIdValue = persisted?.DeviceId.ToString();
+        }
         if (!Guid.TryParse(deviceIdValue, out var deviceId) || deviceId == Guid.Empty)
         {
             throw new InvalidOperationException("CLASSROOM_DEVICE_ID must be a non-empty GUID.");
         }
 
         var ipcToken = Environment.GetEnvironmentVariable("CLASSROOM_IPC_TOKEN");
+        if (string.IsNullOrWhiteSpace(ipcToken))
+        {
+            ipcToken = persisted?.IpcToken;
+        }
         if (string.IsNullOrWhiteSpace(ipcToken)
             || ipcToken.Length is < 16 or > 256
             || ipcToken.Any(char.IsControl))
@@ -24,8 +35,12 @@ public sealed record StudentDesktopOptions(
                 "CLASSROOM_IPC_TOKEN must contain 16 to 256 printable characters.");
         }
 
-        var configuredAgentVersion = Environment.GetEnvironmentVariable("CLASSROOM_AGENT_VERSION")
-            ?? "0.1.0-dev";
+        var configuredAgentVersion = Environment.GetEnvironmentVariable("CLASSROOM_AGENT_VERSION");
+        if (string.IsNullOrWhiteSpace(configuredAgentVersion))
+        {
+            configuredAgentVersion = persisted?.AgentVersion;
+        }
+        configuredAgentVersion ??= "0.1.0-dev";
         var executableVersion = typeof(StudentDesktopOptions).Assembly.GetName().Version;
         var agentVersion = PreferExecutableVersion(configuredAgentVersion, executableVersion);
         if (agentVersion.Length is < 1 or > 64 || agentVersion.Any(char.IsControl))

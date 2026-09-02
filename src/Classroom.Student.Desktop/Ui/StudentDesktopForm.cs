@@ -15,6 +15,7 @@ public sealed class StudentDesktopForm : Form
     private readonly WindowsStudentStatusProvider statusProvider;
     private readonly Func<string, CancellationToken, Task<DesktopExitPinVerificationResult>> exitPinVerifier;
     private readonly Func<CancellationToken, Task<DesktopUpdateCheckResult>> updateChecker;
+    private readonly bool startInBackground;
     private readonly Label connectionLabel = CreateLabel("● 서비스 연결 대기 중", 11, Color.DarkOrange);
     private readonly Label serverLabel = CreateLabel("● Classroom 서버 재연결 중", 11, Color.DarkOrange);
     private readonly Label screenSharingLabel = CreateLabel("● Windows 시작 시 자동 연결 · 화면 공유 대기", 10, Color.FromArgb(62, 92, 165));
@@ -40,24 +41,28 @@ public sealed class StudentDesktopForm : Form
     private bool screenSharingActive;
     private bool approvedExit;
     private bool exitPromptOpen;
+    private bool initialVisibilityHandled;
     private FocusOverlayForm? focusOverlay;
 
     public StudentDesktopForm(
         StudentDesktopOptions options,
         WindowsStudentStatusProvider statusProvider,
         Func<string, CancellationToken, Task<DesktopExitPinVerificationResult>> exitPinVerifier,
-        Func<CancellationToken, Task<DesktopUpdateCheckResult>> updateChecker)
+        Func<CancellationToken, Task<DesktopUpdateCheckResult>> updateChecker,
+        bool startInBackground = false)
     {
         this.options = options;
         this.statusProvider = statusProvider;
         this.exitPinVerifier = exitPinVerifier;
         this.updateChecker = updateChecker;
+        this.startInBackground = startInBackground;
         deviceLabel = CreateLabel($"장치 ID  {options.DeviceId:D}", 9, Color.FromArgb(104, 121, 147));
         Text = "Classroom Student";
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = true;
+        ShowInTaskbar = !startInBackground;
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(560, 400);
         MinimumSize = new Size(560, 400);
@@ -152,6 +157,18 @@ public sealed class StudentDesktopForm : Form
             trayIcon.Dispose();
             trayMenu.Dispose();
         };
+    }
+
+    protected override void SetVisibleCore(bool value)
+    {
+        if (startInBackground && value && !initialVisibilityHandled)
+        {
+            initialVisibilityHandled = true;
+            base.SetVisibleCore(false);
+            return;
+        }
+
+        base.SetVisibleCore(value);
     }
 
     public void SetConnectionState(bool connected)
@@ -314,7 +331,6 @@ public sealed class StudentDesktopForm : Form
         ApplyScreenSharingState(enabled, intervalMilliseconds);
         if (enabled)
         {
-            ShowMainWindow();
             return new DesktopCommandApplyResult(
                 true,
                 "SCREEN_SHARE_ENABLED",
@@ -342,6 +358,7 @@ public sealed class StudentDesktopForm : Form
 
     private void ShowMainWindow()
     {
+        ShowInTaskbar = true;
         Show();
         WindowState = FormWindowState.Normal;
         Activate();

@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-  <link rel="stylesheet" href="/styles.css?v=0.5.29">
+  <link rel="stylesheet" href="/styles.css?v=0.5.30">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -27,7 +27,7 @@
         <a href="#how-it-works">사용 방법</a>
         <a href="#principles">운영 원칙</a>
       </nav>
-      <div class="landing-nav-actions"><button id="landing-install-button" class="secondary" type="button" hidden>앱 설치</button><button id="landing-login-button" class="secondary">로그인</button></div>
+      <div class="landing-nav-actions"><button id="landing-install-button" class="secondary" type="button" hidden>앱 설치</button><button id="landing-student-installer-button" class="secondary" type="button">학생용 앱 다운로드</button><button id="landing-login-button" class="secondary" type="button">학교 로그인</button></div>
     </header>
     <main id="top">
       <section class="landing-hero">
@@ -68,33 +68,42 @@
       <div class="auth-copy"><div class="eyebrow">WELCOME TO CLASSROOM</div><h1>교실을 연결하는<br><em>첫 번째 단계</em></h1><p>교사 계정을 만들고 학급을 설정하면 학생 PC를 안전하게 등록할 수 있습니다.</p><div class="auth-benefits"><span>✓ 학급별 장치 상태</span><span>✓ 수업 명령과 감사 기록</span><span>✓ 안전한 학생용 연결</span></div></div>
       <div class="login-card auth-card">
         <div class="auth-card-heading"><div><span class="eyebrow">TEACHER ACCOUNT</span><h2>반가워요.</h2></div><span class="auth-lock">✦</span></div>
-        <div class="auth-tabs" role="tablist"><button type="button" class="auth-tab active" data-auth-mode="login" role="tab" aria-selected="true">로그인</button><button type="button" class="auth-tab" data-auth-mode="signup" role="tab" aria-selected="false">회원가입</button></div>
-        <div id="login-panel" class="auth-panel">
-          <form id="login-form" class="stack">
-            <label>이메일 또는 교사 아이디<input id="login-name" autocomplete="username" required placeholder="이메일 또는 교사 아이디"></label>
-            <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" required></label>
-            <div class="form-row"><button id="forgot-password-button" class="inline-link" type="button">비밀번호를 잊으셨나요?</button><button id="account-lookup-button" class="inline-link" type="button">계정 찾기</button></div>
-            <button class="primary wide" type="submit">로그인 <span>→</span></button>
-            <button id="login-guest-button" class="guest-login-button" type="button">학교 게스트로 로그인</button>
-            <p id="login-error" class="error" hidden></p>
-          </form>
-          <p id="dev-login-hint" class="login-hint" hidden></p>
+        <div id="school-login-panel" class="auth-panel school-login-panel">
+          <div class="school-login-copy"><span class="auth-panel-kicker">SCHOOL ACCOUNT</span><h3>학교 계정으로<br>바로 시작하세요.</h3><p>학교에서 사용하는 Google 계정으로 로그인합니다. 별도 아이디와 비밀번호를 입력할 필요가 없습니다.</p></div>
+          <button id="school-login-button" class="primary wide school-login-button" type="button"><span class="school-login-symbol" aria-hidden="true">G</span><span>학교 로그인</span><span aria-hidden="true">→</span></button>
+          <button id="login-guest-button" class="guest-login-button" type="button">학교 게스트로 로그인</button>
+          <div class="school-login-links"><button id="admin-login-choice" class="inline-link admin-login-choice" type="button">관리자 로그인</button><button id="school-student-installer-button" class="inline-link" type="button">학생용 앱 다운로드</button></div>
+          <p id="school-login-error" class="error" hidden></p>
+          <p id="school-login-status" class="auth-footnote">학교 계정 연결은 Google 보안 인증으로 처리됩니다.</p>
         </div>
-        <div id="signup-panel" class="auth-panel" hidden>
-          <form id="signup-form" class="stack" novalidate>
-            <label>이메일<input id="signup-email" type="email" autocomplete="email" required placeholder="teacher@school.ac.kr"></label>
-            <label>비밀번호<input id="signup-password" type="password" autocomplete="new-password" minlength="6" required placeholder="6자 이상"></label>
-            <label>비밀번호 확인<input id="signup-password-confirm" type="password" autocomplete="new-password" minlength="6" required></label>
-            <label class="consent-check"><input id="signup-terms" type="checkbox" required><span><button type="button" class="inline-link" data-legal-document="terms">이용약관</button>에 동의합니다.</span></label>
-            <label class="consent-check"><input id="signup-privacy" type="checkbox" required><span><button type="button" class="inline-link" data-legal-document="privacy">개인정보처리방침</button>에 동의합니다.</span></label>
-            <button class="primary wide" type="submit">계정 만들기 <span>→</span></button>
-            <button id="signup-guest-button" class="guest-login-button" type="button">학교 게스트로 로그인</button>
-            <p id="signup-error" class="error" hidden></p>
-          </form>
+        <div id="admin-auth-panel" hidden>
+          <div class="auth-mode-header"><div><span class="auth-panel-kicker">ADMIN ACCESS</span><strong>관리자 로그인</strong></div><button id="school-login-back" class="inline-link" type="button">학교 로그인으로</button></div>
+          <div class="auth-tabs" role="tablist"><button type="button" class="auth-tab active" data-auth-mode="login" role="tab" aria-selected="true">아이디 로그인</button><button type="button" class="auth-tab" data-auth-mode="signup" role="tab" aria-selected="false">회원가입</button></div>
+          <div id="login-panel" class="auth-panel">
+            <form id="login-form" class="stack">
+              <label>이메일 또는 교사 아이디<input id="login-name" autocomplete="username" required placeholder="이메일 또는 교사 아이디"></label>
+              <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" required></label>
+              <div class="form-row"><button id="forgot-password-button" class="inline-link" type="button">비밀번호를 잊으셨나요?</button><button id="account-lookup-button" class="inline-link" type="button">계정 찾기</button></div>
+              <button class="primary wide" type="submit">관리자로 로그인 <span>→</span></button>
+              <p id="login-error" class="error" hidden></p>
+            </form>
+            <p id="dev-login-hint" class="login-hint" hidden></p>
+          </div>
+          <div id="signup-panel" class="auth-panel" hidden>
+            <form id="signup-form" class="stack" novalidate>
+              <label>이메일<input id="signup-email" type="email" autocomplete="email" required placeholder="teacher@school.ac.kr"></label>
+              <label>비밀번호<input id="signup-password" type="password" autocomplete="new-password" minlength="6" required placeholder="6자 이상"></label>
+              <label>비밀번호 확인<input id="signup-password-confirm" type="password" autocomplete="new-password" minlength="6" required></label>
+              <label class="consent-check"><input id="signup-terms" type="checkbox" required><span><button type="button" class="inline-link" data-legal-document="terms">이용약관</button>에 동의합니다.</span></label>
+              <label class="consent-check"><input id="signup-privacy" type="checkbox" required><span><button type="button" class="inline-link" data-legal-document="privacy">개인정보처리방침</button>에 동의합니다.</span></label>
+              <button class="primary wide" type="submit">관리자 계정 만들기 <span>→</span></button>
+              <p id="signup-error" class="error" hidden></p>
+            </form>
+          </div>
+          <div class="auth-divider"><span>또는</span></div>
+          <button id="google-login-button" type="button" class="google-button"><span class="google-g">G</span> Google 계정으로 계속</button>
+          <p id="firebase-status" class="auth-footnote">관리자용 Google 로그인과 이메일 회원가입을 사용할 수 있습니다.</p>
         </div>
-        <div class="auth-divider"><span>또는</span></div>
-        <button id="google-login-button" type="button" class="google-button"><span class="google-g">G</span> Google 계정으로 계속</button>
-        <p id="firebase-status" class="auth-footnote">Google 로그인과 이메일 회원가입은 안전한 Firebase Authentication으로 처리됩니다.</p>
       </div>
     </div>
   </section>
@@ -240,7 +249,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.29</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.30</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -383,6 +392,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.5.29" defer></script>
+  <script src="/app.js?v=0.5.30" defer></script>
 </body>
 </html>

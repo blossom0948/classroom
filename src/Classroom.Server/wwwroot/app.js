@@ -1,10 +1,11 @@
 (() => {
-  const APP_VERSION = "0.5.29";
+  const APP_VERSION = "0.5.30";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
 
   const TEACHER_TOKEN_KEY = "classroom.teacherToken";
+  const PENDING_FIREBASE_ENTRY_KEY = "classroom.pendingFirebaseEntry";
 
   function storageGet(storageName, key) {
     try { return window[storageName]?.getItem(key) || null; } catch (_) { return null; }
@@ -162,6 +163,7 @@
     storageRemove("localStorage", TEACHER_TOKEN_KEY);
     storageRemove("sessionStorage", TEACHER_TOKEN_KEY);
     storageRemove("sessionStorage", "classroom.onboardingDismissed");
+    storageRemove("sessionStorage", PENDING_FIREBASE_ENTRY_KEY);
     if (state.pollTimer) clearTimeout(state.pollTimer);
     state.pollTimer = null;
     if (state.screenWallTimer) clearInterval(state.screenWallTimer);
@@ -1715,11 +1717,16 @@
     return String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
   }
 
-  function showAuth(mode = "login") {
+  function showAuth(mode = "school") {
     landingView.hidden = true;
     loginView.hidden = false;
     appView.hidden = true;
-    setAuthMode(mode);
+    if (mode === "school") {
+      setAuthEntry("school");
+    } else {
+      setAuthEntry("admin");
+      setAuthMode(mode === "signup" ? "signup" : "login");
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1756,6 +1763,15 @@
     if (dialog && !dialog.open) dialog.showModal();
   }
 
+  function setAuthEntry(entry = "school") {
+    const isSchoolEntry = entry !== "admin";
+    $("school-login-panel").hidden = !isSchoolEntry;
+    $("admin-auth-panel").hidden = isSchoolEntry;
+    if (isSchoolEntry) {
+      $("school-login-error").hidden = true;
+    }
+  }
+
   function setAuthMode(mode) {
     const signup = mode === "signup";
     document.querySelectorAll(".auth-tab").forEach((button) => {
@@ -1767,6 +1783,7 @@
     $("signup-panel").hidden = !signup;
     $("login-error").hidden = true;
     $("signup-error").hidden = true;
+    $("school-login-error").hidden = true;
   }
 
   const legalDocuments = {
@@ -2091,6 +2108,7 @@
       }
     });
     sessionStorage.removeItem("classroom.pendingFirebaseProfile");
+    sessionStorage.removeItem(PENDING_FIREBASE_ENTRY_KEY);
     applySessionToken(result);
     await loadTeacher();
   }
@@ -2104,6 +2122,52 @@
     const target = $("firebase-status");
     target.textContent = message;
     target.classList.toggle("error", isError);
+  }
+
+  function setSchoolLoginStatus(message, isError = false) {
+    const target = $("school-login-status");
+    target.textContent = message;
+    target.classList.toggle("error", isError);
+  }
+
+  async function runGoogleLogin(buttonId, entry, signupProfile = {}) {
+    const button = $(buttonId);
+    const isSchoolEntry = entry === "school";
+    const signupMode = !isSchoolEntry && !$("signup-panel").hidden;
+    const errorTarget = isSchoolEntry
+      ? $("school-login-error")
+      : signupMode ? $("signup-error") : $("login-error");
+    errorTarget.hidden = true;
+    button.disabled = true;
+    try {
+      if (signupMode && (!signupProfile.termsAccepted || !signupProfile.privacyAccepted)) {
+        throw new Error("이용약관과 개인정보처리방침 동의가 필요합니다.");
+      }
+      if (signupMode) {
+        sessionStorage.setItem("classroom.pendingFirebaseProfile", JSON.stringify(signupProfile));
+      } else {
+        sessionStorage.removeItem("classroom.pendingFirebaseProfile");
+      }
+      sessionStorage.setItem(
+        PENDING_FIREBASE_ENTRY_KEY,
+        isSchoolEntry ? "school" : signupMode ? "admin-signup" : "admin-login");
+      const credentials = await firebaseClient().signInGoogle();
+      if (credentials) await finishFirebaseLogin(credentials, signupProfile);
+    } catch (error) {
+      // Keep the user on the same entry point after popup/redirect failures.
+      // In particular, a successful Google credential must never fall through
+      // to the landing page before the Classroom session exchange finishes.
+      showAuth(isSchoolEntry ? "school" : signupMode ? "signup" : "login");
+      if (error.code === "auth/popup-closed-by-user" || error.code === "auth/cancelled-popup-request") {
+        if (isSchoolEntry) setSchoolLoginStatus("학교 로그인을 취소했습니다.");
+        else setFirebaseStatus("Google 로그인을 취소했습니다.");
+      } else {
+        errorTarget.textContent = error.message;
+        errorTarget.hidden = false;
+      }
+    } finally {
+      button.disabled = false;
+    }
   }
 
   $("login-form").addEventListener("submit", async (event) => {
@@ -2209,39 +2273,12 @@
     }
   });
 
-  $("google-login-button").addEventListener("click", async () => {
-    const button = $("google-login-button");
-    const signupMode = !$("signup-panel").hidden;
-    const errorTarget = signupMode ? $("signup-error") : $("login-error");
-    errorTarget.hidden = true;
-    button.disabled = true;
-    try {
-      const signupProfile = !$("signup-panel").hidden
-        ? { termsAccepted: $("signup-terms").checked, privacyAccepted: $("signup-privacy").checked }
-        : {};
-      if (!$("signup-panel").hidden && (!signupProfile.termsAccepted || !signupProfile.privacyAccepted)) {
-        throw new Error("이용약관과 개인정보처리방침 동의가 필요합니다.");
-      }
-      if (signupProfile.termsAccepted || signupProfile.privacyAccepted) {
-        sessionStorage.setItem("classroom.pendingFirebaseProfile", JSON.stringify(signupProfile));
-      } else {
-        sessionStorage.removeItem("classroom.pendingFirebaseProfile");
-      }
-      const credentials = await firebaseClient().signInGoogle();
-      if (credentials) await finishFirebaseLogin(credentials, signupProfile);
-    } catch (error) {
-      // api() clears an expired partial session. Return to the correct form
-      // so an OAuth exchange error never leaves the user stranded on landing.
-      showAuth(signupMode ? "signup" : "login");
-      if (error.code === "auth/popup-closed-by-user" || error.code === "auth/cancelled-popup-request") {
-        setFirebaseStatus("Google 로그인을 취소했습니다.");
-      } else {
-        errorTarget.textContent = error.message;
-        errorTarget.hidden = false;
-      }
-    } finally {
-      button.disabled = false;
-    }
+  $("school-login-button").addEventListener("click", () => runGoogleLogin("school-login-button", "school"));
+  $("google-login-button").addEventListener("click", () => {
+    const signupProfile = !$("signup-panel").hidden
+      ? { termsAccepted: $("signup-terms").checked, privacyAccepted: $("signup-privacy").checked }
+      : {};
+    return runGoogleLogin("google-login-button", "admin", signupProfile);
   });
 
   document.querySelectorAll(".guest-login-button").forEach((button) => {
@@ -2302,14 +2339,21 @@
   });
 
   document.querySelectorAll(".auth-tab").forEach((button) => {
-    button.addEventListener("click", () => setAuthMode(button.dataset.authMode));
+    button.addEventListener("click", () => {
+      setAuthEntry("admin");
+      setAuthMode(button.dataset.authMode);
+    });
   });
-  $("landing-login-button").addEventListener("click", () => showAuth("login"));
+  $("landing-login-button").addEventListener("click", () => showAuth("school"));
+  $("landing-student-installer-button").addEventListener("click", downloadStudentInstaller);
   $("landing-install-button").addEventListener("click", installApp);
   $("landing-start-button").addEventListener("click", () => showAuth("signup"));
-  $("principles-login-button").addEventListener("click", () => showAuth("login"));
+  $("principles-login-button").addEventListener("click", () => showAuth("school"));
   $("landing-cta-button").addEventListener("click", () => showAuth("signup"));
   $("back-to-landing").addEventListener("click", (event) => { event.preventDefault(); showLanding(); });
+  $("admin-login-choice").addEventListener("click", () => showAuth("admin"));
+  $("school-login-back").addEventListener("click", () => showAuth("school"));
+  $("school-student-installer-button").addEventListener("click", downloadStudentInstaller);
   $("install-app-button").addEventListener("click", installApp);
   $("settings-install-button").addEventListener("click", installApp);
   $("check-update-button").addEventListener("click", () => checkForAppUpdate(true));
@@ -2655,10 +2699,14 @@
 
   function refreshFirebaseAvailability() {
     const firebaseReady = window.ClassroomFirebaseAuth?.isConfigured() === true;
+    $("school-login-button").disabled = !firebaseReady;
     $("google-login-button").disabled = !firebaseReady;
+    setSchoolLoginStatus(firebaseReady
+      ? "학교 계정 연결은 Google 보안 인증으로 처리됩니다."
+      : "학교 로그인은 Firebase 설정 후 사용할 수 있습니다.");
     setFirebaseStatus(firebaseReady
-      ? "Google 로그인과 이메일 회원가입을 사용할 수 있습니다."
-      : "Google 로그인과 이메일 회원가입은 Firebase 설정 후 사용할 수 있습니다.");
+      ? "관리자용 Google 로그인과 이메일 회원가입을 사용할 수 있습니다."
+      : "관리자용 인증은 Firebase 설정 후 사용할 수 있습니다.");
     return firebaseReady;
   }
 
@@ -2719,21 +2767,44 @@
     return true;
   }
 
+  function pendingFirebaseAuthMode() {
+    return {
+      school: "school",
+      "admin-signup": "signup",
+      "admin-login": "login"
+    }[storageGet("sessionStorage", PENDING_FIREBASE_ENTRY_KEY)] || null;
+  }
+
+  function showFirebaseRedirectRecovery(mode) {
+    showAuth(mode);
+    const target = mode === "school"
+      ? $("school-login-status")
+      : $("firebase-status");
+    target.textContent = "Google 로그인 결과를 확인하지 못했습니다. 같은 버튼을 눌러 다시 시도해 주세요.";
+    target.classList.add("error");
+  }
+
   async function restoreInitialSession() {
     // Firebase returns to this page with a short-lived redirect result.  It
     // must be exchanged before /auth/me is checked, otherwise cookie mode
     // would see no session yet and send a successful Google login to landing.
     const hadStoredBearer = Boolean(state.token);
+    const pendingMode = pendingFirebaseAuthMode();
     try {
       if (await consumePendingFirebaseRedirect()) return;
     } catch (error) {
-      loginError.textContent = error.message;
-      loginError.hidden = false;
-      showAuth("login");
+      const errorMode = pendingFirebaseAuthMode() || pendingMode || "login";
+      showAuth(errorMode);
+      const errorTarget = errorMode === "school" ? $("school-login-error") : loginError;
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
       return;
     }
 
-    if (!hadStoredBearer && !cookieSessionEnabled) return;
+    if (!hadStoredBearer && !cookieSessionEnabled) {
+      if (pendingMode) showFirebaseRedirectRecovery(pendingMode);
+      return;
+    }
     try {
       await loadTeacher();
     } catch (error) {

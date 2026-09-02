@@ -64,6 +64,14 @@ foreach ($runValueName in @("BlossomClassroomStudent", "ClassroomStudentDesktop"
     Remove-ItemProperty -LiteralPath $runKey -Name $runValueName -ErrorAction SilentlyContinue
 }
 
+$machineRunKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+Remove-ItemProperty -LiteralPath $machineRunKey -Name "BlossomClassroomStudent" -ErrorAction SilentlyContinue
+
+if (-not $KeepConfiguration) {
+    $desktopConfigurationPath = Join-Path $env:ProgramData "Blossom Classroom Student\desktop-config.json"
+    Remove-Item -LiteralPath $desktopConfigurationPath -Force -ErrorAction SilentlyContinue
+}
+
 $startMenuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Classroom Student.lnk"
 Remove-Item -LiteralPath $startMenuShortcut -Force -ErrorAction SilentlyContinue
 

@@ -14,7 +14,7 @@ param(
 
     [string]$IpcToken,
 
-    [string]$AgentVersion = "0.5.29",
+    [string]$AgentVersion = "0.5.30",
 
     [string]$LogPath,
 
@@ -360,16 +360,39 @@ $serviceEnvironment = @(
 )
 New-ItemProperty -Path $serviceRegistryPath -Name "Environment" -PropertyType MultiString -Value $serviceEnvironment -Force | Out-Null
 
+# Keep a machine-level copy for the interactive tray process. User environment
+# variables are still written for compatibility, but a school image or a
+# different logon policy must not force the student to enroll again after reboot.
+$desktopConfigurationDirectory = Join-Path $env:ProgramData "Blossom Classroom Student"
+$desktopConfigurationPath = Join-Path $desktopConfigurationDirectory "desktop-config.json"
+New-Item -ItemType Directory -Path $desktopConfigurationDirectory -Force | Out-Null
+[ordered]@{
+    format = "BLOSSOM-CLASSROOM-DESKTOP-V1"
+    deviceId = $DeviceId.ToString()
+    ipcToken = $IpcToken
+    agentVersion = $AgentVersion
+    savedAtUtc = [DateTimeOffset]::UtcNow.ToString("O")
+} | ConvertTo-Json -Compress | Set-Content -LiteralPath $desktopConfigurationPath -Encoding UTF8
+Write-ClassroomInstallLog "학생 화면 시작 설정 저장 완료: $desktopConfigurationPath"
+
+[Environment]::SetEnvironmentVariable("CLASSROOM_AGENT_VERSION", $AgentVersion, "User")
 [Environment]::SetEnvironmentVariable("CLASSROOM_IPC_TOKEN", $IpcToken, "User")
 [Environment]::SetEnvironmentVariable("CLASSROOM_DEVICE_ID", $DeviceId.ToString(), "User")
+$env:CLASSROOM_AGENT_VERSION = $AgentVersion
+$env:CLASSROOM_IPC_TOKEN = $IpcToken
+$env:CLASSROOM_DEVICE_ID = $DeviceId.ToString()
 
 $desktopRunKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+$machineDesktopRunKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
 if ($SkipDesktopStartup) {
     Remove-ItemProperty -Path $desktopRunKey -Name "BlossomClassroomStudent" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $machineDesktopRunKey -Name "BlossomClassroomStudent" -ErrorAction SilentlyContinue
 }
 else {
     New-Item -Path $desktopRunKey -Force | Out-Null
     New-ItemProperty -Path $desktopRunKey -Name "BlossomClassroomStudent" -PropertyType String -Value ('"{0}" --classroom-watchdog' -f $installedDesktopExecutable) -Force | Out-Null
+    New-Item -Path $machineDesktopRunKey -Force | Out-Null
+    New-ItemProperty -Path $machineDesktopRunKey -Name "BlossomClassroomStudent" -PropertyType String -Value ('"{0}" --classroom-watchdog' -f $installedDesktopExecutable) -Force | Out-Null
 }
 
 # Keep a visible way to reopen the installed app after the setup window closes.

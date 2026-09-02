@@ -11,6 +11,7 @@ if (args.Any(argument => string.Equals(argument, "--classroom-watchdog", StringC
 }
 
 ApplicationConfiguration.Initialize();
+var startInBackground = args.Any(argument => string.Equals(argument, "--classroom-background", StringComparison.OrdinalIgnoreCase));
 var options = StudentDesktopOptions.FromEnvironment();
 using var singleInstance = new Mutex(
     initiallyOwned: true,
@@ -28,7 +29,8 @@ using var form = new StudentDesktopForm(
     options,
     statusProvider,
     client.VerifyExitPinAsync,
-    client.CheckForUpdateAsync);
+    client.CheckForUpdateAsync,
+    startInBackground);
 
 form.FormClosed += (_, _) => cancellation.Cancel();
 var connectionTask = client.RunAsync(

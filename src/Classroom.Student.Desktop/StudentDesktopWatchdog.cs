@@ -65,7 +65,7 @@ internal static class StudentDesktopWatchdog
         Process.Start(new ProcessStartInfo
         {
             FileName = executablePath,
-            Arguments = "--classroom-student-ui",
+            Arguments = "--classroom-background",
             WorkingDirectory = workingDirectory ?? string.Empty,
             UseShellExecute = true
         }) ?? throw new InvalidOperationException("학생 화면을 시작하지 못했습니다.");

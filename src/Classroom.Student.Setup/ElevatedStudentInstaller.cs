@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using Blossom.Classroom.Core.Desktop;
 using Microsoft.Win32;
 
 namespace Blossom.Classroom.Student.Setup;
@@ -106,6 +107,9 @@ internal static class ElevatedStudentInstaller
         }
 
         ConfigureService(installedService, config, agentVersion, logPath);
+        StudentDesktopConfigurationStore.Save(config.DeviceId, config.IpcToken!, agentVersion);
+        Log(logPath, $"학생 화면 시작 설정 저장 완료: {StudentDesktopConfigurationStore.ConfigurationPath}");
+        ConfigureMachineStartup(installedDesktop, logPath);
         StartService(logPath);
 
         // The UI process is deliberately started by the unelevated parent after
@@ -208,6 +212,19 @@ internal static class ElevatedStudentInstaller
             },
             RegistryValueKind.MultiString);
         Log(logPath, "Windows 서비스 등록 및 장치 설정 저장 완료");
+    }
+
+    private static void ConfigureMachineStartup(string desktopExecutable, string? logPath)
+    {
+        using var runKey = Registry.LocalMachine.CreateSubKey(
+            @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+            writable: true)
+            ?? throw new InvalidOperationException("Windows 자동 시작 설정을 저장하지 못했습니다.");
+        runKey.SetValue(
+            "BlossomClassroomStudent",
+            $"{Quote(desktopExecutable)} --classroom-watchdog",
+            RegistryValueKind.String);
+        Log(logPath, "모든 Windows 사용자 세션에 학생 화면 자동 시작 등록 완료");
     }
 
     private static void StartService(string? logPath)
@@ -601,6 +618,9 @@ internal static class ElevatedStudentInstaller
 
         return null;
     }
+
+    private static string Quote(string value) =>
+        $"\"{value.Replace("\"", "\\\"")}\"";
 
     private static string CreateToken()
     {

@@ -1,4 +1,7 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows.Forms;
+using Blossom.Classroom.Core.Desktop;
 
 namespace Blossom.Classroom.Student.Setup;
 
@@ -17,8 +20,48 @@ internal static class Program
             return;
         }
 
+        if (TryStartExistingInstallation())
+        {
+            return;
+        }
+
         ApplicationConfiguration.Initialize();
         Application.Run(new StudentSetupForm(ResolveServerOrigin(args)));
+    }
+
+    private static bool TryStartExistingInstallation()
+    {
+        if (!StudentDesktopConfigurationStore.TryLoad(out _))
+        {
+            return false;
+        }
+
+        var desktopPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "Blossom Classroom Student",
+            "desktop",
+            "Classroom.Student.Desktop.exe");
+        if (!File.Exists(desktopPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = desktopPath,
+                Arguments = "--classroom-watchdog",
+                WorkingDirectory = Path.GetDirectoryName(desktopPath)!,
+                UseShellExecute = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            });
+            return true;
+        }
+        catch (Win32Exception)
+        {
+            return false;
+        }
     }
 
     private static Uri ResolveServerOrigin(string[] args)
