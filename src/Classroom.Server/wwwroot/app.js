@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.30";
+  const APP_VERSION = "0.5.31";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -2273,7 +2273,7 @@
     }
   });
 
-  $("school-login-button").addEventListener("click", () => runGoogleLogin("school-login-button", "school"));
+  $("school-login-button").addEventListener("click", openGuestLoginDialog);
   $("google-login-button").addEventListener("click", () => {
     const signupProfile = !$("signup-panel").hidden
       ? { termsAccepted: $("signup-terms").checked, privacyAccepted: $("signup-privacy").checked }
@@ -2281,9 +2281,6 @@
     return runGoogleLogin("google-login-button", "admin", signupProfile);
   });
 
-  document.querySelectorAll(".guest-login-button").forEach((button) => {
-    button.addEventListener("click", openGuestLoginDialog);
-  });
   setupSchoolSearch("guest-school-search", "guest-school-results", "guest-school-id");
 
   $("forgot-password-button").addEventListener("click", async () => {
@@ -2699,11 +2696,9 @@
 
   function refreshFirebaseAvailability() {
     const firebaseReady = window.ClassroomFirebaseAuth?.isConfigured() === true;
-    $("school-login-button").disabled = !firebaseReady;
     $("google-login-button").disabled = !firebaseReady;
-    setSchoolLoginStatus(firebaseReady
-      ? "학교 계정 연결은 Google 보안 인증으로 처리됩니다."
-      : "학교 로그인은 Firebase 설정 후 사용할 수 있습니다.");
+    $("school-login-button").disabled = false;
+    setSchoolLoginStatus("학교 선택과 학교 비밀번호로 안전하게 연결합니다.");
     setFirebaseStatus(firebaseReady
       ? "관리자용 Google 로그인과 이메일 회원가입을 사용할 수 있습니다."
       : "관리자용 인증은 Firebase 설정 후 사용할 수 있습니다.");

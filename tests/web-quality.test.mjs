@@ -60,7 +60,11 @@ assert.match(html, /id="admin-auth-panel" hidden/, "Email, password, and Google 
 assert.match(html, /id="admin-login-choice"/, "The normal sign-in needs an explicit administrator entry.");
 assert.match(html, /id="landing-student-installer-button"/, "The student installer must be downloadable without teacher authentication.");
 assert.match(script, /function showAuth\(mode = "school"\)/, "The default auth route must be the school login.");
-assert.match(script, /runGoogleLogin\("school-login-button", "school"\)/, "School login must use the existing verified Google exchange.");
+assert.match(script, /\$\("school-login-button"\)\.addEventListener\("click", openGuestLoginDialog\)/, "School login must open the school guest access flow.");
+assert.doesNotMatch(html, /id="login-guest-button"/, "The duplicate school guest button should not be visible beside school login.");
+assert.match(html, /id="guest-login-dialog"[^>]*class="command-dialog guest-login-dialog"/, "School login must retain the branded school access dialog.");
+assert.match(html, /id="guest-login-submit"[^>]*class="primary"[^>]*>학교 로그인<\/button>/, "The school access dialog must use the same school login action label.");
+assert.doesNotMatch(script, /\$\("school-login-button"\)\.disabled = !firebaseReady/, "School login must not depend on Firebase admin authentication readiness.");
 assert.match(styles, /@media \(max-width: 820px\)/, "The mobile shell must keep a compact breakpoint.");
 assert.match(styles, /\.command-dialog\s*\{[\s\S]*max-height:/, "Dialogs must stay inside the viewport.");
 assert.match(styles, /\.class-select-menu\s*\{/, "The class picker menu must use the console visual system.");
