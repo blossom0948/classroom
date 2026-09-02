@@ -42,6 +42,7 @@ public sealed class StudentDesktopForm : Form
     private bool approvedExit;
     private bool exitPromptOpen;
     private bool initialVisibilityHandled;
+    private bool backgroundNoticeShown;
     private FocusOverlayForm? focusOverlay;
 
     public StudentDesktopForm(
@@ -147,7 +148,7 @@ public sealed class StudentDesktopForm : Form
             if (eventArgs.CloseReason == CloseReason.UserClosing && !approvedExit)
             {
                 eventArgs.Cancel = true;
-                BeginInvoke(new Action(() => _ = RequestApprovedExitAsync()));
+                HideToTray();
             }
         };
         FormClosed += (_, _) =>
@@ -363,6 +364,31 @@ public sealed class StudentDesktopForm : Form
         WindowState = FormWindowState.Normal;
         Activate();
         BringToFront();
+    }
+
+    private void HideToTray()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        // Closing the visible status window must never interrupt the desktop
+        // pipe, screen sharing, or the automatic Windows-start watchdog. The
+        // explicit tray/menu exit path below is the only route that requests
+        // the administrator-managed PIN and actually closes the process.
+        ShowInTaskbar = false;
+        Hide();
+        trayIcon.Visible = true;
+        if (!backgroundNoticeShown)
+        {
+            trayIcon.ShowBalloonTip(
+                4_000,
+                "Classroom Student",
+                "창만 닫혔습니다. Classroom은 백그라운드에서 연결을 유지합니다. 종료하려면 알림 영역 Classroom 아이콘의 ‘프로그램 종료’를 선택하세요.",
+                ToolTipIcon.Info);
+            backgroundNoticeShown = true;
+        }
     }
 
     private void ShowMainWindowAndRequestExit()

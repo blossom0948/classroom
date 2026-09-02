@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [html, script, styles, config, updater, helper, desktopProgram, watchdog, desktopOptions, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, cloudflareWorker] = await Promise.all([
+const [html, script, styles, config, updater, helper, desktopProgram, desktopForm, watchdog, desktopOptions, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, cloudflareWorker] = await Promise.all([
   readFile(new URL("../src/Classroom.Server/wwwroot/index.html", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/app.js", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/styles.css", import.meta.url), "utf8"),
@@ -9,6 +9,7 @@ const [html, script, styles, config, updater, helper, desktopProgram, watchdog, 
   readFile(new URL("../src/Classroom.Student.Service/StudentUpdateWorker.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Service/StudentUpdateHelper.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Desktop/Program.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Desktop/Ui/StudentDesktopForm.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Desktop/StudentDesktopWatchdog.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Desktop/Configuration/StudentDesktopOptions.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Setup/Program.cs", import.meta.url), "utf8"),
@@ -67,6 +68,10 @@ assert.match(buildPagesScript, /\/student\s+https:\/\/classroom-api\.blossom0948
 assert.match(cloudflareWorker, /"\/downloads\/student-setup"/, "The API Worker must stream the public student setup file.");
 assert.match(cloudflareWorker, /"\/downloads\/student-package"/, "The API Worker must stream the public student package.");
 assert.match(cloudflareWorker, /return new Response\(request\.method === "HEAD" \? null : upstream\.body/, "Large installer files must stream through the Worker without buffering.");
+assert.match(cloudflareWorker, /const MAX_MESSAGE_BYTES = 128 \* 1024;/, "The Worker must accept a base64-encoded 720p heartbeat.");
+assert.match(cloudflareWorker, /numberInRange\(value\.width, 1, 1_280\)/, "The Worker must accept the protocol 720p screen width.");
+assert.match(cloudflareWorker, /numberInRange\(value\.height, 1, 720\)/, "The Worker must accept the protocol 720p screen height.");
+assert.match(cloudflareWorker, /atob\(base64Data\)\.length > 72 \* 1024/, "The Worker frame byte limit must match the desktop protocol.");
 assert.match(script, /function showAuth\(mode = "school"\)/, "The default auth route must be the school login.");
 assert.match(script, /\$\("school-login-button"\)\.addEventListener\("click", openGuestLoginDialog\)/, "School login must open the school guest access flow.");
 assert.doesNotMatch(html, /id="login-guest-button"/, "The duplicate school guest button should not be visible beside school login.");
@@ -112,6 +117,9 @@ assert.match(setupForm, /attempt <= 3/, "Student setup downloads must retry tran
 assert.doesNotMatch(updater, /MoveFileEx|DelayUntilReboot|next-windows-start|Windows를 다시 시작하면/, "Student updates must not wait for a Windows reboot.");
 assert.match(helper, /CreateProcessAsUser/, "The update helper must be able to restart the student UI in the interactive session.");
 assert.match(desktopProgram, /classroom-background/, "The student UI needs an explicit background startup mode.");
+assert.match(desktopForm, /CloseReason\.UserClosing[\s\S]*?HideToTray\(\)/, "Closing the student window must hide it instead of ending the background connection.");
+assert.match(desktopForm, /private void HideToTray\(\)/, "The student UI needs an explicit tray-hide path.");
+assert.doesNotMatch(desktopForm, /CloseReason\.UserClosing[\s\S]{0,300}RequestApprovedExitAsync/, "The window close button must not trigger the administrator exit PIN flow.");
 assert.match(watchdog, /Arguments = "--classroom-background"/, "The watchdog must launch the student UI without showing its window.");
 assert.match(desktopOptions, /StudentDesktopConfigurationStore\.TryLoad/, "The tray process must recover enrollment from machine-level configuration.");
 assert.match(setupProgram, /TryStartExistingInstallation/, "Rerunning the installer must reuse an existing enrollment.");

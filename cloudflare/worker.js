@@ -15,7 +15,10 @@ const PASSWORD_VERIFICATION_LIFETIME_MS = 10 * 60 * 1000;
 const MAX_PASSWORD_VERIFICATION_ATTEMPTS = 5;
 const TERMS_VERSION = "2026-08-30";
 const PRIVACY_VERSION = "2026-08-30";
-const MAX_MESSAGE_BYTES = 64 * 1024;
+// A 720p JPEG is base64 encoded inside a device heartbeat. Keep the Worker
+// boundary aligned with the desktop IPC and protocol ceiling so the Worker
+// never silently drops a frame that the student app successfully captured.
+const MAX_MESSAGE_BYTES = 128 * 1024;
 const MAX_COMMAND_TARGETS = 30;
 const MAX_ROSTER_ROWS = 100;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -1930,11 +1933,11 @@ function normalizeActivity(value) {
 function normalizeScreenFrame(value) {
   if (!value || typeof value !== "object" || value.mimeType !== "image/jpeg") return null;
   const base64Data = typeof value.base64Data === "string" ? value.base64Data : "";
-  const width = numberInRange(value.width, 1, 640);
-  const height = numberInRange(value.height, 1, 480);
-  if (!width || !height || !base64Data || base64Data.length > 49_152 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64Data)) return null;
+  const width = numberInRange(value.width, 1, 1_280);
+  const height = numberInRange(value.height, 1, 720);
+  if (!width || !height || !base64Data || base64Data.length > 98_304 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64Data)) return null;
   try {
-    if (atob(base64Data).length > 36 * 1024) return null;
+    if (atob(base64Data).length > 72 * 1024) return null;
   } catch (_) { return null; }
   const capturedAt = Date.parse(value.capturedAtUtc);
   return {
