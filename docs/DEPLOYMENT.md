@@ -122,6 +122,8 @@ Invoke-WebRequest https://classroom-2en.pages.dev/
 - 이메일 가입·Google 로그인 → Firebase session 교환 → Classroom bearer session 발급
 - 학생 코드는 재발급하기 전까지 유지되며, 재발급하면 기존 학생 장치 token은 해제
 - Student Setup 기본 서버 → `https://classroom-api.blossom0948.cloud`
+- 학생 설치 파일 프록시 → `https://classroom-api.blossom0948.cloud/downloads/student-setup`
+- 학생 전용 업데이트 패키지 → `https://classroom-api.blossom0948.cloud/downloads/student-package`
 - Student Service → `/ws/student?deviceId=...`에서 WebSocket 연결
 
 ## 5. 개인정보 및 운영 준비

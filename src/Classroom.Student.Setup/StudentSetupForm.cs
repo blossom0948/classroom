@@ -14,10 +14,11 @@ namespace Blossom.Classroom.Student.Setup;
 
 internal sealed class StudentSetupForm : Form
 {
-    private const string AgentVersion = "0.5.33";
+    private const string AgentVersion = "0.5.34";
     private const int JoinCodeLength = 8;
     private static readonly string[] StudentPackageUrls =
     [
+        "https://classroom-api.blossom0948.cloud/downloads/student-package",
         "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Student-x64.zip",
         // Keep the full package as a compatibility fallback for a cached or
         // managed setup executable from a release before the student bundle.

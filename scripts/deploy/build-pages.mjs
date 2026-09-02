@@ -15,12 +15,12 @@ for (const fileName of ["index.html", "styles.css", "app.js", "config.js", "fire
 }
 await cp(join(sourceRoot, "icons"), join(outputRoot, "icons"), { recursive: true });
 
-// Keep the student download address short and stable.  The redirect target
-// follows the latest GitHub release, so existing school handouts never need
-// to change when a new installer is published.
+// Keep the student download address short and stable. The API Worker streams
+// the known release asset through the Classroom domain when GitHub's separate
+// release-asset host is filtered by a school network.
 await writeFile(join(outputRoot, "_redirects"), [
-  "/student https://github.com/blossom0948/classroom/releases/latest/download/Classroom.Student.Setup.exe 302",
-  "/student/ https://github.com/blossom0948/classroom/releases/latest/download/Classroom.Student.Setup.exe 302"
+  "/student https://classroom-api.blossom0948.cloud/downloads/student-setup 302",
+  "/student/ https://classroom-api.blossom0948.cloud/downloads/student-setup 302"
 ].join("\n") + "\n");
 
 await writeFile(join(outputRoot, "_headers"), `/*

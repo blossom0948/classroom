@@ -377,13 +377,15 @@ public sealed class StudentUpdateWorker(
     private static bool IsAllowedPackageUrl(string? value) =>
         Uri.TryCreate(value, UriKind.Absolute, out var uri)
         && uri.Scheme == Uri.UriSchemeHttps
-        && uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
-        && (uri.AbsolutePath.Equals(
-                "/blossom0948/classroom/releases/latest/download/Classroom-Student-x64.zip",
-                StringComparison.Ordinal)
-            || uri.AbsolutePath.Equals(
-                "/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip",
-                StringComparison.Ordinal));
+        && ((uri.Host.Equals("classroom-api.blossom0948.cloud", StringComparison.OrdinalIgnoreCase)
+                && uri.AbsolutePath.Equals("/downloads/student-package", StringComparison.Ordinal))
+            || (uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
+                && (uri.AbsolutePath.Equals(
+                        "/blossom0948/classroom/releases/latest/download/Classroom-Student-x64.zip",
+                        StringComparison.Ordinal)
+                    || uri.AbsolutePath.Equals(
+                        "/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip",
+                        StringComparison.Ordinal))));
 
     private static void TryDelete(string path)
     {

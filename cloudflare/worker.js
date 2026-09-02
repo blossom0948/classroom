@@ -19,15 +19,86 @@ const MAX_MESSAGE_BYTES = 64 * 1024;
 const MAX_COMMAND_TARGETS = 30;
 const MAX_ROSTER_ROWS = 100;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const PUBLIC_DOWNLOADS = Object.freeze({
+  "/downloads/student-setup": {
+    source: "https://github.com/blossom0948/classroom/releases/latest/download/Classroom.Student.Setup.exe",
+    fileName: "Classroom.Student.Setup.exe"
+  },
+  "/downloads/student-package": {
+    source: "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Student-x64.zip",
+    fileName: "Classroom-Student-x64.zip"
+  }
+});
 
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return corsResponse(request, env);
+    const pathname = new URL(request.url).pathname.replace(/\/+$/, "") || "/";
+    const download = PUBLIC_DOWNLOADS[pathname];
+    if (download) return proxyPublicDownload(request, download);
     const objectId = env.CLASSROOM_STATE.idFromName("blossom-classroom:production");
     const durableObject = env.CLASSROOM_STATE.get(objectId);
     return durableObject.fetch(request);
   }
 };
+
+// School networks can permit the Classroom domain while filtering GitHub's
+// separate release-asset host. These two fixed routes stream only our known
+// release files; they never accept a caller-supplied destination URL.
+async function proxyPublicDownload(request, download) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method Not Allowed", {
+      status: 405,
+      headers: { Allow: "GET, HEAD" }
+    });
+  }
+
+  const upstreamHeaders = new Headers({
+    Accept: "application/octet-stream",
+    "User-Agent": "Blossom-Classroom-Download-Proxy/1.0"
+  });
+  for (const headerName of ["Range", "If-Range"]) {
+    const value = request.headers.get(headerName);
+    if (value) upstreamHeaders.set(headerName, value);
+  }
+
+  let upstream;
+  try {
+    upstream = await fetch(download.source, {
+      method: request.method,
+      headers: upstreamHeaders,
+      redirect: "follow"
+    });
+  } catch {
+    return new Response("학생용 설치 파일을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.", {
+      status: 502,
+      headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=UTF-8" }
+    });
+  }
+
+  if (!upstream.ok && upstream.status !== 206) {
+    return new Response("학생용 설치 파일을 내려받지 못했습니다. 잠시 후 다시 시도해 주세요.", {
+      status: upstream.status >= 400 ? upstream.status : 502,
+      headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=UTF-8" }
+    });
+  }
+
+  const headers = new Headers();
+  for (const headerName of ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"]) {
+    const value = upstream.headers.get(headerName);
+    if (value) headers.set(headerName, value);
+  }
+  headers.set("Content-Disposition", `attachment; filename="${download.fileName}"`);
+  headers.set("Cache-Control", "public, max-age=300");
+  headers.set("X-Content-Type-Options", "nosniff");
+
+  // Preserve the stream rather than buffering a large archive in Worker
+  // memory. Range headers above allow a browser to resume a partial download.
+  return new Response(request.method === "HEAD" ? null : upstream.body, {
+    status: upstream.status,
+    headers
+  });
+}
 
 export class ClassroomState {
   constructor(ctx, env) {

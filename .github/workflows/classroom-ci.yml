@@ -45,6 +45,7 @@ jobs:
           npm run check:pages
           npm run check:worker
           npm run test:pages
+          npm run test:worker-download
           npm run test:quality
           npm run build
           if (-not (Test-Path -LiteralPath 'dist/index.html')) {
@@ -94,7 +95,7 @@ jobs:
           Copy-Item scripts/install/* $package -Force
           Copy-Item docs/CLASSROOM_MVP.md $package -Force
           Copy-Item docs/DEPLOYMENT.md $package -Force
-          Copy-Item docs/RELEASE_NOTES-0.5.32.md $package -Force
+          Copy-Item docs/RELEASE_NOTES-0.5.34.md $package -Force
           Compress-Archive -Path (Join-Path $package '*') `
             -DestinationPath (Join-Path $root 'Classroom-Windows-x64.zip') -Force
           if (-not (Test-Path -LiteralPath (Join-Path $root 'Classroom-Windows-x64.zip'))) {

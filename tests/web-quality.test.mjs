@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [html, script, styles, config, updater, helper, desktopProgram, watchdog, desktopOptions, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript] = await Promise.all([
+const [html, script, styles, config, updater, helper, desktopProgram, watchdog, desktopOptions, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, cloudflareWorker] = await Promise.all([
   readFile(new URL("../src/Classroom.Server/wwwroot/index.html", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/app.js", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/styles.css", import.meta.url), "utf8"),
@@ -15,7 +15,8 @@ const [html, script, styles, config, updater, helper, desktopProgram, watchdog, 
   readFile(new URL("../src/Classroom.Student.Setup/StudentSetupForm.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Setup/ElevatedStudentInstaller.cs", import.meta.url), "utf8"),
   readFile(new URL("../scripts/install/Install-ClassroomStudent.ps1", import.meta.url), "utf8"),
-  readFile(new URL("../scripts/deploy/build-pages.mjs", import.meta.url), "utf8")
+  readFile(new URL("../scripts/deploy/build-pages.mjs", import.meta.url), "utf8"),
+  readFile(new URL("../cloudflare/worker.js", import.meta.url), "utf8")
 ]);
 
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
@@ -62,7 +63,10 @@ assert.match(html, /id="admin-login-choice"/, "The normal sign-in needs an expli
 assert.match(html, /id="landing-student-installer-button"/, "The student installer must be downloadable without teacher authentication.");
 assert.match(config, /studentInstallerUrl:\s*"https:\/\/classroom-2en\.pages\.dev\/student"/, "The console must advertise the short student installer URL.");
 assert.match(buildPagesScript, /join\(outputRoot, "_redirects"\)/, "The Pages build must publish the short student installer redirect.");
-assert.match(buildPagesScript, /\/student\s+https:\/\/github\.com\/blossom0948\/classroom\/releases\/latest\/download\/Classroom\.Student\.Setup\.exe\s+302/, "The short student URL must follow the latest published installer.");
+assert.match(buildPagesScript, /\/student\s+https:\/\/classroom-api\.blossom0948\.cloud\/downloads\/student-setup\s+302/, "The short student URL must use the Classroom download proxy.");
+assert.match(cloudflareWorker, /"\/downloads\/student-setup"/, "The API Worker must stream the public student setup file.");
+assert.match(cloudflareWorker, /"\/downloads\/student-package"/, "The API Worker must stream the public student package.");
+assert.match(cloudflareWorker, /return new Response\(request\.method === "HEAD" \? null : upstream\.body/, "Large installer files must stream through the Worker without buffering.");
 assert.match(script, /function showAuth\(mode = "school"\)/, "The default auth route must be the school login.");
 assert.match(script, /\$\("school-login-button"\)\.addEventListener\("click", openGuestLoginDialog\)/, "School login must open the school guest access flow.");
 assert.doesNotMatch(html, /id="login-guest-button"/, "The duplicate school guest button should not be visible beside school login.");
@@ -100,7 +104,9 @@ assert.doesNotMatch(html, /class="settings-card legal-card"/, "Terms and privacy
 assert.match(html, /class="console-footer"/, "The compact terms/privacy footer must remain visible.");
 assert.match(updater, /UPDATE_APPLYING/, "Student updates must report the immediate apply state.");
 assert.match(updater, /Classroom-Student-x64\.zip/, "Student updates must use the student-only package when available.");
+assert.match(updater, /classroom-api\.blossom0948\.cloud/, "Student updates must accept the Classroom download proxy.");
 assert.match(setupForm, /Classroom-Student-x64\.zip/, "Student setup must prefer the student-only package.");
+assert.match(setupForm, /classroom-api\.blossom0948\.cloud\/downloads\/student-package/, "Student setup must prefer the Classroom download proxy.");
 assert.match(setupForm, /TimeSpan\.FromMinutes\(20\)/, "Student setup downloads need enough time for managed school networks.");
 assert.match(setupForm, /attempt <= 3/, "Student setup downloads must retry transient failures.");
 assert.doesNotMatch(updater, /MoveFileEx|DelayUntilReboot|next-windows-start|Windows를 다시 시작하면/, "Student updates must not wait for a Windows reboot.");

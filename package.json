@@ -11,6 +11,7 @@
     "dev:worker": "wrangler dev --config cloudflare/wrangler.jsonc",
     "deploy:worker": "wrangler deploy --config cloudflare/wrangler.jsonc",
     "test:pages": "node tests/pages-proxy.test.mjs",
+    "test:worker-download": "node tests/worker-download.test.mjs",
     "test:quality": "node tests/web-quality.test.mjs"
   },
   "devDependencies": {
