@@ -1,8 +1,10 @@
 # Classroom 맥북 이전 인수인계
 
-작성일: 2026-09-04 (Asia/Seoul)  
-저장소: `https://github.com/blossom0948/classroom.git`  
-기준 브랜치: `main`  
+작성일: 2026-09-04 (Asia/Seoul)
+
+저장소: `https://github.com/blossom0948/classroom.git`
+
+기준 브랜치: `main`
 기준 커밋/태그: `ba91f2b` / `v0.5.35`
 
 이 문서는 Windows 작업 환경에서 맥북으로 개발 환경을 옮길 때 바로 이어서
