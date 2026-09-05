@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-  <link rel="stylesheet" href="/styles.css?v=0.5.35">
+  <link rel="stylesheet" href="/styles.css?v=0.5.36">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -62,23 +62,24 @@
     <footer class="landing-footer"><span>© Blossom Classroom</span><span class="legal-links"><button type="button" data-legal-document="terms">이용약관</button><button type="button" data-legal-document="privacy">개인정보처리방침</button></span><span>수업을 위한 투명한 장치 관리</span></footer>
   </section>
 
-  <section id="login-view" class="auth-shell" hidden>
+  <section id="login-view" class="auth-shell" data-auth-entry="school" data-auth-mode="login" hidden>
     <div class="auth-topbar"><a class="landing-brand" href="#top" id="back-to-landing"><span class="brand-mark">C</span><span>Classroom</span></a><span class="auth-topnote">학교용 수업 운영 콘솔</span></div>
     <div class="auth-layout">
       <div class="auth-copy"><div class="eyebrow">WELCOME TO CLASSROOM</div><h1>교실을 연결하는<br><em>첫 번째 단계</em></h1><p>교사 계정을 만들고 학급을 설정하면 학생 PC를 안전하게 등록할 수 있습니다.</p><div class="auth-benefits"><span>✓ 학급별 장치 상태</span><span>✓ 수업 명령과 감사 기록</span><span>✓ 안전한 학생용 연결</span></div></div>
       <div class="login-card auth-card">
         <div class="auth-card-heading"><div><span class="eyebrow">TEACHER ACCOUNT</span><h2>반가워요.</h2></div><span class="auth-lock">✦</span></div>
         <div id="school-login-panel" class="auth-panel school-login-panel">
-          <div class="school-login-copy"><span class="auth-panel-kicker">SCHOOL ACCESS</span><h3>학교 로그인으로<br>바로 시작하세요.</h3><p>학교를 선택하고 관리자가 정한 학교 비밀번호를 입력하면 수업 현황을 바로 확인할 수 있습니다.</p></div>
+          <div class="school-login-copy"><span class="auth-panel-kicker">01 · 기본 로그인</span><h3>학교 로그인으로<br>바로 시작하세요.</h3><p>학교를 선택하고 관리자가 정한 학교 비밀번호를 입력하면 수업 현황을 바로 확인할 수 있습니다.</p></div>
           <button id="school-login-button" class="primary wide school-login-button" type="button" aria-haspopup="dialog"><span class="school-login-symbol" aria-hidden="true">⌂</span><span>학교 로그인</span><span aria-hidden="true">→</span></button>
           <div class="school-login-links"><button id="admin-login-choice" class="inline-link admin-login-choice" type="button">관리자 로그인</button><button id="school-student-installer-button" class="inline-link" type="button">학생용 앱 다운로드</button></div>
           <p id="school-login-error" class="error" hidden></p>
           <p id="school-login-status" class="auth-footnote">학교 선택과 학교 비밀번호로 안전하게 연결합니다.</p>
         </div>
-        <div id="admin-auth-panel" hidden>
-          <div class="auth-mode-header"><div><span class="auth-panel-kicker">ADMIN ACCESS</span><strong>관리자 로그인</strong></div><button id="school-login-back" class="inline-link" type="button">학교 로그인으로</button></div>
-          <div class="auth-tabs" role="tablist"><button type="button" class="auth-tab active" data-auth-mode="login" role="tab" aria-selected="true">아이디 로그인</button><button type="button" class="auth-tab" data-auth-mode="signup" role="tab" aria-selected="false">회원가입</button></div>
-          <div id="login-panel" class="auth-panel">
+        <div id="admin-auth-panel" data-auth-mode="login" hidden>
+          <div class="auth-mode-header"><div><span class="auth-panel-kicker">02 · 관리자 전용</span><strong>관리자 로그인</strong><p class="auth-mode-help">학급 설정과 권한 관리는 관리자 계정으로 진행합니다.</p></div><button id="school-login-back" class="inline-link" type="button">학교 로그인으로</button></div>
+          <div class="auth-tabs" role="tablist" aria-label="관리자 인증 방식"><button id="admin-login-tab" type="button" class="auth-tab active" data-auth-mode="login" role="tab" aria-controls="login-panel" aria-selected="true">아이디 로그인</button><button id="admin-signup-tab" type="button" class="auth-tab" data-auth-mode="signup" role="tab" aria-controls="signup-panel" aria-selected="false">회원가입</button></div>
+          <div id="login-panel" class="auth-panel" role="tabpanel" aria-labelledby="admin-login-tab">
+            <p class="auth-form-lead">등록된 관리자 계정으로 로그인합니다.</p>
             <form id="login-form" class="stack">
               <label>이메일 또는 교사 아이디<input id="login-name" autocomplete="username" required placeholder="이메일 또는 교사 아이디"></label>
               <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" required></label>
@@ -88,7 +89,8 @@
             </form>
             <p id="dev-login-hint" class="login-hint" hidden></p>
           </div>
-          <div id="signup-panel" class="auth-panel" hidden>
+          <div id="signup-panel" class="auth-panel" role="tabpanel" aria-labelledby="admin-signup-tab" hidden>
+            <p class="auth-form-lead">처음 설정할 때만 관리자 계정을 만드세요.</p>
             <form id="signup-form" class="stack" novalidate>
               <label>이메일<input id="signup-email" type="email" autocomplete="email" required placeholder="teacher@school.ac.kr"></label>
               <label>비밀번호<input id="signup-password" type="password" autocomplete="new-password" minlength="6" required placeholder="6자 이상"></label>
@@ -162,7 +164,7 @@
           <div class="student-view-controls" aria-label="학생 목록 보기 설정">
             <label class="student-sort-control"><span class="sr-only">정렬 기준</span><select id="student-sort" aria-label="학생 정렬 기준"><option value="number">번호순</option><option value="name">이름순</option><option value="status">상태 우선</option></select></label>
           </div>
-          <div id="bulk-actions" class="bulk-actions"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button><button id="screen-wall-button" class="secondary screen-wall-open">화면 보기</button><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">집중 해제</button><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL 열기</button><button id="app-button" class="secondary">앱 실행</button></div>
+          <div id="bulk-actions" class="bulk-actions"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button><button id="screen-wall-button" class="secondary screen-wall-open">화면 보기</button><label class="focus-mode-setting" for="focus-display-mode"><span>집중 화면</span><select id="focus-display-mode" aria-label="집중 모드 표시 방식"><option value="message">안내문</option><option value="blackScreen">검은 화면</option></select></label><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">집중 해제</button><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL 열기</button><button id="app-button" class="secondary">앱 실행</button></div>
         </div>
         <div id="class-sync-status" class="class-sync-status" role="status" aria-live="polite" hidden><span class="class-sync-icon" aria-hidden="true">↻</span><span id="class-sync-message"></span><button id="class-sync-retry" class="ghost-button" type="button">다시 시도</button></div>
         <div id="monitor-session-bar" class="monitor-session-bar" role="status" aria-live="polite" hidden><div><span class="monitor-session-dot" aria-hidden="true"></span><strong id="monitor-session-status">학생 화면을 준비하는 중입니다.</strong><small id="monitor-session-updated">최대 720p 자동 화질로 갱신됩니다.</small></div><div class="monitor-session-actions"><button id="screen-wall-fullscreen" class="secondary" type="button">전체 화면</button><button id="screen-wall-stop" class="danger-outline" type="button">화면 보기 닫기</button></div></div>
@@ -248,7 +250,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.35</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.36</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -391,6 +393,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.5.35" defer></script>
+  <script src="/app.js?v=0.5.36" defer></script>
 </body>
 </html>

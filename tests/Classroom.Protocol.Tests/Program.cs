@@ -12,6 +12,7 @@ var tests = new (string Name, Action Run)[]
     ("activity keeps browser data to a hostname", ActivityValidationWorks),
     ("screen frames are bounded and require visible sharing", ScreenFrameValidationWorks),
     ("message command validates and canonicalizes", MessageCommandWorks),
+    ("focus mode supports a black-screen presentation", FocusDisplayModeWorks),
     ("open URL rejects non-HTTPS and arbitrary targets", OpenUrlIsConstrained),
     ("approved app command has no shell field", ApprovedAppIsConstrained),
     ("screen sharing command requires an explicit state", ScreenShareCommandWorks),
@@ -157,6 +158,45 @@ static void MessageCommandWorks()
     Assert(canonical.Contains("kind=MESSAGE"), "Command kind was not canonicalized.");
     Assert(canonical.Contains("screenShareIntervalMilliseconds=-"), "Command timing must be canonicalized.");
     Assert(!canonical.EndsWith('\n'), "Canonical payload has a trailing newline.");
+}
+
+static void FocusDisplayModeWorks()
+{
+    var command = new CommandRequest(
+        Guid.NewGuid(),
+        Guid.NewGuid(),
+        new[] { Guid.NewGuid() },
+        ClassroomCommandKind.FocusMode,
+        FocusEnabled: true,
+        FocusDisplayMode: FocusDisplayMode.BlackScreen);
+
+    ProtocolValidation.ValidateCommand(command);
+    var canonical = CanonicalCommandPayload.Create(command);
+    Assert(canonical.Contains("focusDisplayMode=BLACKSCREEN"),
+        "Focus display mode was not included in the canonical command.");
+
+    var envelope = ProtocolEnvelope<CommandRequest>.Create(
+        ProtocolConstants.CommandRequest,
+        command);
+    var json = ProtocolCodec.Serialize(envelope);
+    Assert(json.Contains("\"focusDisplayMode\":\"blackScreen\""),
+        "Focus display mode was not serialized using the protocol's camelCase enum format.");
+    var parsed = ProtocolCodec.Deserialize<CommandRequest>(json);
+    Assert(parsed.Payload.FocusDisplayMode is FocusDisplayMode.BlackScreen,
+        "Focus display mode did not round-trip through the protocol codec.");
+
+    var messageCommand = command with { FocusDisplayMode = FocusDisplayMode.Message, Message = "집중해 주세요." };
+    ProtocolValidation.ValidateCommand(messageCommand);
+    AssertThrows<ProtocolValidationException>(() =>
+        ProtocolValidation.ValidateCommand(command with { FocusDisplayMode = (FocusDisplayMode)99 }));
+    AssertThrows<ProtocolValidationException>(() =>
+        ProtocolValidation.ValidateCommand(new CommandRequest(
+            command.RequestId,
+            command.SessionId,
+            command.TargetDeviceIds,
+            ClassroomCommandKind.Message,
+            Message: "안내",
+            FocusDisplayMode: FocusDisplayMode.BlackScreen)));
 }
 
 static void OpenUrlIsConstrained()

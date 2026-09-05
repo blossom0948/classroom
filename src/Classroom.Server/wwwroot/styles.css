@@ -94,6 +94,8 @@ h2 { font-size: 24px; letter-spacing: -.03em; margin: 0 0 7px; }
 .filter.active { background: var(--blue-soft); color: #3157d5; font-weight: 800; }
 .bulk-actions { align-items: center; gap: 8px; }
 .bulk-actions .secondary { font-size: 12px; padding: 8px 11px; }
+.focus-mode-setting { align-items: center; color: var(--muted); display: flex; font-size: 11px; font-weight: 700; gap: 5px; margin: 0; white-space: nowrap; }
+.focus-mode-setting select { border-radius: 8px; font-size: 11px; min-width: 78px; padding: 7px 8px; }
 .student-search { margin-left: auto; }
 .student-search input { min-width: 180px; padding: 8px 11px; }
 .selection-caption { color: var(--muted); font-size: 11px; white-space: nowrap; }
@@ -1364,6 +1366,7 @@ html[data-theme="dark"] .student-activity { border-color: #2d3a50; }
   .student-search input { width: 100%; }
   .bulk-actions { display: grid; gap: 7px; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
   .bulk-actions .selection-caption { align-self: center; grid-column: 1 / -1; }
+  .focus-mode-setting { grid-column: 1 / -1; justify-content: flex-start; }
   .bulk-actions button { font-size: 10px; min-width: 0; padding: 9px 5px; width: 100%; }
 
   .student-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -3391,4 +3394,199 @@ body { background: #f3f6fb; }
 @media (prefers-reduced-motion: reduce) {
   .school-login-button,
   .school-login-copy { transition: none !important; }
+}
+
+/* 0.5.36 — entry paths, tabs, and management panels must describe their
+   purpose at a glance instead of reading as a stack of near-identical cards. */
+#login-view {
+  --auth-entry-accent: #3f67df;
+  --auth-entry-soft: #edf3ff;
+}
+#login-view[data-auth-entry="admin"] {
+  --auth-entry-accent: #6848c8;
+  --auth-entry-soft: #f3efff;
+}
+#login-view .auth-card {
+  overflow: hidden;
+  position: relative;
+}
+#login-view .auth-card::before {
+  background: linear-gradient(90deg, var(--auth-entry-accent), rgba(123, 153, 255, .28));
+  content: "";
+  height: 4px;
+  inset: 0 0 auto;
+  position: absolute;
+}
+#login-view[data-auth-entry="school"] .school-login-copy {
+  background:
+    radial-gradient(circle at 92% 8%, rgba(92, 128, 255, .17), transparent 7rem),
+    linear-gradient(145deg, #edf4ff, #fafdff);
+  border-color: #b8cbfa;
+  box-shadow: 0 12px 26px rgba(64, 95, 181, .1);
+}
+#login-view[data-auth-entry="school"] .school-login-button {
+  box-shadow: 0 15px 27px rgba(65, 90, 207, .28);
+}
+.auth-mode-header {
+  background: transparent;
+  border: 0;
+  border-left: 4px solid var(--auth-entry-accent);
+  border-radius: 0;
+  padding: 2px 0 2px 13px;
+}
+.auth-mode-header strong { color: #1b3159; }
+.auth-mode-help {
+  color: #607391;
+  font-size: 11px;
+  line-height: 1.55;
+  margin: 4px 0 0;
+}
+.auth-mode-header .inline-link {
+  background: rgba(255, 255, 255, .78);
+  border: 1px solid #b8c8ec;
+  border-radius: 999px;
+  color: #3958bb;
+  font-weight: 800;
+  padding: 7px 10px;
+}
+#admin-auth-panel .auth-tabs {
+  background: #e9eef9;
+  border: 1px solid #cbd7ed;
+  border-radius: 14px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 18px 0 16px;
+  padding: 4px;
+}
+#admin-auth-panel .auth-tab {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: #687a98;
+  display: flex;
+  font-size: 13px;
+  font-weight: 850;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 10px;
+}
+#login-view[data-auth-mode="login"] #admin-auth-panel .auth-tab.active {
+  background: #ffffff;
+  border-color: #c8d7fa;
+  box-shadow: 0 4px 12px rgba(55, 82, 146, .12);
+  color: #2955c7;
+}
+#login-view[data-auth-mode="signup"] #admin-auth-panel .auth-tab.active {
+  background: linear-gradient(135deg, #7255d8, #8a69e8);
+  border-color: #7255d8;
+  box-shadow: 0 6px 15px rgba(104, 72, 200, .24);
+  color: #ffffff;
+}
+.auth-form-lead {
+  background: #f0f5ff;
+  border-left: 3px solid #5877dd;
+  border-radius: 0 9px 9px 0;
+  color: #4b638c;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  margin: 0 0 15px;
+  padding: 8px 10px;
+}
+#signup-panel .auth-form-lead {
+  background: #f6f1ff;
+  border-left-color: #7355d4;
+  color: #654d9a;
+}
+
+/* All in-console switchers use a filled selection state, not only a thin
+   underline, so the current view remains obvious at classroom distance. */
+#app-view .filters,
+#app-view .admin-grant-tabs {
+  background: #edf2fa;
+  border: 1px solid #d3ddeb;
+  border-radius: 14px;
+  gap: 4px;
+  padding: 4px;
+}
+#app-view .filters {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+}
+#app-view .filter,
+#app-view .admin-grant-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: #667896;
+  font-weight: 800;
+  min-height: 36px;
+}
+#app-view .filter { padding: 7px 11px; }
+#app-view .admin-grant-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+#app-view .admin-grant-tab { padding: 7px 10px; }
+#app-view .filter.active,
+#app-view .admin-grant-tab.active {
+  background: #ffffff;
+  border-color: #c8d7fa;
+  box-shadow: 0 4px 11px rgba(52, 76, 130, .11);
+  color: #2854c5;
+}
+
+/* A small color rail lets users distinguish setup, roster, access, and
+   security surfaces without adding more boxes to the page. */
+#app-view .settings-card {
+  --panel-accent: #4f73e8;
+  --panel-soft: #edf3ff;
+  border-color: #d7e0ef;
+  border-top: 4px solid var(--panel-accent);
+  box-shadow: 0 12px 28px rgba(34, 56, 98, .07);
+}
+#app-view .settings-card .settings-icon {
+  align-items: center;
+  background: var(--panel-soft);
+  border-radius: 10px;
+  color: var(--panel-accent);
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+#admins-section #class-form { --panel-accent: #3d70dc; --panel-soft: #eaf1ff; }
+#admins-section .roster-card { --panel-accent: #179b7c; --panel-soft: #e8f8f2; }
+#admins-section .admin-grant-form { --panel-accent: #7652cf; --panel-soft: #f1ecff; }
+#admins-section .student-exit-pin-card { --panel-accent: #dc7b36; --panel-soft: #fff1e6; }
+#admins-section .guest-password-card { --panel-accent: #168d8d; --panel-soft: #e5f7f7; }
+#settings-section .profile-card { --panel-accent: #3d70dc; --panel-soft: #eaf1ff; }
+#settings-section .password-card { --panel-accent: #7652cf; --panel-soft: #f1ecff; }
+#settings-section .update-card { --panel-accent: #179b7c; --panel-soft: #e8f8f2; }
+
+html[data-theme="dark"] #app-view .filters,
+html[data-theme="dark"] #app-view .admin-grant-tabs {
+  background: #17253c;
+  border-color: #354664;
+}
+html[data-theme="dark"] #app-view .filter,
+html[data-theme="dark"] #app-view .admin-grant-tab { color: #aab9d0; }
+html[data-theme="dark"] #app-view .filter.active,
+html[data-theme="dark"] #app-view .admin-grant-tab.active {
+  background: #293c5d;
+  border-color: #526fa5;
+  color: #dce7ff;
+}
+html[data-theme="dark"] #app-view .settings-card { border-color: #344765; }
+html[data-theme="dark"] .auth-mode-header .inline-link { background: #f7faff; }
+
+@media (max-width: 620px) {
+  .auth-mode-header { gap: 10px; }
+  .auth-mode-help { max-width: 220px; }
+  #admin-auth-panel .auth-tabs { margin-top: 14px; }
+  #app-view .filters { width: 100%; }
+  #app-view .filter { flex: 1 1 calc(50% - 4px); }
 }

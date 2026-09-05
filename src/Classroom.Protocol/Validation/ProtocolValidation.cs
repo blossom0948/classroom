@@ -135,13 +135,27 @@ public static class ProtocolValidation
                 $"DisplaySeconds must be between 1 and {ProtocolConstants.MaxDisplaySeconds}.");
         }
 
+        if (command.FocusDisplayMode is { } focusDisplayMode
+            && !Enum.IsDefined(typeof(FocusDisplayMode), focusDisplayMode))
+        {
+            throw new ProtocolValidationException("FocusDisplayMode is invalid.");
+        }
+
+        if (command.Kind != ClassroomCommandKind.FocusMode
+            && command.FocusDisplayMode is not null)
+        {
+            throw new ProtocolValidationException(
+                "FocusDisplayMode is only valid for focus mode commands.");
+        }
+
         switch (command.Kind)
         {
             case ClassroomCommandKind.Message:
                 RequireText(command.Message, nameof(command.Message), ProtocolConstants.MaxTextLength);
                 break;
             case ClassroomCommandKind.FocusMode:
-                if (command.FocusEnabled is not false)
+                if (command.FocusEnabled is not false
+                    && command.FocusDisplayMode is not FocusDisplayMode.BlackScreen)
                 {
                     RequireText(command.Message, nameof(command.Message), ProtocolConstants.MaxTextLength);
                 }

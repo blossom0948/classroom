@@ -306,7 +306,9 @@ public sealed class StudentDesktopForm : Form
         if (enabled)
         {
             focusOverlay ??= new FocusOverlayForm();
-            focusOverlay.SetMessage(command.Message ?? "수업에 집중해 주세요.");
+            focusOverlay.SetDisplay(
+                command.FocusDisplayMode ?? FocusDisplayMode.Message,
+                command.Message ?? "수업에 집중해 주세요.");
             focusOverlay.Show();
             focusOverlay.BringToFront();
             return new DesktopCommandApplyResult(true, "FOCUS_MODE_ENABLED", "Focus mode enabled.");
@@ -829,18 +831,20 @@ public sealed class StudentDesktopForm : Form
 
     private sealed class FocusOverlayForm : Form
     {
+        private static readonly Color MessageBackground = Color.FromArgb(24, 36, 58);
         private bool allowClose;
         private readonly Label label = new()
         {
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = Color.White,
-            BackColor = Color.FromArgb(24, 36, 58),
+            BackColor = MessageBackground,
             Font = new Font("Segoe UI Semibold", 28F, FontStyle.Bold, GraphicsUnit.Point)
         };
 
         public FocusOverlayForm()
         {
+            BackColor = MessageBackground;
             FormBorderStyle = FormBorderStyle.None;
             WindowState = FormWindowState.Maximized;
             TopMost = true;
@@ -856,7 +860,15 @@ public sealed class StudentDesktopForm : Form
             };
         }
 
-        public void SetMessage(string message) => label.Text = $"집중 모드\n\n{message}";
+        public void SetDisplay(FocusDisplayMode displayMode, string message)
+        {
+            var blackScreen = displayMode is FocusDisplayMode.BlackScreen;
+            var background = blackScreen ? Color.Black : MessageBackground;
+            BackColor = background;
+            label.BackColor = background;
+            label.Visible = !blackScreen;
+            label.Text = blackScreen ? string.Empty : $"집중 모드\n\n{message}";
+        }
 
         public void Dismiss()
         {

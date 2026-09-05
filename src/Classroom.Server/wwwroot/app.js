@@ -1,11 +1,12 @@
 (() => {
-  const APP_VERSION = "0.5.35";
+  const APP_VERSION = "0.5.36";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
 
   const TEACHER_TOKEN_KEY = "classroom.teacherToken";
   const PENDING_FIREBASE_ENTRY_KEY = "classroom.pendingFirebaseEntry";
+  const FOCUS_DISPLAY_MODE_KEY = "classroom.focusDisplayMode";
 
   function storageGet(storageName, key) {
     try { return window[storageName]?.getItem(key) || null; } catch (_) { return null; }
@@ -18,6 +19,8 @@
   function storageRemove(storageName, key) {
     try { window[storageName]?.removeItem(key); } catch (_) { /* storage can be disabled */ }
   }
+
+  const persistedFocusDisplayMode = storageGet("localStorage", FOCUS_DISPLAY_MODE_KEY);
 
   function readTeacherToken() {
     if (cookieSessionEnabled) return null;
@@ -83,6 +86,7 @@
     screenFrames: new Map(),
     studentExitPinStatus: null,
     guestPasswordStatus: null,
+    focusDisplayMode: persistedFocusDisplayMode === "blackScreen" ? "blackScreen" : "message",
     studentSort: ["number", "name", "status"].includes(localStorage.getItem("classroom.studentSort"))
       ? localStorage.getItem("classroom.studentSort")
       : "number",
@@ -330,6 +334,8 @@
     $("teacher-role").textContent = isGuest ? "게스트" : "관리자";
     $("teacher-role").classList.toggle("guest-badge", isGuest);
     $("teacher-role").hidden = !session.isAdmin && !isGuest;
+    const focusDisplayMode = $("focus-display-mode");
+    if (focusDisplayMode) focusDisplayMode.value = state.focusDisplayMode;
     // The installed shell owns the Windows title-bar close action. Keeping a
     // second in-page close icon crowded the responsive header without adding
     // a reliable browser close path, so it intentionally stays out of view.
@@ -1718,14 +1724,22 @@
   }
 
   function showAuth(mode = "school") {
+    const resolvedMode = mode === "signup"
+      ? "signup"
+      : mode === "admin" || mode === "login"
+        ? "login"
+        : "school";
     landingView.hidden = true;
     loginView.hidden = false;
     appView.hidden = true;
-    if (mode === "school") {
+    if (resolvedMode === "school") {
       setAuthEntry("school");
+      // Returning to the normal school path must also reset the next explicit
+      // administrator visit to the login form rather than a prior signup tab.
+      setAuthMode("login");
     } else {
       setAuthEntry("admin");
-      setAuthMode(mode === "signup" ? "signup" : "login");
+      setAuthMode(resolvedMode);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -1765,6 +1779,7 @@
 
   function setAuthEntry(entry = "school") {
     const isSchoolEntry = entry !== "admin";
+    loginView.dataset.authEntry = isSchoolEntry ? "school" : "admin";
     $("school-login-panel").hidden = !isSchoolEntry;
     $("admin-auth-panel").hidden = isSchoolEntry;
     if (isSchoolEntry) {
@@ -1772,10 +1787,13 @@
     }
   }
 
-  function setAuthMode(mode) {
-    const signup = mode === "signup";
+  function setAuthMode(mode = "login") {
+    const resolvedMode = mode === "signup" ? "signup" : "login";
+    loginView.dataset.authMode = resolvedMode;
+    $("admin-auth-panel").dataset.authMode = resolvedMode;
+    const signup = resolvedMode === "signup";
     document.querySelectorAll(".auth-tab").forEach((button) => {
-      const active = button.dataset.authMode === mode;
+      const active = button.dataset.authMode === resolvedMode;
       button.classList.toggle("active", active);
       button.setAttribute("aria-selected", String(active));
     });
@@ -2344,9 +2362,9 @@
   $("landing-login-button").addEventListener("click", () => showAuth("school"));
   $("landing-student-installer-button").addEventListener("click", downloadStudentInstaller);
   $("landing-install-button").addEventListener("click", installApp);
-  $("landing-start-button").addEventListener("click", () => showAuth("signup"));
+  $("landing-start-button").addEventListener("click", () => showAuth("school"));
   $("principles-login-button").addEventListener("click", () => showAuth("school"));
-  $("landing-cta-button").addEventListener("click", () => showAuth("signup"));
+  $("landing-cta-button").addEventListener("click", () => showAuth("school"));
   $("back-to-landing").addEventListener("click", (event) => { event.preventDefault(); showLanding(); });
   $("admin-login-choice").addEventListener("click", () => showAuth("admin"));
   $("school-login-back").addEventListener("click", () => showAuth("school"));
@@ -2391,7 +2409,16 @@
   });
   $("announcement-button").addEventListener("click", () => openCommandDialog("message"));
   $("end-session-button").addEventListener("click", () => endSession().catch((error) => showToast(error.message)));
-  $("focus-on-button").addEventListener("click", () => sendCommand("focusMode", commandTargets(), { message: "수업에 집중해 주세요.", focusEnabled: true }).catch((error) => showToast(error.message)));
+  $("focus-display-mode").addEventListener("change", (event) => {
+    const value = event.target.value === "blackScreen" ? "blackScreen" : "message";
+    state.focusDisplayMode = value;
+    storageSet("localStorage", FOCUS_DISPLAY_MODE_KEY, value);
+  });
+  $("focus-on-button").addEventListener("click", () => sendCommand("focusMode", commandTargets(), {
+    message: "수업에 집중해 주세요.",
+    focusEnabled: true,
+    focusDisplayMode: state.focusDisplayMode
+  }).catch((error) => showToast(error.message)));
   $("focus-off-button").addEventListener("click", () => sendCommand("focusMode", commandTargets(), { focusEnabled: false }).catch((error) => showToast(error.message)));
   $("message-button").addEventListener("click", () => openCommandDialog("message", commandTargets()));
   $("url-button").addEventListener("click", () => openCommandDialog("url", commandTargets()));
@@ -2816,5 +2843,9 @@
     }
   }
 
+  // Keep the unauthenticated screen deterministic even after a browser has
+  // visited the signup tab in an earlier session.
+  setAuthEntry("school");
+  setAuthMode("login");
   restoreInitialSession();
 })();

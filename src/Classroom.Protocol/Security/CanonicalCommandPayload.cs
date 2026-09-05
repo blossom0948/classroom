@@ -24,7 +24,8 @@ public static class CanonicalCommandPayload
             $"requiresAcknowledgement={command.RequiresAcknowledgement.ToString().ToLowerInvariant()}",
             $"focusEnabled={command.FocusEnabled?.ToString().ToLowerInvariant() ?? "-"}",
             $"screenShareEnabled={command.ScreenShareEnabled?.ToString().ToLowerInvariant() ?? "-"}",
-            $"screenShareIntervalMilliseconds={command.ScreenShareIntervalMilliseconds?.ToString() ?? "-"}");
+            $"screenShareIntervalMilliseconds={command.ScreenShareIntervalMilliseconds?.ToString() ?? "-"}",
+            $"focusDisplayMode={command.FocusDisplayMode?.ToString().ToUpperInvariant() ?? "-"}");
     }
 
     private static string Encode(string? value) =>

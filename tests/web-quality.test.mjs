@@ -42,6 +42,8 @@ assert.match(script, /Array\.isArray\(students\)/, "Malformed student responses 
 assert.doesNotMatch(script, /\$\("security-setting"\)\.textContent/, "Removed settings UI must stay null-safe.");
 assert.match(html, /id="class-sync-status"/, "The console needs a visible sync recovery status.");
 assert.match(html, /id="student-sort"/, "The class roster needs a sorting control.");
+assert.match(html, /id="focus-display-mode"/, "The focus command needs a visible presentation selector.");
+assert.match(script, /focusDisplayMode: state\.focusDisplayMode/, "The console must send the selected focus presentation.");
 assert.doesNotMatch(html, /id="student-density-button"/, "The unused density control should not occupy the classroom toolbar.");
 assert.doesNotMatch(html, /id="history-nav"/, "The unused history tab must not occupy the teacher navigation.");
 assert.match(html, /id="close-console-button"/, "The installed shell keeps a compatibility close-action hook.");
@@ -59,7 +61,7 @@ assert.match(script, /if \(await consumePendingFirebaseRedirect\(\)\) return;/, 
 assert.doesNotMatch(script, /\bconfirm\(/, "Native browser confirmation prompts should not be used in the console.");
 assert.match(html, /id="school-login-panel"/, "Normal teacher sign-in needs a dedicated school-account entry.");
 assert.match(html, /id="school-login-button"/, "The normal teacher sign-in must expose one school login action.");
-assert.match(html, /id="admin-auth-panel" hidden/, "Email, password, and Google alternatives must start behind admin login.");
+assert.match(html, /id="admin-auth-panel"[^>]*hidden/, "Email, password, and Google alternatives must start behind admin login.");
 assert.match(html, /id="admin-login-choice"/, "The normal sign-in needs an explicit administrator entry.");
 assert.match(html, /id="landing-student-installer-button"/, "The student installer must be downloadable without teacher authentication.");
 assert.match(config, /studentInstallerUrl:\s*"https:\/\/classroom-2en\.pages\.dev\/student"/, "The console must advertise the short student installer URL.");
@@ -73,6 +75,16 @@ assert.match(cloudflareWorker, /numberInRange\(value\.width, 1, 1_280\)/, "The W
 assert.match(cloudflareWorker, /numberInRange\(value\.height, 1, 720\)/, "The Worker must accept the protocol 720p screen height.");
 assert.match(cloudflareWorker, /atob\(base64Data\)\.length > 72 \* 1024/, "The Worker frame byte limit must match the desktop protocol.");
 assert.match(script, /function showAuth\(mode = "school"\)/, "The default auth route must be the school login.");
+assert.match(script, /function setAuthMode\(mode = "login"\)/, "The administrator auth mode must default to login.");
+assert.match(html, /id="login-view"[^>]*data-auth-entry="school"[^>]*data-auth-mode="login"/, "The initial auth markup must identify school login and administrator login mode deterministically.");
+assert.match(script, /if \(resolvedMode === "school"\) \{[\s\S]*?setAuthEntry\("school"\);[\s\S]*?setAuthMode\("login"\);/, "School entry must reset a prior administrator signup tab back to login.");
+assert.match(script, /\$\("landing-start-button"\)\.addEventListener\("click", \(\) => showAuth\("school"\)\)/, "The primary start action must open school login first.");
+assert.match(script, /\$\("landing-cta-button"\)\.addEventListener\("click", \(\) => showAuth\("school"\)\)/, "The landing call-to-action must open school login first.");
+assert.match(script, /\$\("admin-login-choice"\)\.addEventListener\("click", \(\) => showAuth\("admin"\)\)/, "Administrator login must remain an explicit secondary entry.");
+assert.match(html, /class="auth-tab active" data-auth-mode="login"/, "The administrator panel must render the login tab as active initially.");
+assert.match(styles, /#admin-auth-panel \.auth-tabs\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/, "Administrator authentication choices must use a visibly distinct segmented control.");
+assert.match(styles, /#app-view \.filters,[\s\S]*#app-view \.admin-grant-tabs\s*\{[\s\S]*background:/, "Classroom filters and administrator target tabs must expose a filled switcher surface.");
+assert.match(styles, /#app-view \.settings-card\s*\{[\s\S]*border-top: 4px solid var\(--panel-accent\)/, "Management cards must use a category color rail for faster scanning.");
 assert.match(script, /\$\("school-login-button"\)\.addEventListener\("click", openGuestLoginDialog\)/, "School login must open the school guest access flow.");
 assert.doesNotMatch(html, /id="login-guest-button"/, "The duplicate school guest button should not be visible beside school login.");
 assert.match(html, /id="guest-login-dialog"[^>]*class="command-dialog guest-login-dialog"/, "School login must retain the branded school access dialog.");
