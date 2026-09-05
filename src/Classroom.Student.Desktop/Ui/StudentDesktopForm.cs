@@ -34,7 +34,17 @@ public sealed class StudentDesktopForm : Form
         TextColor = Color.FromArgb(184, 57, 68),
         BorderColor = Color.FromArgb(241, 178, 184)
     };
+    private readonly RoundedButton helpButton = new()
+    {
+        Text = "도움 요청",
+        FillColor = Color.FromArgb(235, 137, 52),
+        HoverColor = Color.FromArgb(205, 107, 31),
+        TextColor = Color.White,
+        BorderColor = Color.FromArgb(235, 137, 52),
+        Enabled = false
+    };
     private readonly Label updateLabel = CreateLabel("자동 업데이트 · 시작 후와 15분마다 확인", 9, Color.FromArgb(74, 91, 117));
+    private readonly Label helpStatusLabel = CreateLabel("수업이 시작되면 도움을 요청할 수 있습니다.", 9, Color.FromArgb(88, 106, 137));
     private readonly Label deviceLabel;
     private readonly NotifyIcon trayIcon = new();
     private readonly System.Windows.Forms.Timer disconnectFailsafeTimer = new() { Interval = 60_000 };
@@ -43,6 +53,8 @@ public sealed class StudentDesktopForm : Form
     private bool exitPromptOpen;
     private bool initialVisibilityHandled;
     private bool backgroundNoticeShown;
+    private bool helpRequestAvailable;
+    private bool helpRequested;
     private FocusOverlayForm? focusOverlay;
 
     public StudentDesktopForm(
@@ -65,8 +77,8 @@ public sealed class StudentDesktopForm : Form
         MinimizeBox = true;
         ShowInTaskbar = !startInBackground;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(560, 400);
-        MinimumSize = new Size(560, 400);
+        ClientSize = new Size(560, 480);
+        MinimumSize = new Size(560, 480);
         BackColor = Color.FromArgb(241, 245, 252);
         Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
 
@@ -108,26 +120,50 @@ public sealed class StudentDesktopForm : Form
         screenSharingLabel.Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold, GraphicsUnit.Point);
         connectionCard.Controls.AddRange([statusCaption, connectionLabel, serverLabel, screenSharingLabel]);
 
-        updateLabel.Location = new Point(40, 244);
+        var helpCard = new RoundedPanel
+        {
+            Location = new Point(24, 244),
+            Size = new Size(512, 84),
+            BackColor = Color.FromArgb(255, 250, 243),
+            BorderColor = Color.FromArgb(244, 207, 166),
+            CornerRadius = 16
+        };
+        var helpCaption = CreateLabel("수업 중 도움이 필요하면", 9, Color.FromArgb(141, 91, 37));
+        helpCaption.Location = new Point(16, 11);
+        helpCaption.AutoSize = true;
+        var helpPrompt = CreateLabel("선생님께 바로 알려주세요", 12, Color.FromArgb(91, 55, 22));
+        helpPrompt.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point);
+        helpPrompt.Location = new Point(16, 28);
+        helpPrompt.AutoSize = true;
+        helpStatusLabel.Location = new Point(16, 51);
+        helpStatusLabel.AutoSize = false;
+        helpStatusLabel.AutoEllipsis = true;
+        helpStatusLabel.Size = new Size(318, 20);
+        helpButton.Location = new Point(356, 19);
+        helpButton.Size = new Size(140, 47);
+        helpButton.Click += (_, _) => ToggleHelpRequest();
+        helpCard.Controls.AddRange([helpCaption, helpPrompt, helpStatusLabel, helpButton]);
+
+        updateLabel.Location = new Point(40, 344);
         updateLabel.AutoSize = false;
         updateLabel.Size = new Size(480, 23);
         updateLabel.TextAlign = ContentAlignment.MiddleLeft;
 
-        updateButton.Location = new Point(40, 270);
+        updateButton.Location = new Point(40, 370);
         updateButton.Size = new Size(228, 48);
         updateButton.BorderColor = Color.FromArgb(55, 96, 230);
         updateButton.Click += async (_, _) => await CheckForUpdatesAsync();
 
-        exitButton.Location = new Point(292, 270);
+        exitButton.Location = new Point(292, 370);
         exitButton.Size = new Size(228, 48);
         exitButton.Click += (_, _) => BeginInvoke(new Action(() => _ = RequestApprovedExitAsync()));
 
-        deviceLabel.Location = new Point(40, 350);
+        deviceLabel.Location = new Point(40, 440);
         deviceLabel.AutoSize = false;
         deviceLabel.Size = new Size(480, 20);
         deviceLabel.AutoEllipsis = true;
 
-        Controls.AddRange([header, connectionCard, updateLabel, updateButton, exitButton, deviceLabel]);
+        Controls.AddRange([header, connectionCard, helpCard, updateLabel, updateButton, exitButton, deviceLabel]);
 
         var trayMenu = new ContextMenuStrip();
         trayMenu.Items.Add("상태 열기", null, (_, _) => ShowMainWindow());
@@ -192,6 +228,11 @@ public sealed class StudentDesktopForm : Form
                 if (sessionId == Guid.Empty)
                 {
                     ApplyScreenSharingState(false);
+                    SetHelpRequestAvailability(false, clearRequest: true);
+                }
+                else
+                {
+                    SetHelpRequestAvailability(true, clearRequest: false);
                 }
                 serverLabel.Text = sessionId == Guid.Empty
                     ? "● Classroom 서버 연결됨 · 수업 대기 중"
@@ -207,6 +248,7 @@ public sealed class StudentDesktopForm : Form
             else
             {
                 ApplyScreenSharingState(false);
+                SetHelpRequestAvailability(false, clearRequest: false);
                 serverLabel.Text = "● Classroom 서버 재연결 중";
                 serverLabel.ForeColor = Color.DarkOrange;
                 trayIcon.Text = "Classroom Student · 서버 재연결 중";
@@ -223,6 +265,64 @@ public sealed class StudentDesktopForm : Form
     {
         // Detailed activity belongs in the teacher console. The student window
         // intentionally exposes only connection, version, and sharing state.
+    }
+
+    private void ToggleHelpRequest()
+    {
+        if (!helpRequestAvailable)
+        {
+            return;
+        }
+
+        helpRequested = !helpRequested;
+        statusProvider.SetHelpRequested(helpRequested);
+        RefreshHelpRequestControls();
+        if (helpRequested)
+        {
+            trayIcon.ShowBalloonTip(
+                2_500,
+                "Classroom Student",
+                "선생님께 도움 요청을 보냈습니다. 취소하려면 학생 창에서 ‘요청 취소’를 누르세요.",
+                ToolTipIcon.Info);
+        }
+    }
+
+    private void SetHelpRequestAvailability(bool available, bool clearRequest)
+    {
+        helpRequestAvailable = available;
+        if (clearRequest && helpRequested)
+        {
+            helpRequested = false;
+            statusProvider.SetHelpRequested(false);
+        }
+
+        RefreshHelpRequestControls();
+    }
+
+    private void RefreshHelpRequestControls()
+    {
+        helpButton.Enabled = helpRequestAvailable;
+        if (helpRequested)
+        {
+            helpButton.Text = helpRequestAvailable ? "요청 취소" : "요청 전달 중";
+            helpButton.FillColor = Color.FromArgb(69, 112, 210);
+            helpButton.HoverColor = Color.FromArgb(50, 88, 180);
+            helpButton.BorderColor = Color.FromArgb(69, 112, 210);
+            helpStatusLabel.ForeColor = Color.FromArgb(40, 92, 167);
+            helpStatusLabel.Text = helpRequestAvailable
+                ? "● 선생님께 도움이 필요하다고 알렸습니다."
+                : "● 서버에 다시 연결되면 요청을 이어서 전달합니다.";
+            return;
+        }
+
+        helpButton.Text = "도움 요청";
+        helpButton.FillColor = Color.FromArgb(235, 137, 52);
+        helpButton.HoverColor = Color.FromArgb(205, 107, 31);
+        helpButton.BorderColor = Color.FromArgb(235, 137, 52);
+        helpStatusLabel.ForeColor = Color.FromArgb(88, 106, 137);
+        helpStatusLabel.Text = helpRequestAvailable
+            ? "질문이 있거나 선생님의 도움이 필요할 때 눌러주세요."
+            : "수업이 시작되면 도움을 요청할 수 있습니다.";
     }
 
     public Task<DesktopCommandApplyResult> ApplyCommandAsync(CommandRequest command)

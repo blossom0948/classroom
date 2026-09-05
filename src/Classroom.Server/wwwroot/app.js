@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.36";
+  const APP_VERSION = "0.5.37";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -7,6 +7,13 @@
   const TEACHER_TOKEN_KEY = "classroom.teacherToken";
   const PENDING_FIREBASE_ENTRY_KEY = "classroom.pendingFirebaseEntry";
   const FOCUS_DISPLAY_MODE_KEY = "classroom.focusDisplayMode";
+  const LESSON_FLOW_STORAGE_PREFIX = "classroom.lessonFlow.";
+  const LESSON_STAGES = {
+    prepare: { label: "준비", announcement: "수업 준비" },
+    explain: { label: "설명", announcement: "설명 듣기" },
+    practice: { label: "실습", announcement: "실습" },
+    wrap: { label: "마무리", announcement: "정리" }
+  };
 
   function storageGet(storageName, key) {
     try { return window[storageName]?.getItem(key) || null; } catch (_) { return null; }
@@ -90,6 +97,9 @@
     studentSort: ["number", "name", "status"].includes(localStorage.getItem("classroom.studentSort"))
       ? localStorage.getItem("classroom.studentSort")
       : "number",
+    lessonFlow: null,
+    lessonFlowClassId: null,
+    lessonTimer: null,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -258,12 +268,216 @@
     state.classId = classId;
     state.session = null;
     state.selectedDeviceIds.clear();
+    loadLessonFlow();
     renderClassPicker();
     await refreshClass();
   }
 
   function displayText(value, fallback = "확인 필요") {
     return typeof value === "string" && value.trim() ? value.trim() : fallback;
+  }
+
+  function lessonFlowStorageKey(classId = state.classId) {
+    return `${LESSON_FLOW_STORAGE_PREFIX}${classId || "unassigned"}`;
+  }
+
+  function createLessonFlow(value = {}) {
+    const durationMinutes = [10, 20, 30, 45].includes(Number(value.durationMinutes))
+      ? Number(value.durationMinutes)
+      : 20;
+    const stage = Object.hasOwn(LESSON_STAGES, value.stage) ? value.stage : "prepare";
+    const savedRemainingSeconds = Number.isFinite(Number(value.remainingSeconds))
+      ? Math.max(0, Math.min(45 * 60, Math.floor(Number(value.remainingSeconds))))
+      : durationMinutes * 60;
+    const savedTimerEndsAt = Number(value.timerEndsAt);
+    const timerEnded = Number.isFinite(savedTimerEndsAt) && savedTimerEndsAt > 0 && savedTimerEndsAt <= Date.now();
+    const timerEndsAt = Number.isFinite(savedTimerEndsAt) && savedTimerEndsAt > Date.now()
+      ? savedTimerEndsAt
+      : null;
+    return {
+      goal: typeof value.goal === "string" ? value.goal.slice(0, 140) : "",
+      stage,
+      durationMinutes,
+      remainingSeconds: timerEnded ? 0 : savedRemainingSeconds,
+      timerEndsAt,
+      timerFinishedNotified: timerEnded,
+      updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : null
+    };
+  }
+
+  function lessonFlow() {
+    if (!state.lessonFlow || state.lessonFlowClassId !== state.classId) {
+      state.lessonFlow = createLessonFlow();
+      state.lessonFlowClassId = state.classId;
+    }
+    return state.lessonFlow;
+  }
+
+  function loadLessonFlow() {
+    let saved = null;
+    const raw = storageGet("localStorage", lessonFlowStorageKey());
+    if (raw) {
+      try { saved = JSON.parse(raw); } catch (_) { saved = null; }
+    }
+    state.lessonFlow = createLessonFlow(saved || {});
+    state.lessonFlowClassId = state.classId;
+    syncLessonTimer();
+    renderLessonFlow();
+  }
+
+  function persistLessonFlow(statusText = "수업 흐름을 이 브라우저에 저장했습니다.") {
+    const flow = lessonFlow();
+    flow.updatedAt = new Date().toISOString();
+    storageSet("localStorage", lessonFlowStorageKey(), JSON.stringify(flow));
+    const status = $("lesson-flow-status");
+    if (status) status.textContent = statusText;
+  }
+
+  function currentLessonRemainingSeconds(flow = lessonFlow()) {
+    if (!flow.timerEndsAt) return Math.max(0, flow.remainingSeconds ?? flow.durationMinutes * 60);
+    const remaining = Math.max(0, Math.ceil((flow.timerEndsAt - Date.now()) / 1_000));
+    if (remaining > 0) return remaining;
+    flow.timerEndsAt = null;
+    flow.remainingSeconds = 0;
+    if (!flow.timerFinishedNotified) {
+      flow.timerFinishedNotified = true;
+      persistLessonFlow("타이머가 끝났습니다. 다음 단계를 선택해 주세요.");
+      showToast("수업 타이머가 끝났습니다.");
+    }
+    syncLessonTimer();
+    return 0;
+  }
+
+  function formatLessonDuration(seconds) {
+    const safeSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+    const minutes = Math.floor(safeSeconds / 60);
+    const remainder = String(safeSeconds % 60).padStart(2, "0");
+    return `${String(minutes).padStart(2, "0")}:${remainder}`;
+  }
+
+  function syncLessonTimer() {
+    if (state.lessonTimer) {
+      clearInterval(state.lessonTimer);
+      state.lessonTimer = null;
+    }
+    if (state.lessonFlow?.timerEndsAt) {
+      state.lessonTimer = setInterval(() => renderLessonFlow(), 1_000);
+    }
+  }
+
+  function renderLessonFlow() {
+    const card = $("lesson-flow-card");
+    if (!card) return;
+    const flow = lessonFlow();
+    const hasClass = Boolean(state.classId);
+    const isRunning = Boolean(flow.timerEndsAt);
+    const remaining = currentLessonRemainingSeconds(flow);
+    const goal = $("lesson-goal");
+    if (goal && document.activeElement !== goal) goal.value = flow.goal;
+    if (goal) goal.disabled = !hasClass;
+    const duration = $("lesson-duration");
+    if (duration) {
+      duration.value = String(flow.durationMinutes);
+      duration.disabled = !hasClass || isRunning;
+    }
+    document.querySelectorAll("[data-lesson-stage]").forEach((button) => {
+      const active = button.dataset.lessonStage === flow.stage;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+      button.disabled = !hasClass;
+    });
+    const sessionState = $("lesson-session-state");
+    if (sessionState) {
+      sessionState.textContent = state.session ? "수업 진행 중" : "수업 준비";
+      sessionState.classList.toggle("active", Boolean(state.session));
+    }
+    const timerDisplay = $("lesson-timer-display");
+    if (timerDisplay) timerDisplay.textContent = formatLessonDuration(remaining);
+    const timerButton = $("lesson-timer-button");
+    if (timerButton) {
+      timerButton.disabled = !hasClass;
+      timerButton.textContent = isRunning ? "일시정지" : remaining === 0 ? "다시 시작" : "타이머 시작";
+    }
+    const resetButton = $("lesson-timer-reset");
+    if (resetButton) resetButton.disabled = !hasClass;
+    const shareButton = $("lesson-share-button");
+    if (shareButton) shareButton.disabled = !state.session || !flow.goal.trim() || Boolean(state.teacher?.isGuest);
+    card.classList.toggle("lesson-running", isRunning);
+    card.classList.toggle("lesson-live", Boolean(state.session));
+  }
+
+  function saveLessonFlow() {
+    const goal = $("lesson-goal");
+    if (goal) lessonFlow().goal = goal.value.trim().slice(0, 140);
+    persistLessonFlow();
+    renderLessonFlow();
+  }
+
+  function selectLessonStage(stage) {
+    if (!Object.hasOwn(LESSON_STAGES, stage)) return;
+    lessonFlow().stage = stage;
+    persistLessonFlow(`${LESSON_STAGES[stage].label} 단계로 저장했습니다.`);
+    renderLessonFlow();
+  }
+
+  function setLessonDuration(minutes) {
+    const parsed = Number(minutes);
+    if (![10, 20, 30, 45].includes(parsed)) return;
+    const flow = lessonFlow();
+    flow.durationMinutes = parsed;
+    flow.remainingSeconds = parsed * 60;
+    flow.timerEndsAt = null;
+    flow.timerFinishedNotified = false;
+    syncLessonTimer();
+    persistLessonFlow(`${parsed}분 타이머로 준비했습니다.`);
+    renderLessonFlow();
+  }
+
+  function toggleLessonTimer() {
+    const flow = lessonFlow();
+    if (flow.timerEndsAt) {
+      flow.remainingSeconds = currentLessonRemainingSeconds(flow);
+      flow.timerEndsAt = null;
+      syncLessonTimer();
+      persistLessonFlow("타이머를 일시정지했습니다.");
+      renderLessonFlow();
+      return;
+    }
+    const remaining = currentLessonRemainingSeconds(flow) || flow.durationMinutes * 60;
+    flow.remainingSeconds = remaining;
+    flow.timerEndsAt = Date.now() + remaining * 1_000;
+    flow.timerFinishedNotified = false;
+    syncLessonTimer();
+    persistLessonFlow("타이머를 시작했습니다.");
+    renderLessonFlow();
+  }
+
+  function resetLessonTimer() {
+    const flow = lessonFlow();
+    flow.timerEndsAt = null;
+    flow.remainingSeconds = flow.durationMinutes * 60;
+    flow.timerFinishedNotified = false;
+    syncLessonTimer();
+    persistLessonFlow("타이머를 초기화했습니다.");
+    renderLessonFlow();
+  }
+
+  function shareLessonFlow() {
+    const flow = lessonFlow();
+    if (!state.session) {
+      showToast("학생에게 안내하려면 먼저 수업을 시작하세요.");
+      return;
+    }
+    if (!flow.goal.trim()) {
+      $("lesson-goal")?.focus();
+      showToast("오늘의 목표를 먼저 입력해 주세요.");
+      return;
+    }
+    const remaining = formatLessonDuration(currentLessonRemainingSeconds(flow));
+    const message = `수업 안내\n오늘의 목표: ${flow.goal.trim()}\n현재 단계: ${LESSON_STAGES[flow.stage].announcement}\n남은 시간: ${remaining}`;
+    openCommandDialog("message");
+    $("command-message").value = message;
+    $("command-seconds").value = "12";
   }
 
   function normalizeActivity(activity) {
@@ -361,6 +575,7 @@
       document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.section === "class"));
       document.querySelectorAll(".section-view").forEach((section) => { section.hidden = section.id !== "class-section"; });
     }
+    loadLessonFlow();
     renderClassPicker();
     $("teacher-greeting").textContent = isGuest ? "게스트로 접속했습니다." : `${session.displayName || "선생님"}선생님 안녕하세요.`;
     $("school-name").textContent = session.school?.name || "학교를 설정해 주세요";
@@ -439,6 +654,7 @@
     if (!state.classId) {
       state.session = null;
       state.students = [];
+      loadLessonFlow();
       $("class-subject").textContent = "";
       renderHeader();
       renderStudents();
@@ -503,6 +719,8 @@
     renderSelection();
     renderStudentViewControls();
     renderRefreshStatus();
+    renderLessonFlow();
+    renderSignalCenter();
   }
 
   function formatSessionCaption(session) {
@@ -537,6 +755,90 @@
 
   function primaryAttentionSignal(student) {
     return attentionSignals(student)[0] || null;
+  }
+
+  function classroomSignals() {
+    const signals = [];
+    state.students.forEach((student) => {
+      if (!student.online) {
+        signals.push({
+          student,
+          kind: "offline",
+          label: "연결 끊김",
+          detail: student.lastHeartbeatUtc
+            ? `마지막 연결 ${formatTime(student.lastHeartbeatUtc)}`
+            : "아직 연결 기록이 없습니다.",
+          priority: 4
+        });
+        return;
+      }
+      if (student.needsHelp) {
+        signals.push({
+          student,
+          kind: "help",
+          label: "도움 요청",
+          detail: "학생이 선생님의 도움이 필요하다고 알렸습니다.",
+          priority: 0
+        });
+        return;
+      }
+      const signal = primaryAttentionSignal(student);
+      if (!signal) return;
+      const priority = signal.kind === "risk" ? 1 : signal.kind === "network" ? 2 : 3;
+      signals.push({ student, ...signal, priority });
+    });
+    return signals.sort((left, right) => left.priority - right.priority
+      || studentStatusRank(left.student) - studentStatusRank(right.student)
+      || left.student.studentDisplayName.localeCompare(right.student.studentDisplayName, "ko-KR"));
+  }
+
+  function signalSymbol(kind) {
+    return ({ help: "?", risk: "!", network: "⌁", battery: "▱", agent: "…", offline: "×" })[kind] || "•";
+  }
+
+  function renderSignalCenter() {
+    const count = $("signal-center-count");
+    const list = $("signal-center-list");
+    if (!count || !list) return;
+    const signals = classroomSignals();
+    const helpCount = signals.filter((signal) => signal.kind === "help").length;
+    count.textContent = !signals.length
+      ? "신호 없음"
+      : helpCount
+        ? `도움 요청 ${helpCount}명`
+        : `확인 ${signals.length}명`;
+    count.classList.toggle("urgent", helpCount > 0);
+    if (!signals.length) {
+      list.innerHTML = '<div class="signal-empty"><strong>지금은 확인할 신호가 없어요.</strong><span>수업이 시작되면 필요한 신호가 여기 모입니다.</span></div>';
+      return;
+    }
+    const canCommand = Boolean(state.session) && !state.teacher?.isGuest;
+    list.innerHTML = signals.slice(0, 4).map((signal) => {
+      const student = signal.student;
+      const directActions = canCommand && student.online
+        ? `<button class="signal-action primary-signal-action" type="button" data-signal-screen="${escapeHtml(student.deviceId)}">화면 보기</button><button class="signal-action" type="button" data-signal-message="${escapeHtml(student.deviceId)}">메시지</button>`
+        : "";
+      return `<article class="signal-item signal-${escapeHtml(signal.kind)}">
+        <span class="signal-item-icon" aria-hidden="true">${signalSymbol(signal.kind)}</span>
+        <div class="signal-item-copy"><div><strong>${escapeHtml(student.studentDisplayName)}</strong><span>${escapeHtml(signal.label)}</span></div><p>${escapeHtml(signal.detail)}</p></div>
+        <div class="signal-item-actions">${directActions}<button class="signal-detail-button" type="button" data-signal-detail="${escapeHtml(student.deviceId)}">상세</button></div>
+      </article>`;
+    }).join("");
+    list.querySelectorAll("[data-signal-screen]").forEach((button) => {
+      button.addEventListener("click", () => openStudentScreen(button.dataset.signalScreen).catch((error) => showToast(error.message)));
+    });
+    list.querySelectorAll("[data-signal-message]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const student = state.students.find((item) => item.deviceId === button.dataset.signalMessage);
+        openCommandDialog("message", [button.dataset.signalMessage]);
+        if (student?.needsHelp) {
+          $("command-message").value = "도움 요청을 확인했어요. 잠시 후 화면을 보고 도와줄게요.";
+        }
+      });
+    });
+    list.querySelectorAll("[data-signal-detail]").forEach((button) => {
+      button.addEventListener("click", () => openDetail(button.dataset.signalDetail));
+    });
   }
 
   function studentStatusRank(student) {
@@ -599,6 +901,7 @@
     const query = String(state.search || "").toLocaleLowerCase("ko-KR");
     return sortStudents(state.students.filter((student) => {
       if (state.filter === "online") return student.online;
+      if (state.filter === "help") return student.online && student.needsHelp;
       if (state.filter === "offline") return !student.online;
       if (state.filter === "attention") return isNeedsAttention(student);
       return true;
@@ -2409,6 +2712,18 @@
   });
   $("announcement-button").addEventListener("click", () => openCommandDialog("message"));
   $("end-session-button").addEventListener("click", () => endSession().catch((error) => showToast(error.message)));
+  $("lesson-goal").addEventListener("input", (event) => {
+    lessonFlow().goal = event.target.value.slice(0, 140);
+    const shareButton = $("lesson-share-button");
+    if (shareButton) shareButton.disabled = !state.session || !lessonFlow().goal.trim() || Boolean(state.teacher?.isGuest);
+  });
+  $("lesson-goal").addEventListener("change", saveLessonFlow);
+  $("lesson-save-button").addEventListener("click", saveLessonFlow);
+  document.querySelectorAll("[data-lesson-stage]").forEach((button) => button.addEventListener("click", () => selectLessonStage(button.dataset.lessonStage)));
+  $("lesson-duration").addEventListener("change", (event) => setLessonDuration(event.target.value));
+  $("lesson-timer-button").addEventListener("click", toggleLessonTimer);
+  $("lesson-timer-reset").addEventListener("click", resetLessonTimer);
+  $("lesson-share-button").addEventListener("click", shareLessonFlow);
   $("focus-display-mode").addEventListener("change", (event) => {
     const value = event.target.value === "blackScreen" ? "blackScreen" : "message";
     state.focusDisplayMode = value;

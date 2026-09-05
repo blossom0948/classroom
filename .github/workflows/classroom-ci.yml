@@ -95,7 +95,7 @@ jobs:
           Copy-Item scripts/install/* $package -Force
           Copy-Item docs/CLASSROOM_MVP.md $package -Force
           Copy-Item docs/DEPLOYMENT.md $package -Force
-          Copy-Item docs/RELEASE_NOTES-0.5.36.md $package -Force
+          Copy-Item docs/RELEASE_NOTES-0.5.37.md $package -Force
           Compress-Archive -Path (Join-Path $package '*') `
             -DestinationPath (Join-Path $root 'Classroom-Windows-x64.zip') -Force
           if (-not (Test-Path -LiteralPath (Join-Path $root 'Classroom-Windows-x64.zip'))) {

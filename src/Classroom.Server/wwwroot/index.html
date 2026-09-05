@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-  <link rel="stylesheet" href="/styles.css?v=0.5.36">
+  <link rel="stylesheet" href="/styles.css?v=0.5.37">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -158,13 +158,30 @@
           <div class="class-status-actions"><button id="start-session-button" class="primary">수업 시작</button><button id="announcement-button" class="secondary">전체 공지</button><button id="end-session-button" class="danger-outline" hidden>수업 종료</button></div>
         </div>
         <div class="class-metrics" aria-label="수업 요약"><article class="metric-card"><span class="metric-label">등록 학생</span><strong id="total-count">0</strong><small>학급 장치</small></article><article class="metric-card metric-online"><span class="metric-label">온라인</span><strong id="metric-online-count">0</strong><small>현재 연결</small></article><article class="metric-card metric-offline"><span class="metric-label">오프라인</span><strong id="offline-count">0</strong><small>연결 끊김</small></article><article class="metric-card metric-attention"><span class="metric-label">확인 필요</span><strong id="needs-attention-count">0</strong><small>상태 점검</small></article></div>
+        <div class="class-operations-layout">
+          <section id="lesson-flow-card" class="lesson-flow-card" aria-labelledby="lesson-flow-title">
+            <div class="operation-card-header">
+              <div class="operation-heading"><span class="operation-mark lesson-mark" aria-hidden="true">↗</span><div><span class="eyebrow">LESSON FLOW</span><h3 id="lesson-flow-title">수업 흐름</h3><p>목표와 시간을 정리하고, 필요한 순간에 학생에게 바로 안내하세요.</p></div></div>
+              <span id="lesson-session-state" class="lesson-session-state">수업 준비</span>
+            </div>
+            <label class="lesson-goal-field"><span>오늘의 목표</span><input id="lesson-goal" type="text" maxlength="140" placeholder="예: 반복문으로 나만의 퀴즈 만들기"></label>
+            <div class="lesson-stage-row"><span>진행 단계</span><div class="lesson-stage-actions" role="group" aria-label="수업 진행 단계"><button class="lesson-stage-button active" type="button" data-lesson-stage="prepare">준비</button><button class="lesson-stage-button" type="button" data-lesson-stage="explain">설명</button><button class="lesson-stage-button" type="button" data-lesson-stage="practice">실습</button><button class="lesson-stage-button" type="button" data-lesson-stage="wrap">마무리</button></div></div>
+            <div class="lesson-timer-row"><div class="lesson-timer-readout"><span>남은 시간</span><strong id="lesson-timer-display">20:00</strong></div><label class="lesson-duration-select"><span class="sr-only">타이머 시간</span><select id="lesson-duration" aria-label="타이머 시간"><option value="10">10분</option><option value="20" selected>20분</option><option value="30">30분</option><option value="45">45분</option></select></label><button id="lesson-timer-button" class="secondary" type="button">타이머 시작</button><button id="lesson-timer-reset" class="ghost-button" type="button">초기화</button></div>
+            <div class="lesson-flow-footer"><span id="lesson-flow-status" class="lesson-flow-status" role="status">이 브라우저에 저장됩니다.</span><div><button id="lesson-save-button" class="ghost-button" type="button">흐름 저장</button><button id="lesson-share-button" class="secondary" type="button">학생에게 안내</button></div></div>
+          </section>
+          <aside id="signal-center" class="signal-center" aria-labelledby="signal-center-title">
+            <div class="signal-center-header"><div class="operation-heading"><span class="operation-mark signal-mark" aria-hidden="true">●</span><div><span class="eyebrow">CLASS PULSE</span><h3 id="signal-center-title">수업 신호 센터</h3></div></div><span id="signal-center-count" class="signal-center-count">신호 없음</span></div>
+            <p>학생의 도움 요청과 이미 수집 중인 연결·활동 상태만 모아, 먼저 살필 학생을 보여줍니다.</p>
+            <div id="signal-center-list" class="signal-center-list" aria-live="polite"><div class="signal-empty"><strong>지금은 확인할 신호가 없어요.</strong><span>수업이 시작되면 필요한 신호가 여기 모입니다.</span></div></div>
+          </aside>
+        </div>
         <div class="toolbar">
-          <div class="filters" role="tablist"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="online">온라인</button><button class="filter" data-filter="offline">오프라인</button><button class="filter" data-filter="attention">확인 필요</button></div>
+          <div class="filters" role="tablist"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="online">온라인</button><button class="filter" data-filter="help">도움 요청</button><button class="filter" data-filter="offline">오프라인</button><button class="filter" data-filter="attention">확인 필요</button></div>
           <label class="student-search"><span class="sr-only">학생 이름 검색</span><input id="student-search" type="search" placeholder="학생 이름 검색"></label>
           <div class="student-view-controls" aria-label="학생 목록 보기 설정">
             <label class="student-sort-control"><span class="sr-only">정렬 기준</span><select id="student-sort" aria-label="학생 정렬 기준"><option value="number">번호순</option><option value="name">이름순</option><option value="status">상태 우선</option></select></label>
           </div>
-          <div id="bulk-actions" class="bulk-actions"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button><button id="screen-wall-button" class="secondary screen-wall-open">화면 보기</button><label class="focus-mode-setting" for="focus-display-mode"><span>집중 화면</span><select id="focus-display-mode" aria-label="집중 모드 표시 방식"><option value="message">안내문</option><option value="blackScreen">검은 화면</option></select></label><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">집중 해제</button><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL 열기</button><button id="app-button" class="secondary">앱 실행</button></div>
+          <div id="bulk-actions" class="bulk-actions"><div class="command-scope"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button></div><div class="command-group command-group-monitor"><span class="command-group-label">보기</span><button id="screen-wall-button" class="secondary screen-wall-open">화면 보기</button></div><div class="command-group command-group-focus"><span class="command-group-label">집중</span><label class="focus-mode-setting" for="focus-display-mode"><span>표시</span><select id="focus-display-mode" aria-label="집중 모드 표시 방식"><option value="message">안내문</option><option value="blackScreen">검은 화면</option></select></label><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">해제</button></div><div class="command-group command-group-message"><span class="command-group-label">안내</span><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL</button><button id="app-button" class="secondary">앱</button></div></div>
         </div>
         <div id="class-sync-status" class="class-sync-status" role="status" aria-live="polite" hidden><span class="class-sync-icon" aria-hidden="true">↻</span><span id="class-sync-message"></span><button id="class-sync-retry" class="ghost-button" type="button">다시 시도</button></div>
         <div id="monitor-session-bar" class="monitor-session-bar" role="status" aria-live="polite" hidden><div><span class="monitor-session-dot" aria-hidden="true"></span><strong id="monitor-session-status">학생 화면을 준비하는 중입니다.</strong><small id="monitor-session-updated">최대 720p 자동 화질로 갱신됩니다.</small></div><div class="monitor-session-actions"><button id="screen-wall-fullscreen" class="secondary" type="button">전체 화면</button><button id="screen-wall-stop" class="danger-outline" type="button">화면 보기 닫기</button></div></div>
@@ -250,7 +267,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.36</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.37</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -393,6 +410,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.5.36" defer></script>
+  <script src="/app.js?v=0.5.37" defer></script>
 </body>
 </html>

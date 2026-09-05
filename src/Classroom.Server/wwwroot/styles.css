@@ -3590,3 +3590,328 @@ html[data-theme="dark"] .auth-mode-header .inline-link { background: #f7faff; }
   #app-view .filters { width: 100%; }
   #app-view .filter { flex: 1 1 calc(50% - 4px); }
 }
+
+/* 0.5.37 — The live desk, lesson planning, and intervention queue have
+   different jobs, so they deliberately use different visual shapes and
+   contrast levels instead of repeating the same white settings card. */
+#class-section > .class-command-strip {
+  background:
+    radial-gradient(circle at 88% -65%, rgba(119, 168, 255, .62), transparent 15rem),
+    linear-gradient(122deg, #142950, #1c4079 63%, #27549b);
+  border-color: rgba(62, 107, 183, .9);
+  box-shadow: 0 17px 38px rgba(15, 42, 88, .25), inset 0 1px 0 rgba(255, 255, 255, .2);
+  color: #f9fbff;
+}
+#class-section > .class-command-strip .eyebrow { color: #bcd5ff; }
+#class-section > .class-command-strip .session-command-copy p { color: #e4edff; }
+#class-section > .class-command-strip .secondary {
+  background: rgba(255, 255, 255, .93);
+  border-color: rgba(255, 255, 255, .96);
+  color: #1d467f;
+}
+#class-section > .class-command-strip .danger-outline {
+  background: rgba(255, 255, 255, .09);
+  border-color: rgba(255, 211, 215, .72);
+  color: #fff3f4;
+}
+
+.class-operations-layout {
+  align-items: stretch;
+  display: grid;
+  gap: 15px;
+  grid-template-columns: minmax(0, 1.26fr) minmax(320px, .74fr);
+  margin: 0 0 16px;
+}
+.lesson-flow-card {
+  background:
+    radial-gradient(circle at 95% 5%, rgba(116, 139, 246, .17), transparent 13rem),
+    linear-gradient(145deg, #fdfdff, #f1f5ff);
+  border: 1px solid #cad7f1;
+  border-radius: 22px;
+  box-shadow: 0 13px 30px rgba(40, 69, 126, .1), inset 0 1px 0 rgba(255,255,255,.94);
+  min-width: 0;
+  padding: 18px;
+  position: relative;
+}
+.lesson-flow-card::after {
+  background: linear-gradient(180deg, #5574e7, #8a72ed);
+  border-radius: 99px;
+  content: "";
+  height: 42px;
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  width: 4px;
+}
+.operation-card-header,
+.signal-center-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+.operation-heading { align-items: flex-start; display: flex; gap: 10px; min-width: 0; }
+.operation-heading > div { min-width: 0; }
+.operation-heading .eyebrow { font-size: 9px; }
+.operation-heading h3 { font-size: 18px; letter-spacing: -.045em; line-height: 1.1; margin: 4px 0 0; }
+.operation-heading p { color: #61728f; font-size: 12px; line-height: 1.55; margin: 7px 0 0; max-width: 500px; }
+.operation-mark {
+  align-items: center;
+  border-radius: 12px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 18px;
+  font-weight: 900;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+.lesson-mark { background: #e0e7ff; color: #4b63d5; }
+.lesson-session-state {
+  background: #e7edf8;
+  border: 1px solid #d2ddef;
+  border-radius: 999px;
+  color: #63728b;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 850;
+  margin-right: 11px;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+.lesson-session-state.active { background: #dff8ee; border-color: #aee4ce; color: #187b58; }
+.lesson-goal-field { display: block; margin-top: 17px; }
+.lesson-goal-field > span,
+.lesson-stage-row > span,
+.lesson-timer-readout > span {
+  color: #687895;
+  display: block;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .035em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.lesson-goal-field input {
+  background: rgba(255, 255, 255, .84);
+  border: 1px solid #cbd7ec;
+  border-radius: 13px;
+  color: #1f3153;
+  font-size: 14px;
+  font-weight: 720;
+  min-height: 46px;
+  padding: 10px 12px;
+  width: 100%;
+}
+.lesson-goal-field input::placeholder { color: #93a2ba; font-weight: 600; }
+.lesson-stage-row { align-items: center; display: flex; gap: 13px; justify-content: space-between; margin-top: 14px; }
+.lesson-stage-row > span { flex: 0 0 auto; margin: 0; }
+.lesson-stage-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.lesson-stage-button {
+  background: rgba(255,255,255,.68);
+  border: 1px solid #d0dbed;
+  border-radius: 999px;
+  color: #63738f;
+  font-size: 11px;
+  font-weight: 830;
+  min-height: 32px;
+  padding: 6px 10px;
+}
+.lesson-stage-button.active { background: #4868d9; border-color: #4868d9; box-shadow: 0 5px 11px rgba(62, 91, 202, .22); color: #fff; }
+.lesson-timer-row {
+  align-items: center;
+  background: rgba(224, 231, 253, .55);
+  border: 1px dashed #c1cfee;
+  border-radius: 16px;
+  display: flex;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 10px 11px 10px 13px;
+}
+.lesson-timer-readout { flex: 1 1 auto; min-width: 96px; }
+.lesson-timer-readout > span { margin-bottom: 1px; }
+.lesson-timer-readout strong { color: #1b346f; font-size: 25px; letter-spacing: -.06em; line-height: 1; }
+.lesson-duration-select select { background: #fff; border: 1px solid #c7d3e9; border-radius: 10px; color: #35517c; font-size: 12px; font-weight: 800; min-height: 36px; padding: 7px 9px; }
+.lesson-timer-row .secondary,
+.lesson-flow-footer .secondary { font-size: 11px; min-height: 36px; padding: 7px 10px; white-space: nowrap; }
+.lesson-timer-row .ghost-button,
+.lesson-flow-footer .ghost-button { font-size: 11px; min-height: 36px; padding: 7px 8px; white-space: nowrap; }
+.lesson-flow-footer { align-items: center; display: flex; gap: 10px; justify-content: space-between; margin-top: 12px; }
+.lesson-flow-footer > div { display: flex; flex: 0 0 auto; gap: 6px; }
+.lesson-flow-status { color: #6b7c99; font-size: 10px; line-height: 1.45; }
+.lesson-flow-card.lesson-running .lesson-timer-readout strong { color: #4858d3; }
+
+/* The frequently used classroom commands are deliberately clustered by intent
+   (view, focus, announce) instead of being one uninterrupted row of identical
+   buttons. */
+#app-view .toolbar { align-items: flex-start; }
+#app-view .bulk-actions {
+  align-items: center;
+  flex: 1 1 600px;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+.command-scope,
+.command-group { align-items: center; display: flex; gap: 5px; }
+.command-scope { margin-right: 2px; }
+.command-group {
+  background: rgba(241, 246, 255, .84);
+  border: 1px solid #cfdaec;
+  border-radius: 12px;
+  min-height: 42px;
+  padding: 4px;
+}
+.command-group-label {
+  color: #71809a;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .045em;
+  padding: 0 3px 0 4px;
+  text-transform: uppercase;
+}
+.command-group .secondary { background: #fff; border-color: #cbd8ed; color: #355b9b; min-height: 32px; padding: 6px 8px; }
+.command-group-focus { background: #f4f0ff; border-color: #d9cdf6; }
+.command-group-focus .command-group-label { color: #785fc2; }
+.command-group-focus .secondary { border-color: #d6c9f4; color: #6751b4; }
+.command-group-message { background: #eef9f6; border-color: #c6e8db; }
+.command-group-message .command-group-label { color: #27866d; }
+.command-group-message .secondary { border-color: #c4e4d8; color: #257c65; }
+.command-group .focus-mode-setting { color: #77699d; gap: 3px; padding: 0 1px; }
+.command-group .focus-mode-setting select { background: #fff; border-color: #d6c9f4; color: #6751b4; min-width: 66px; padding: 6px; }
+
+.signal-center {
+  background:
+    radial-gradient(circle at 92% 7%, rgba(119, 161, 255, .35), transparent 11rem),
+    linear-gradient(150deg, #172b50, #10213e 72%);
+  border: 1px solid #2f5489;
+  border-radius: 22px;
+  box-shadow: 0 16px 31px rgba(16, 35, 70, .22), inset 0 1px 0 rgba(255, 255, 255, .13);
+  color: #f5f8ff;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  padding: 18px;
+}
+.signal-center .operation-heading h3 { color: #fff; }
+.signal-center .operation-heading .eyebrow { color: #a9c9ff; }
+.signal-mark { background: rgba(114, 167, 255, .18); box-shadow: inset 0 0 0 1px rgba(156, 195, 255, .24); color: #a9d0ff; font-size: 14px; }
+.signal-center-count { background: rgba(255,255,255,.11); border: 1px solid rgba(213, 229, 255, .2); border-radius: 999px; color: #dceaff; flex: 0 0 auto; font-size: 10px; font-weight: 850; padding: 7px 9px; white-space: nowrap; }
+.signal-center-count.urgent { background: #ffe4df; border-color: #ffb7ad; color: #a73f39; }
+.signal-center > p { color: #bbcae5; font-size: 11px; line-height: 1.55; margin: 13px 0 11px; }
+.signal-center-list { display: grid; gap: 7px; max-height: 232px; overflow-y: auto; padding-right: 2px; }
+.signal-item { align-items: center; background: rgba(255,255,255,.07); border: 1px solid rgba(205,222,255,.13); border-radius: 13px; display: grid; gap: 8px; grid-template-columns: 26px minmax(0, 1fr) auto; min-width: 0; padding: 8px; }
+.signal-item.signal-help { background: rgba(255, 147, 127, .13); border-color: rgba(255, 185, 173, .35); }
+.signal-item-icon { align-items: center; background: rgba(255,255,255,.12); border-radius: 8px; color: #d8e9ff; display: flex; font-size: 13px; font-weight: 900; height: 26px; justify-content: center; width: 26px; }
+.signal-help .signal-item-icon { background: #ffd8d1; color: #a83c36; }
+.signal-offline .signal-item-icon { background: rgba(255,201,118,.18); color: #ffd48e; }
+.signal-item-copy { min-width: 0; }
+.signal-item-copy > div { align-items: center; display: flex; gap: 6px; min-width: 0; }
+.signal-item-copy strong { color: #fff; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.signal-item-copy span { color: #c2d7fb; font-size: 9px; font-weight: 800; white-space: nowrap; }
+.signal-item-copy p { color: #b7c6df; font-size: 9px; line-height: 1.35; margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.signal-item-actions { align-items: center; display: flex; flex: 0 0 auto; gap: 4px; }
+.signal-action,
+.signal-detail-button { background: transparent; border: 1px solid rgba(207,223,250,.32); border-radius: 8px; color: #dce9ff; font-size: 9px; font-weight: 820; min-height: 27px; padding: 5px 7px; white-space: nowrap; }
+.primary-signal-action { background: #dce9ff; border-color: #dce9ff; color: #183f7d; }
+.signal-empty { align-items: flex-start; background: rgba(255,255,255,.055); border: 1px dashed rgba(198,220,255,.24); border-radius: 13px; color: #d5e4fc; display: flex; flex: 1 1 auto; flex-direction: column; font-size: 11px; gap: 4px; justify-content: center; min-height: 104px; padding: 14px; }
+.signal-empty span { color: #b5c6e3; font-size: 10px; line-height: 1.5; }
+
+/* Administration becomes a setup workbench, while personal settings stay a
+   calm profile-and-maintenance area.  This avoids a page of indistinguishable
+   tiles without changing the established form controls. */
+#admins-section > .hero-row {
+  background: linear-gradient(110deg, #eef4ff, #fbfdff);
+  border: 1px solid #cfdbf0;
+  border-radius: 20px;
+  margin: 20px 0 16px;
+  padding: 18px 20px;
+}
+#admins-section > .hero-row .eyebrow { color: #3b67c9; }
+#admins-section .settings-card {
+  background: linear-gradient(180deg, var(--panel-soft) 0, var(--panel-soft) 73px, #fff 73px);
+  border-left: 5px solid var(--panel-accent);
+  border-top: 1px solid color-mix(in srgb, var(--panel-accent) 28%, white);
+  box-shadow: 0 12px 27px rgba(36, 60, 107, .075);
+}
+#admins-section .settings-card h3 { color: #213a67; }
+#admins-section .admin-list { border: 1px solid #cfd9ea; border-radius: 18px; box-shadow: 0 12px 27px rgba(36, 60, 107, .06); }
+#admins-section .admin-list-heading { background: linear-gradient(90deg, #f2f6ff, #fff); }
+#admins-section .student-exit-pin-card { background: linear-gradient(180deg, #fff1e6 0, #fff1e6 73px, #fffaf7 73px); }
+#admins-section .guest-password-card { background: linear-gradient(180deg, #e5f7f7 0, #e5f7f7 73px, #f8ffff 73px); }
+#settings-section > .hero-row {
+  border-bottom: 2px solid #dbe5f4;
+  margin: 24px 0 18px;
+  padding: 0 0 15px;
+}
+#settings-section .settings-card {
+  background: linear-gradient(135deg, var(--panel-soft), #fff 42%);
+  border-left: 5px solid var(--panel-accent);
+  border-top-width: 1px;
+  box-shadow: 0 12px 28px rgba(37, 61, 105, .065);
+}
+#settings-section .profile-card { border-radius: 22px; }
+#settings-section .password-card { background: linear-gradient(100deg, #f4f0ff, #fff 44%); }
+#settings-section .update-card { background: linear-gradient(100deg, #e9f8f1, #fff 44%); }
+
+html[data-theme="dark"] #class-section > .class-command-strip { border-color: #466fad; }
+html[data-theme="dark"] .lesson-flow-card { background: linear-gradient(145deg, #172741, #122239); border-color: #355176; }
+html[data-theme="dark"] .lesson-flow-card::after { background: linear-gradient(180deg, #7797ff, #ae8eff); }
+html[data-theme="dark"] .operation-heading h3,
+html[data-theme="dark"] .lesson-timer-readout strong { color: #edf3ff; }
+html[data-theme="dark"] .operation-heading p,
+html[data-theme="dark"] .lesson-goal-field > span,
+html[data-theme="dark"] .lesson-stage-row > span,
+html[data-theme="dark"] .lesson-timer-readout > span,
+html[data-theme="dark"] .lesson-flow-status { color: #b8c9e5; }
+html[data-theme="dark"] .lesson-goal-field input,
+html[data-theme="dark"] .lesson-duration-select select,
+html[data-theme="dark"] .lesson-stage-button { background: #1e3455; border-color: #405c85; color: #dce7fb; }
+html[data-theme="dark"] .lesson-timer-row { background: rgba(45, 75, 124, .24); border-color: #4d6d9d; }
+html[data-theme="dark"] .lesson-stage-button.active { background: #6482ec; border-color: #6482ec; color: #fff; }
+html[data-theme="dark"] .command-group { background: #1b3154; border-color: #405d88; }
+html[data-theme="dark"] .command-group .secondary,
+html[data-theme="dark"] .command-group .focus-mode-setting select { background: #263d63; border-color: #4a6894; color: #deebff; }
+html[data-theme="dark"] .command-group-label { color: #b7cae8; }
+html[data-theme="dark"] #admins-section > .hero-row { background: #172842; border-color: #355075; }
+html[data-theme="dark"] #admins-section .settings-card,
+html[data-theme="dark"] #settings-section .settings-card { background: #172842; border-top-color: #395272; }
+html[data-theme="dark"] #admins-section .settings-card h3 { color: #e4edff; }
+html[data-theme="dark"] #admins-section .admin-list,
+html[data-theme="dark"] #admins-section .admin-list-heading { background: #172842; border-color: #395272; }
+html[data-theme="dark"] #settings-section > .hero-row { border-color: #385274; }
+
+@media (max-width: 1080px) {
+  .class-operations-layout { grid-template-columns: 1fr; }
+  .signal-center-list { max-height: none; }
+}
+@media (max-width: 680px) {
+  .class-operations-layout { gap: 11px; margin-bottom: 12px; }
+  .lesson-flow-card,
+  .signal-center { border-radius: 18px; padding: 14px; }
+  .lesson-flow-card::after { right: 14px; top: 14px; }
+  .operation-heading h3 { font-size: 17px; }
+  .lesson-stage-row { align-items: flex-start; flex-direction: column; }
+  .lesson-stage-actions { justify-content: flex-start; }
+  .lesson-timer-row { align-items: stretch; flex-wrap: wrap; }
+  .lesson-timer-readout { flex-basis: calc(100% - 90px); }
+  .lesson-duration-select { flex: 1 0 76px; }
+  .lesson-duration-select select { width: 100%; }
+  .lesson-timer-row .secondary { flex: 1 1 auto; }
+  .lesson-flow-footer { align-items: flex-start; flex-direction: column; }
+  .lesson-flow-footer > div { width: 100%; }
+  .lesson-flow-footer > div button { flex: 1; }
+  #app-view .bulk-actions { flex-basis: 100%; justify-content: flex-start; }
+  .command-scope { flex-basis: 100%; }
+  .command-group { flex-wrap: wrap; }
+  .signal-item { align-items: flex-start; grid-template-columns: 26px minmax(0, 1fr); }
+  .signal-item-actions { grid-column: 2; justify-content: flex-start; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .class-operations-layout { animation: liquid-section-in 470ms var(--liquid-ease) 55ms both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .class-operations-layout { animation: none; }
+}

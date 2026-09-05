@@ -44,6 +44,14 @@ assert.match(html, /id="class-sync-status"/, "The console needs a visible sync r
 assert.match(html, /id="student-sort"/, "The class roster needs a sorting control.");
 assert.match(html, /id="focus-display-mode"/, "The focus command needs a visible presentation selector.");
 assert.match(script, /focusDisplayMode: state\.focusDisplayMode/, "The console must send the selected focus presentation.");
+assert.match(html, /id="lesson-flow-card"/, "The class dashboard needs a distinct lesson-flow workspace.");
+assert.match(html, /id="lesson-goal"/, "Teachers need a visible lesson objective field.");
+assert.match(html, /id="signal-center"/, "The class dashboard needs one visible intervention queue.");
+assert.match(html, /data-filter="help"/, "Help requests need a dedicated roster filter.");
+assert.match(html, /class="command-group command-group-focus"/, "Focus controls must be visually grouped instead of reading as another identical action.");
+assert.match(script, /function renderLessonFlow\(\)/, "Lesson goals, stages, and timer state must render from one flow model.");
+assert.match(script, /function renderSignalCenter\(\)/, "Teacher intervention signals must render from the existing student status data.");
+assert.match(script, /data-signal-screen/, "A signal must lead directly to a student screen when a class is active.");
 assert.doesNotMatch(html, /id="student-density-button"/, "The unused density control should not occupy the classroom toolbar.");
 assert.doesNotMatch(html, /id="history-nav"/, "The unused history tab must not occupy the teacher navigation.");
 assert.match(html, /id="close-console-button"/, "The installed shell keeps a compatibility close-action hook.");
@@ -85,6 +93,7 @@ assert.match(html, /class="auth-tab active" data-auth-mode="login"/, "The admini
 assert.match(styles, /#admin-auth-panel \.auth-tabs\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/, "Administrator authentication choices must use a visibly distinct segmented control.");
 assert.match(styles, /#app-view \.filters,[\s\S]*#app-view \.admin-grant-tabs\s*\{[\s\S]*background:/, "Classroom filters and administrator target tabs must expose a filled switcher surface.");
 assert.match(styles, /#app-view \.settings-card\s*\{[\s\S]*border-top: 4px solid var\(--panel-accent\)/, "Management cards must use a category color rail for faster scanning.");
+assert.match(styles, /\.command-group\s*\{[\s\S]*background:/, "Classroom actions must be grouped by intent with their own surface.");
 assert.match(script, /\$\("school-login-button"\)\.addEventListener\("click", openGuestLoginDialog\)/, "School login must open the school guest access flow.");
 assert.doesNotMatch(html, /id="login-guest-button"/, "The duplicate school guest button should not be visible beside school login.");
 assert.match(html, /id="guest-login-dialog"[^>]*class="command-dialog guest-login-dialog"/, "School login must retain the branded school access dialog.");
@@ -132,6 +141,9 @@ assert.match(desktopProgram, /classroom-background/, "The student UI needs an ex
 assert.match(desktopForm, /CloseReason\.UserClosing[\s\S]*?HideToTray\(\)/, "Closing the student window must hide it instead of ending the background connection.");
 assert.match(desktopForm, /private void HideToTray\(\)/, "The student UI needs an explicit tray-hide path.");
 assert.doesNotMatch(desktopForm, /CloseReason\.UserClosing[\s\S]{0,300}RequestApprovedExitAsync/, "The window close button must not trigger the administrator exit PIN flow.");
+assert.match(desktopForm, /helpButton\.Click \+=/, "Students need a direct help-request action in their status window.");
+assert.match(desktopForm, /statusProvider\.SetHelpRequested\(helpRequested\)/, "Student help requests must enter the existing status heartbeat path.");
+assert.match(desktopForm, /SetHelpRequestAvailability\(false, clearRequest: true\)/, "Help requests must clear after a class session ends.");
 assert.match(watchdog, /Arguments = "--classroom-background"/, "The watchdog must launch the student UI without showing its window.");
 assert.match(desktopOptions, /StudentDesktopConfigurationStore\.TryLoad/, "The tray process must recover enrollment from machine-level configuration.");
 assert.match(setupProgram, /TryStartExistingInstallation/, "Rerunning the installer must reuse an existing enrollment.");
