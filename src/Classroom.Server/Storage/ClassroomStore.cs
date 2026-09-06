@@ -858,7 +858,12 @@ public sealed class ClassroomStore
                         || remoteCommandRecord.Command.RemoteAssistSessionId is not { } remoteAssistSessionId
                         || !remoteAssistSessions.TryGetValue(remoteAssistSessionId, out var remoteAssistSession)
                         || remoteAssistSession.DeviceId != device.DeviceId
-                        || !remoteAssistSession.IsOpen;
+                        // A request opens a student consent dialog and must
+                        // be live. An end command is a cleanup signal and
+                        // must still reach the desktop after the server has
+                        // marked the session ended.
+                        || command.Kind == ClassroomCommandKind.RemoteAssistRequest
+                            && !remoteAssistSession.IsOpen;
                 }
 
                 if (!discard)
