@@ -87,7 +87,10 @@ public sealed class DesktopStatusBridge(
                 return DesktopDisconnectedCommandSink.NotConnectedResult;
             }
 
-            var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(20), cancellationToken);
+            var timeout = command.Kind is ClassroomCommandKind.RemoteAssistRequest
+                ? TimeSpan.FromSeconds(ProtocolConstants.RemoteAssistConsentTimeoutSeconds + 10)
+                : TimeSpan.FromSeconds(20);
+            var result = await completion.Task.WaitAsync(timeout, cancellationToken);
             return new CommandApplyResult(result.Success, result.Code, result.Message);
         }
         catch (TimeoutException)
@@ -128,6 +131,15 @@ public sealed class DesktopStatusBridge(
         {
             logger.LogDebug("Could not publish server state to Student Desktop: {Message}", exception.Message);
         }
+    }
+
+    public async Task<bool> SendRemoteAssistInputAsync(
+        RemoteAssistInput input,
+        CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        ProtocolValidation.ValidateRemoteAssistInput(input);
+        return await SendAsync(new DesktopRemoteInputMessage("remote-input", input), cancellationToken);
     }
 
     public void SetExitPinVerifier(
@@ -366,10 +378,19 @@ public sealed class DesktopStatusBridge(
                         ProtocolValidation.ValidateScreenFrame(status.ScreenFrame);
                     }
 
-                    if (status.ScreenShareIntervalMilliseconds is < ProtocolConstants.ScreenShareMinimumIntervalMilliseconds
+                    var minimumScreenShareInterval = status.RemoteAssistActive
+                        ? ProtocolConstants.RemoteAssistScreenShareIntervalMilliseconds
+                        : ProtocolConstants.ScreenShareMinimumIntervalMilliseconds;
+                    if (status.ScreenShareIntervalMilliseconds is < minimumScreenShareInterval
                         or > ProtocolConstants.ScreenShareMaximumIntervalMilliseconds)
                     {
                         throw new ProtocolValidationException("Desktop screen-share interval is invalid.");
+                    }
+
+                    if ((status.RemoteAssistActive && status.RemoteAssistSessionId is null)
+                        || status.RemoteAssistSessionId is { } remoteAssistSessionId && remoteAssistSessionId == Guid.Empty)
+                    {
+                        throw new ProtocolValidationException("Desktop remote-assist status is invalid.");
                     }
 
                     lock (gate)
@@ -382,7 +403,9 @@ public sealed class DesktopStatusBridge(
                             status.ScreenFrame,
                             status.ScreenSharingEnabled,
                             status.NeedsHelp,
-                            status.ScreenShareIntervalMilliseconds);
+                            status.ScreenShareIntervalMilliseconds,
+                            status.RemoteAssistSessionId,
+                            status.RemoteAssistActive);
                     }
 
                     break;
@@ -608,4 +631,8 @@ public sealed class DesktopStatusBridge(
         bool Success,
         string Code,
         string Message);
+
+    private sealed record DesktopRemoteInputMessage(
+        string Kind,
+        RemoteAssistInput Input);
 }

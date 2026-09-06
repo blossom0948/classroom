@@ -1486,6 +1486,46 @@ html[data-theme="dark"] .student-activity { border-color: #2d3a50; }
 .detail-screen-actions { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .detail-screen-actions button { min-width: 0; padding-left: 9px; padding-right: 9px; }
 
+.remote-assist-callout {
+  align-items: center;
+  background: linear-gradient(135deg, #fff1e8, #fff8f2);
+  border: 1px solid #f2b08e;
+  border-left: 4px solid #e66a35;
+  border-radius: 12px;
+  color: #8a3f1e;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin: 12px 0;
+  padding: 11px 13px;
+}
+.remote-assist-callout > div { display: grid; gap: 3px; min-width: 0; }
+.remote-assist-callout strong { font-size: 12px; }
+.remote-assist-callout span { color: #9d6044; font-size: 11px; line-height: 1.45; }
+.remote-assist-chip { background: #e66a35; border-radius: 999px; color: #fff !important; flex: 0 0 auto; font-size: 10px !important; font-weight: 800; padding: 4px 7px; }
+.remote-assist-callout.pending { border-left-color: #d68a2a; }
+.remote-assist-callout.pending .remote-assist-chip { background: #d68a2a; }
+.remote-request-button, .remote-control-button, .remote-end-button {
+  border-radius: 10px;
+  font-weight: 800;
+  min-height: 42px;
+  padding: 10px 13px;
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.remote-request-button { background: #fff1e8; border: 1px solid #ec9a6e; color: #a64722; }
+.remote-control-button { background: #e8582a; border: 1px solid #d6481e; color: #fff; }
+.remote-control-button.active { background: #7d1d1d; border-color: #671616; }
+.remote-end-button { background: #fff; border: 1px solid #e5b4a8; color: #a33d2a; }
+.remote-request-button:hover, .remote-control-button:hover, .remote-end-button:hover { box-shadow: 0 5px 15px rgba(180, 74, 34, .18); transform: translateY(-1px); }
+.detail-screen-actions .remote-request-button, .detail-screen-actions .remote-control-button, .detail-screen-actions .remote-end-button { width: 100%; }
+.detail-screen-frame.remote-surface-active { cursor: crosshair; outline: 3px solid rgba(232, 88, 42, .8); outline-offset: -3px; }
+.detail-screen-frame.remote-surface-active:focus { box-shadow: inset 0 0 0 3px rgba(255, 235, 210, .8); }
+
+html[data-theme="dark"] .remote-assist-callout { background: linear-gradient(135deg, #3d281e, #34241e); border-color: #8b4b32; border-left-color: #ed7540; color: #ffd0b4; }
+html[data-theme="dark"] .remote-assist-callout span { color: #e6a789; }
+html[data-theme="dark"] .remote-request-button { background: #442b20; border-color: #a45c3d; color: #ffd0b4; }
+html[data-theme="dark"] .remote-end-button { background: #2a2530; border-color: #8e5a4e; color: #ffc0ae; }
+
 @media (max-width: 900px) {
   .student-exit-pin-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .student-exit-pin-card > div { grid-column: 1 / -1; }
@@ -3591,8 +3631,8 @@ html[data-theme="dark"] .auth-mode-header .inline-link { background: #f7faff; }
   #app-view .filter { flex: 1 1 calc(50% - 4px); }
 }
 
-/* 0.5.37 — The live desk, lesson planning, and intervention queue have
-   different jobs, so they deliberately use different visual shapes and
+/* 0.5.38 — The live desk, lesson planning, intervention queue, and remote
+   support surface have different jobs, so they deliberately use different visual shapes and
    contrast levels instead of repeating the same white settings card. */
 #class-section > .class-command-strip {
   background:

@@ -11,7 +11,9 @@ public sealed record StudentStatusData(
     ScreenFrame? ScreenFrame = null,
     bool ScreenSharingEnabled = false,
     bool NeedsHelp = false,
-    int ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds)
+    int ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds,
+    Guid? RemoteAssistSessionId = null,
+    bool RemoteAssistActive = false)
 {
     public static StudentStatusData Empty { get; } = new(null, null, "unknown", false);
 }

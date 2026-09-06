@@ -82,10 +82,16 @@ public sealed class StudentWebSocketHandler(
             using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
             var receiveTask = ReceiveLoopAsync(socket, identity, lifetime.Token, sendGate);
             var commandTask = SendCommandLoopAsync(socket, identity.DeviceId, lifetime.Token, sendGate);
-            await Task.WhenAny(receiveTask, commandTask);
+            var remoteAssistInputTask = SendRemoteAssistInputLoopAsync(
+                socket,
+                identity.DeviceId,
+                lifetime.Token,
+                sendGate);
+            await Task.WhenAny(receiveTask, commandTask, remoteAssistInputTask);
             lifetime.Cancel();
             await IgnoreCancellationAsync(receiveTask);
             await IgnoreCancellationAsync(commandTask);
+            await IgnoreCancellationAsync(remoteAssistInputTask);
         }
         catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
         {
@@ -257,6 +263,24 @@ public sealed class StudentWebSocketHandler(
                 sendGate,
                 ProtocolConstants.CommandRequest,
                 command,
+                cancellationToken);
+        }
+    }
+
+    private async Task SendRemoteAssistInputLoopAsync(
+        WebSocket socket,
+        Guid deviceId,
+        CancellationToken cancellationToken,
+        SemaphoreSlim sendGate)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var input = await store.WaitForRemoteAssistInputAsync(deviceId, cancellationToken);
+            await SendEnvelopeAsync(
+                socket,
+                sendGate,
+                ProtocolConstants.RemoteAssistInput,
+                input,
                 cancellationToken);
         }
     }

@@ -16,6 +16,7 @@ var tests = new (string Name, Action Run)[]
     ("open URL rejects non-HTTPS and arbitrary targets", OpenUrlIsConstrained),
     ("approved app command has no shell field", ApprovedAppIsConstrained),
     ("screen sharing command requires an explicit state", ScreenShareCommandWorks),
+    ("remote assistance commands and input stay bounded", RemoteAssistProtocolWorks),
     ("commands reject duplicate or oversized targets", TargetLimitsAreEnforced),
     ("student exit PIN verification messages are strictly validated", StudentExitPinVerificationWorks),
     ("protocol codec rejects oversized JSON", OversizedMessageIsRejected)
@@ -251,6 +252,36 @@ static void ScreenShareCommandWorks()
         {
             ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareMinimumIntervalMilliseconds - 1
         }));
+}
+
+static void RemoteAssistProtocolWorks()
+{
+    var sessionId = Guid.NewGuid();
+    var command = new CommandRequest(
+        Guid.NewGuid(),
+        Guid.NewGuid(),
+        new[] { Guid.NewGuid() },
+        ClassroomCommandKind.RemoteAssistRequest,
+        RequiresAcknowledgement: true,
+        RemoteAssistSessionId: sessionId,
+        RemoteAssistDurationSeconds: ProtocolConstants.RemoteAssistMaximumDurationSeconds,
+        RemoteAssistTeacherDisplayName: "김선생님");
+    ProtocolValidation.ValidateCommand(command);
+    Assert(CanonicalCommandPayload.Create(command).Contains("remoteAssistSessionId="), "Remote session identity was not canonicalized.");
+
+    var input = new RemoteAssistInput(
+        sessionId,
+        1,
+        RemoteAssistInputKind.PointerMove,
+        X: 0.25,
+        Y: 0.75);
+    ProtocolValidation.ValidateRemoteAssistInput(input);
+    ProtocolValidation.ValidateRemoteAssistInput(input with { Kind = RemoteAssistInputKind.Key, X = null, Y = null, KeyCode = "KeyA", IsDown = true });
+    AssertThrows<ProtocolValidationException>(() => ProtocolValidation.ValidateRemoteAssistInput(input with { X = 1.1 }));
+    AssertThrows<ProtocolValidationException>(() => ProtocolValidation.ValidateRemoteAssistInput(input with { Sequence = 0 }));
+    AssertThrows<ProtocolValidationException>(() => ProtocolValidation.ValidateRemoteAssistInput(input with { Kind = RemoteAssistInputKind.Key, X = null, Y = null, KeyCode = "AltLeft", IsDown = true }));
+    AssertThrows<ProtocolValidationException>(() => ProtocolValidation.ValidateCommand(command with { RemoteAssistDurationSeconds = 30 }));
+    AssertThrows<ProtocolValidationException>(() => ProtocolValidation.ValidateCommand(command with { TargetDeviceIds = new[] { Guid.NewGuid(), Guid.NewGuid() } }));
 }
 
 static void TargetLimitsAreEnforced()

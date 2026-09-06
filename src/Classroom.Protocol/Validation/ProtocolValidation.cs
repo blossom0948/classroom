@@ -45,6 +45,12 @@ public static class ProtocolValidation
                 throw new ProtocolValidationException("A screen frame requires screen sharing to be enabled.");
             }
         }
+
+        if ((heartbeat.RemoteAssistActive && heartbeat.RemoteAssistSessionId is null)
+            || heartbeat.RemoteAssistSessionId is { } remoteAssistId && remoteAssistId == Guid.Empty)
+        {
+            throw new ProtocolValidationException("Remote-assist status is invalid.");
+        }
     }
 
     public static void ValidateExitPinVerification(DeviceExitPinVerificationRequest request)
@@ -148,6 +154,20 @@ public static class ProtocolValidation
                 "FocusDisplayMode is only valid for focus mode commands.");
         }
 
+        if (command.RemoteAssistTeacherDisplayName is not null)
+        {
+            RequireText(command.RemoteAssistTeacherDisplayName, nameof(command.RemoteAssistTeacherDisplayName), 128);
+        }
+
+        if (command.Kind is not ClassroomCommandKind.RemoteAssistRequest
+            and not ClassroomCommandKind.RemoteAssistEnd
+            && (command.RemoteAssistSessionId is not null
+                || command.RemoteAssistDurationSeconds is not null
+                || command.RemoteAssistTeacherDisplayName is not null))
+        {
+            throw new ProtocolValidationException("Remote-assist metadata is only valid for remote-assist commands.");
+        }
+
         switch (command.Kind)
         {
             case ClassroomCommandKind.Message:
@@ -180,8 +200,118 @@ public static class ProtocolValidation
                         $"ScreenShareIntervalMilliseconds must be between {ProtocolConstants.ScreenShareMinimumIntervalMilliseconds} and {ProtocolConstants.ScreenShareMaximumIntervalMilliseconds}.");
                 }
                 break;
+            case ClassroomCommandKind.RemoteAssistRequest:
+                ValidateRemoteAssistCommand(command, requiresDuration: true);
+                break;
+            case ClassroomCommandKind.RemoteAssistEnd:
+                ValidateRemoteAssistCommand(command, requiresDuration: false);
+                break;
             default:
                 throw new ProtocolValidationException("Unknown Classroom command kind.");
+        }
+    }
+
+    public static void ValidateRemoteAssistInput(RemoteAssistInput input)
+    {
+        RequireGuid(input.RemoteAssistSessionId, nameof(input.RemoteAssistSessionId));
+        if (input.Sequence < 1 || !Enum.IsDefined(typeof(RemoteAssistInputKind), input.Kind))
+        {
+            throw new ProtocolValidationException("Remote-assist input is invalid.");
+        }
+
+        switch (input.Kind)
+        {
+            case RemoteAssistInputKind.PointerMove:
+                RequireNormalizedCoordinate(input.X, nameof(input.X));
+                RequireNormalizedCoordinate(input.Y, nameof(input.Y));
+                break;
+            case RemoteAssistInputKind.PointerButton:
+                RequireNormalizedCoordinate(input.X, nameof(input.X));
+                RequireNormalizedCoordinate(input.Y, nameof(input.Y));
+                if (input.Button is null
+                    || !Enum.IsDefined(typeof(RemoteMouseButton), input.Button.Value)
+                    || input.IsDown is null)
+                {
+                    throw new ProtocolValidationException("Remote pointer-button input is invalid.");
+                }
+                break;
+            case RemoteAssistInputKind.PointerWheel:
+                RequireNormalizedCoordinate(input.X, nameof(input.X));
+                RequireNormalizedCoordinate(input.Y, nameof(input.Y));
+                if (input.WheelDelta is null or < -1_200 or > 1_200 or 0)
+                {
+                    throw new ProtocolValidationException("Remote pointer-wheel input is invalid.");
+                }
+                break;
+            case RemoteAssistInputKind.Key:
+                if (!IsSupportedRemoteKeyCode(input.KeyCode) || input.IsDown is null)
+                {
+                    throw new ProtocolValidationException("Remote keyboard input is invalid.");
+                }
+                break;
+            default:
+                throw new ProtocolValidationException("Remote-assist input kind is invalid.");
+        }
+    }
+
+    private static void ValidateRemoteAssistCommand(CommandRequest command, bool requiresDuration)
+    {
+        if (command.TargetDeviceIds.Count != 1
+            || command.RemoteAssistSessionId is not { } remoteAssistSessionId
+            || remoteAssistSessionId == Guid.Empty)
+        {
+            throw new ProtocolValidationException("Remote assistance must target one device with a session ID.");
+        }
+
+        if (!command.RequiresAcknowledgement)
+        {
+            throw new ProtocolValidationException("Remote assistance commands require acknowledgment.");
+        }
+
+        if (requiresDuration)
+        {
+            if (command.RemoteAssistDurationSeconds is not (>= ProtocolConstants.RemoteAssistMinimumDurationSeconds
+                and <= ProtocolConstants.RemoteAssistMaximumDurationSeconds)
+                || string.IsNullOrWhiteSpace(command.RemoteAssistTeacherDisplayName))
+            {
+                throw new ProtocolValidationException("Remote assistance request duration or teacher identity is invalid.");
+            }
+
+            return;
+        }
+
+        if (command.RemoteAssistDurationSeconds is not null
+            || command.RemoteAssistTeacherDisplayName is not null)
+        {
+            throw new ProtocolValidationException("Remote assistance end commands cannot carry request metadata.");
+        }
+    }
+
+    private static bool IsSupportedRemoteKeyCode(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return false;
+        if (code.Length == 4 && code.StartsWith("Key", StringComparison.Ordinal)
+            && code[3] is >= 'A' and <= 'Z') return true;
+        if (code.Length == 6 && code.StartsWith("Digit", StringComparison.Ordinal)
+            && code[5] is >= '0' and <= '9') return true;
+        if ((code.Length is 2 or 3) && code[0] == 'F'
+            && int.TryParse(code[1..], out var functionNumber)
+            && functionNumber is >= 1 and <= 12) return true;
+
+        return code is "Backspace" or "Tab" or "Enter" or "ShiftLeft" or "ShiftRight"
+            or "ControlLeft" or "ControlRight" or "CapsLock" or "Escape" or "Space"
+            or "PageUp" or "PageDown" or "End" or "Home" or "ArrowLeft" or "ArrowUp"
+            or "ArrowRight" or "ArrowDown" or "Insert" or "Delete" or "Semicolon"
+            or "Equal" or "Comma" or "Minus" or "Period" or "Slash" or "Backquote"
+            or "BracketLeft" or "Backslash" or "BracketRight" or "Quote";
+    }
+
+    private static void RequireNormalizedCoordinate(double? value, string name)
+    {
+        if (value is null || double.IsNaN(value.Value) || double.IsInfinity(value.Value)
+            || value < 0 || value > 1)
+        {
+            throw new ProtocolValidationException($"{name} must be a normalized coordinate.");
         }
     }
 

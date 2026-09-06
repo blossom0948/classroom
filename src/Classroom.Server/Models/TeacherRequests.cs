@@ -109,3 +109,10 @@ public sealed record TeacherSessionResponse(
 public sealed record ChangePasswordRequest(
     string CurrentPassword,
     string NewPassword);
+
+public sealed record StartRemoteAssistRequest(int? DurationSeconds = null);
+
+public sealed record RemoteAssistInputReceipt(
+    Guid RemoteAssistSessionId,
+    long Sequence,
+    DateTimeOffset AcceptedAtUtc);

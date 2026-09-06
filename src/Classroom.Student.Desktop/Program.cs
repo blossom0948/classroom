@@ -35,6 +35,7 @@ using var form = new StudentDesktopForm(
 form.FormClosed += (_, _) => cancellation.Cancel();
 var connectionTask = client.RunAsync(
     form.ApplyCommandAsync,
+    form.ApplyRemoteAssistInputAsync,
     form.ShowStatus,
     form.SetConnectionState,
     form.SetServerConnectionState,

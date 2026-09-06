@@ -28,6 +28,10 @@ const dynamicIds = new Set([
   "detail-screen-fullscreen",
   "detail-screen-stage",
   "detail-screen-stop",
+  "detail-remote-surface",
+  "detail-remote-request",
+  "detail-remote-end",
+  "detail-remote-toggle",
   "monitor-fullscreen-exit",
   "operations-status",
   "security-setting"
@@ -119,6 +123,14 @@ assert.match(styles, /\.student-monitor-hinge\s*\{/, "Monitor tiles must expose 
 assert.match(styles, /\.monitor-stage:fullscreen, \.monitor-stage\.fullscreen-mode/, "Monitor fullscreen needs a browser and in-page fallback.");
 assert.match(script, /function monitorRefreshIntervalMs\(/, "Screen polling must choose a classroom-safe refresh cadence.");
 assert.match(script, /screenShareIntervalMilliseconds: refreshInterval/, "The teacher console must pass the selected screen cadence to student apps.");
+assert.match(script, /async function requestRemoteAssist\(/, "Teacher console must expose an explicit remote-assistance request step.");
+assert.match(script, /async function toggleRemoteControl\(/, "Teacher console must require a second remote-control start step.");
+assert.match(script, /safeRemoteKeyCode\(/, "Remote keyboard input must use an allow-list.");
+assert.match(script, /remote-assist\/\$\{control\.remoteAssistSessionId\}\/input/, "Remote input must use the bound session endpoint.");
+assert.match(cloudflareWorker, /RemoteAssistSessions/, "Worker must retain bounded remote-assistance session metadata.");
+assert.match(cloudflareWorker, /REMOTE_ASSIST_MAX_INPUTS_PER_SECOND = 30/, "Worker must rate-limit remote input.");
+assert.match(cloudflareWorker, /kind: "remoteAssistRequest"/, "Worker must deliver consent requests directly to the student socket.");
+assert.match(cloudflareWorker, /kind: "remoteAssistEnd"/, "Worker must be able to end a remote session on the student PC.");
 assert.match(script, /data-student-message/, "A teacher must be able to message one student without opening screen view.");
 assert.match(script, /개인 메시지 보내기/, "A one-student command must be clearly identified as a personal message.");
 assert.match(styles, /#class-section > \.class-metrics\s*\{[\s\S]*margin: 0 0 16px !important;[\s\S]*position: static !important;/, "Metric cards must stay in normal flow beneath the session strip.");

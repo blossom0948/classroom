@@ -159,6 +159,7 @@ public sealed class DesktopPipeClient(
 
     public async Task RunAsync(
         Func<CommandRequest, Task<DesktopCommandApplyResult>> commandHandler,
+        Func<RemoteAssistInput, Task> remoteInputHandler,
         Action<DesktopStatusData> statusHandler,
         Action<bool> connectionHandler,
         Action<bool, Guid> serverConnectionHandler,
@@ -171,6 +172,7 @@ public sealed class DesktopPipeClient(
             {
                 await RunConnectionAsync(
                     commandHandler,
+                    remoteInputHandler,
                     statusHandler,
                     connectionHandler,
                     serverConnectionHandler,
@@ -186,7 +188,8 @@ public sealed class DesktopPipeClient(
                 or UnauthorizedAccessException
                 or TimeoutException
                 or InvalidDataException
-                or JsonException)
+                or JsonException
+                or ProtocolValidationException)
             {
                 log($"Student Service IPC connection ended: {exception.Message}");
             }
@@ -200,6 +203,7 @@ public sealed class DesktopPipeClient(
 
     private async Task RunConnectionAsync(
         Func<CommandRequest, Task<DesktopCommandApplyResult>> commandHandler,
+        Func<RemoteAssistInput, Task> remoteInputHandler,
         Action<DesktopStatusData> statusHandler,
         Action<bool> connectionHandler,
         Action<bool, Guid> serverConnectionHandler,
@@ -258,6 +262,7 @@ public sealed class DesktopPipeClient(
                 writer,
                 writeGate,
                 commandHandler,
+                remoteInputHandler,
                 serverConnectionHandler,
                 lifetime.Token);
         }
@@ -304,7 +309,9 @@ public sealed class DesktopPipeClient(
                     status.ScreenFrame,
                     status.ScreenSharingEnabled,
                     status.NeedsHelp,
-                    status.ScreenShareIntervalMilliseconds));
+                    status.ScreenShareIntervalMilliseconds,
+                    status.RemoteAssistSessionId,
+                    status.RemoteAssistActive));
             var nextStatus = status.ScreenSharingEnabled
                 ? TimeSpan.FromMilliseconds(status.ScreenShareIntervalMilliseconds)
                 : options.StatusInterval;
@@ -317,6 +324,7 @@ public sealed class DesktopPipeClient(
         StreamWriter writer,
         SemaphoreSlim writeGate,
         Func<CommandRequest, Task<DesktopCommandApplyResult>> commandHandler,
+        Func<RemoteAssistInput, Task> remoteInputHandler,
         Action<bool, Guid> serverConnectionHandler,
         CancellationToken cancellationToken)
     {
@@ -367,6 +375,14 @@ public sealed class DesktopPipeClient(
                         updateResult.RestartRequired));
                 }
 
+                continue;
+            }
+
+            if (string.Equals(kind, "remote-input", StringComparison.Ordinal))
+            {
+                var input = ClassroomJson.Deserialize<DesktopRemoteInputMessage>(json);
+                ProtocolValidation.ValidateRemoteAssistInput(input.Input);
+                await remoteInputHandler(input.Input);
                 continue;
             }
 
@@ -451,7 +467,9 @@ public sealed class DesktopPipeClient(
         ScreenFrame? ScreenFrame,
         bool ScreenSharingEnabled,
         bool NeedsHelp = false,
-        int ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds);
+        int ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds,
+        Guid? RemoteAssistSessionId = null,
+        bool RemoteAssistActive = false);
 
     private sealed record DesktopServerStatusMessage(
         string Kind,
@@ -495,6 +513,10 @@ public sealed class DesktopPipeClient(
         bool Success,
         string Code,
         string Message);
+
+    private sealed record DesktopRemoteInputMessage(
+        string Kind,
+        RemoteAssistInput Input);
 
     private sealed record ExitPinConnection(
         StreamWriter Writer,

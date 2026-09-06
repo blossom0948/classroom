@@ -205,7 +205,9 @@ public sealed class ClassroomServerClient(
                     status.PolicyApplied,
                     status.ScreenFrame,
                     status.ScreenSharingEnabled,
-                    status.NeedsHelp),
+                    status.NeedsHelp,
+                    status.RemoteAssistSessionId,
+                    status.RemoteAssistActive),
                 cancellationToken);
             var nextHeartbeat = status.ScreenSharingEnabled
                 ? TimeSpan.FromMilliseconds(status.ScreenShareIntervalMilliseconds)
@@ -244,6 +246,18 @@ public sealed class ClassroomServerClient(
                 if (pendingExitPinVerifications.TryGetValue(response.Payload.RequestId, out var completion))
                 {
                     completion.TrySetResult(response.Payload);
+                }
+
+                continue;
+            }
+
+            if (type == ProtocolConstants.RemoteAssistInput)
+            {
+                var inputEnvelope = ProtocolCodec.Deserialize<RemoteAssistInput>(json);
+                ProtocolValidation.ValidateRemoteAssistInput(inputEnvelope.Payload);
+                if (!await desktopBridge.SendRemoteAssistInputAsync(inputEnvelope.Payload, cancellationToken))
+                {
+                    logger.LogDebug("Dropped remote-assist input because Student Desktop is disconnected.");
                 }
 
                 continue;

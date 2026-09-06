@@ -16,6 +16,11 @@ public static class ProtocolConstants
     public const int ScreenShareMinimumIntervalMilliseconds = 750;
     public const int ScreenShareStandardIntervalMilliseconds = 1_000;
     public const int ScreenShareMaximumIntervalMilliseconds = 3_000;
+    public const int RemoteAssistScreenShareIntervalMilliseconds = 250;
+    public const int RemoteAssistMinimumDurationSeconds = 60;
+    public const int RemoteAssistMaximumDurationSeconds = 600;
+    public const int RemoteAssistConsentTimeoutSeconds = 45;
+    public const int MaxRemoteAssistInputsPerSecond = 30;
     public const int HeartbeatIntervalSeconds = 10;
 
     public const string DeviceEnrollmentRequest = "DEVICE_ENROLLMENT_REQUEST";
@@ -29,6 +34,7 @@ public static class ProtocolConstants
     public const string CommandRequest = "COMMAND_REQUEST";
     public const string CommandAck = "COMMAND_ACK";
     public const string CommandResult = "COMMAND_RESULT";
+    public const string RemoteAssistInput = "REMOTE_ASSIST_INPUT";
     public const string Error = "ERROR";
 
     public static bool IsKnownMessageType(string type) => type is
@@ -43,5 +49,6 @@ public static class ProtocolConstants
         or CommandRequest
         or CommandAck
         or CommandResult
+        or RemoteAssistInput
         or Error;
 }

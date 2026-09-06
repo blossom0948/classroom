@@ -12,6 +12,7 @@ var tests = new (string Name, Action Run)[]
     ("device token authentication rejects wrong tokens", DeviceAuthenticationIsBound),
     ("devices follow the server session without reinstalling", HeartbeatUpdatesStatus),
     ("commands are queued and ACK/result are audited", CommandsAreTracked),
+    ("remote assistance requires consent and orders input", RemoteAssistRequiresConsent),
     ("ending a session queues focus mode cleanup", SessionEndQueuesCleanup),
     ("revoked devices can no longer authenticate", RevokedDevicesAreRejected),
     ("teachers cannot access unassigned classes", TeacherScopeIsEnforced),
@@ -249,6 +250,72 @@ static void CommandsAreTracked()
     var status = fixture.Store.GetCommandStatus(fixture.TeacherId, fixture.ClassId, command.RequestId);
     Assert(status.Finished && status.CompletedCount == 1 && status.FailedCount == 0,
         "Teacher command status did not expose the completed result.");
+}
+
+static void RemoteAssistRequiresConsent()
+{
+    var fixture = CreateEnrolledFixture();
+    var session = fixture.Store.StartSession(fixture.TeacherId, fixture.ClassId, "정보");
+    Assert(fixture.Store.TryAuthenticateDevice(fixture.DeviceId, fixture.DeviceToken, out var identity) && identity is not null,
+        "Device authentication failed.");
+    Assert(fixture.Store.TryOpenConnection(identity!, Guid.Empty, out _, out var openCode, out var openMessage),
+        $"Device connection failed: {openCode} {openMessage}");
+    var heartbeat = new DeviceHeartbeat(
+        fixture.DeviceId,
+        Guid.Empty,
+        "0.1.0-dev",
+        DateTimeOffset.UtcNow,
+        null,
+        null,
+        "wifi",
+        true);
+    Assert(fixture.Store.RecordHeartbeat(identity!, heartbeat).Succeeded, "Online heartbeat was rejected.");
+
+    var requested = fixture.Store.RequestRemoteAssist(
+        fixture.TeacherId,
+        fixture.ClassId,
+        fixture.DeviceId,
+        120,
+        "김선생님");
+    Assert(requested.Succeeded && requested.Value is not null && requested.Value.State == "PENDING",
+        "Remote assistance did not begin in pending consent state.");
+    var consentCommand = fixture.Store.WaitForCommandAsync(fixture.DeviceId, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+    Assert(consentCommand.Kind == ClassroomCommandKind.RemoteAssistRequest
+        && consentCommand.RequiresAcknowledgement
+        && consentCommand.RemoteAssistSessionId == requested.Value!.RemoteAssistSessionId,
+        "Remote assistance consent command was not bound to the requested session.");
+
+    Assert(fixture.Store.RecordCommandAck(identity!, new CommandAck(
+        consentCommand.RequestId, fixture.DeviceId, true, null, DateTimeOffset.UtcNow)).Succeeded,
+        "Remote assistance ACK was not recorded.");
+    Assert(fixture.Store.RecordCommandResult(identity!, new CommandResult(
+        consentCommand.RequestId, fixture.DeviceId, true, "REMOTE_ASSIST_ACCEPTED", "Approved", DateTimeOffset.UtcNow)).Succeeded,
+        "Remote assistance approval was not recorded.");
+    var active = fixture.Store.GetRemoteAssistStatus(fixture.TeacherId, fixture.ClassId, requested.Value.RemoteAssistSessionId);
+    Assert(active.Succeeded && active.Value?.State == "ACTIVE", "Remote assistance did not become active after consent.");
+
+    var input = new RemoteAssistInput(
+        requested.Value.RemoteAssistSessionId,
+        1,
+        RemoteAssistInputKind.PointerMove,
+        X: 0.5,
+        Y: 0.5);
+    var acceptedInput = fixture.Store.QueueRemoteAssistInput(
+        fixture.TeacherId,
+        fixture.ClassId,
+        requested.Value.RemoteAssistSessionId,
+        input);
+    Assert(acceptedInput.Succeeded, "Remote input was not queued after consent.");
+    var delivered = fixture.Store.WaitForRemoteAssistInputAsync(fixture.DeviceId, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+    Assert(delivered.Sequence == 1 && delivered.RemoteAssistSessionId == requested.Value.RemoteAssistSessionId,
+        "Remote input was not delivered to the bound student device.");
+    Assert(fixture.Store.QueueRemoteAssistInput(fixture.TeacherId, fixture.ClassId, requested.Value.RemoteAssistSessionId, input).Code == "REMOTE_INPUT_REPLAYED",
+        "Remote input replay was accepted.");
+
+    var ended = fixture.Store.EndRemoteAssist(fixture.TeacherId, fixture.ClassId, requested.Value.RemoteAssistSessionId);
+    Assert(ended.Succeeded && ended.Value?.State == "ENDED", "Teacher could not end remote assistance.");
+    var endCommand = fixture.Store.WaitForCommandAsync(fixture.DeviceId, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+    Assert(endCommand.Kind == ClassroomCommandKind.RemoteAssistEnd, "Ending remote assistance did not notify the student desktop.");
 }
 
 static void SessionEndQueuesCleanup()

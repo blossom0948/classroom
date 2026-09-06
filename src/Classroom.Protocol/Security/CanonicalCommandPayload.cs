@@ -25,7 +25,10 @@ public static class CanonicalCommandPayload
             $"focusEnabled={command.FocusEnabled?.ToString().ToLowerInvariant() ?? "-"}",
             $"screenShareEnabled={command.ScreenShareEnabled?.ToString().ToLowerInvariant() ?? "-"}",
             $"screenShareIntervalMilliseconds={command.ScreenShareIntervalMilliseconds?.ToString() ?? "-"}",
-            $"focusDisplayMode={command.FocusDisplayMode?.ToString().ToUpperInvariant() ?? "-"}");
+            $"focusDisplayMode={command.FocusDisplayMode?.ToString().ToUpperInvariant() ?? "-"}",
+            $"remoteAssistSessionId={command.RemoteAssistSessionId?.ToString("D").ToLowerInvariant() ?? "-"}",
+            $"remoteAssistDurationSeconds={command.RemoteAssistDurationSeconds?.ToString() ?? "-"}",
+            $"remoteAssistTeacherDisplayName={Encode(command.RemoteAssistTeacherDisplayName)}");
     }
 
     private static string Encode(string? value) =>

@@ -44,7 +44,9 @@ public sealed record DeviceHeartbeat(
     bool PolicyApplied,
     ScreenFrame? ScreenFrame = null,
     bool ScreenSharingEnabled = false,
-    bool NeedsHelp = false);
+    bool NeedsHelp = false,
+    Guid? RemoteAssistSessionId = null,
+    bool RemoteAssistActive = false);
 
 /// <summary>
 /// A visible Student Desktop asks its already-authenticated local service to
@@ -89,4 +91,5 @@ public sealed record DeviceStatus(
     string? NetworkStatus,
     bool PolicyApplied,
     bool ScreenSharingAvailable,
-    bool NeedsHelp = false);
+    bool NeedsHelp = false,
+    RemoteAssistStatus? RemoteAssist = null);

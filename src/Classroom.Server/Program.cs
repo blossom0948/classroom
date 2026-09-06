@@ -939,6 +939,133 @@ app.MapGet("/api/classes/{classId:guid}/screens", (
     }
 });
 
+app.MapPost("/api/classes/{classId:guid}/devices/{deviceId:guid}/remote-assist", (
+    Guid classId,
+    Guid deviceId,
+    StartRemoteAssistRequest? request,
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database,
+    ClassroomStore store) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var teacherDisplayName = database.TryGetTeacher(teacherId, out var account) && account is not null
+        ? account.DisplayName
+        : serverOptions.BootstrapTeacherDisplayName;
+    try
+    {
+        var result = store.RequestRemoteAssist(teacherId, classId, deviceId, request?.DurationSeconds, teacherDisplayName);
+        return result.Succeeded
+            ? Results.Ok(result.Value)
+            : Results.Json(
+                new { code = result.Code, message = result.Message },
+                statusCode: result.Code is "TARGET_FORBIDDEN" or "FORBIDDEN"
+                    ? StatusCodes.Status403Forbidden
+                    : result.Code is "STUDENT_OFFLINE" or "SESSION_NOT_ACTIVE" or "REMOTE_ASSIST_ALREADY_OPEN"
+                        ? StatusCodes.Status409Conflict
+                        : StatusCodes.Status400BadRequest);
+    }
+    catch (ClassroomStoreException exception)
+    {
+        return Results.Json(
+            new { code = exception.Code, message = exception.Message },
+            statusCode: exception.Code == "FORBIDDEN" ? StatusCodes.Status403Forbidden : StatusCodes.Status400BadRequest);
+    }
+});
+
+app.MapGet("/api/classes/{classId:guid}/remote-assist/{remoteAssistSessionId:guid}", (
+    Guid classId,
+    Guid remoteAssistSessionId,
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database,
+    ClassroomStore store) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    try
+    {
+        var result = store.GetRemoteAssistStatus(teacherId, classId, remoteAssistSessionId);
+        return result.Succeeded
+            ? Results.Ok(result.Value)
+            : Results.Json(new { code = result.Code, message = result.Message }, statusCode: StatusCodes.Status404NotFound);
+    }
+    catch (ClassroomStoreException exception)
+    {
+        return Results.Json(
+            new { code = exception.Code, message = exception.Message },
+            statusCode: exception.Code == "FORBIDDEN" ? StatusCodes.Status403Forbidden : StatusCodes.Status404NotFound);
+    }
+});
+
+app.MapPost("/api/classes/{classId:guid}/remote-assist/{remoteAssistSessionId:guid}/input", (
+    Guid classId,
+    Guid remoteAssistSessionId,
+    RemoteAssistInput input,
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database,
+    ClassroomStore store) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    try
+    {
+        var result = store.QueueRemoteAssistInput(teacherId, classId, remoteAssistSessionId, input);
+        return result.Succeeded
+            ? Results.Ok(result.Value)
+            : Results.Json(
+                new { code = result.Code, message = result.Message },
+                statusCode: result.Code is "STUDENT_OFFLINE" or "SESSION_NOT_ACTIVE" or "REMOTE_ASSIST_NOT_ACTIVE" or "REMOTE_INPUT_REPLAYED"
+                    ? StatusCodes.Status409Conflict
+                    : result.Code == "REMOTE_INPUT_RATE_LIMITED" ? StatusCodes.Status429TooManyRequests : StatusCodes.Status400BadRequest);
+    }
+    catch (ClassroomStoreException exception)
+    {
+        return Results.Json(
+            new { code = exception.Code, message = exception.Message },
+            statusCode: exception.Code == "FORBIDDEN" ? StatusCodes.Status403Forbidden : StatusCodes.Status400BadRequest);
+    }
+});
+
+app.MapDelete("/api/classes/{classId:guid}/remote-assist/{remoteAssistSessionId:guid}", (
+    Guid classId,
+    Guid remoteAssistSessionId,
+    HttpContext context,
+    ServerOptions serverOptions,
+    ClassroomDatabase database,
+    ClassroomStore store) =>
+{
+    if (!TeacherAuthentication.TryGetTeacherId(context.Request, serverOptions, database, out var teacherId))
+    {
+        return Results.Unauthorized();
+    }
+
+    try
+    {
+        var result = store.EndRemoteAssist(teacherId, classId, remoteAssistSessionId);
+        return result.Succeeded
+            ? Results.Ok(result.Value)
+            : Results.Json(new { code = result.Code, message = result.Message }, statusCode: StatusCodes.Status404NotFound);
+    }
+    catch (ClassroomStoreException exception)
+    {
+        return Results.Json(
+            new { code = exception.Code, message = exception.Message },
+            statusCode: exception.Code == "FORBIDDEN" ? StatusCodes.Status403Forbidden : StatusCodes.Status404NotFound);
+    }
+});
+
 app.MapDelete("/api/classes/{classId:guid}/devices/{deviceId:guid}", (
     Guid classId,
     Guid deviceId,

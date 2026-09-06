@@ -17,7 +17,9 @@ public sealed record DesktopStatusData(
     ScreenFrame? ScreenFrame = null,
     bool ScreenSharingEnabled = false,
     bool NeedsHelp = false,
-    int ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds);
+    int ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds,
+    Guid? RemoteAssistSessionId = null,
+    bool RemoteAssistActive = false);
 
 public sealed class WindowsStudentStatusProvider
 {
@@ -25,13 +27,19 @@ public sealed class WindowsStudentStatusProvider
     private int screenSharingEnabled;
     private int helpRequested;
     private int screenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds;
+    private readonly object remoteAssistGate = new();
+    private Guid? remoteAssistSessionId;
+    private bool remoteAssistActive;
 
     public void SetPolicyApplied(bool applied) =>
         Interlocked.Exchange(ref policyApplied, applied ? 1 : 0);
 
-    public void SetScreenSharing(bool enabled, int? intervalMilliseconds = null)
+    public void SetScreenSharing(bool enabled, int? intervalMilliseconds = null, bool allowRemoteAssistRate = false)
     {
-        var effectiveInterval = enabled && intervalMilliseconds is >= ProtocolConstants.ScreenShareMinimumIntervalMilliseconds
+        var minimumInterval = allowRemoteAssistRate
+            ? ProtocolConstants.RemoteAssistScreenShareIntervalMilliseconds
+            : ProtocolConstants.ScreenShareMinimumIntervalMilliseconds;
+        var effectiveInterval = enabled && intervalMilliseconds is >= minimumInterval
             and <= ProtocolConstants.ScreenShareMaximumIntervalMilliseconds
             ? intervalMilliseconds.Value
             : ProtocolConstants.ScreenShareStandardIntervalMilliseconds;
@@ -42,9 +50,25 @@ public sealed class WindowsStudentStatusProvider
     public void SetHelpRequested(bool requested) =>
         Interlocked.Exchange(ref helpRequested, requested ? 1 : 0);
 
+    public void SetRemoteAssist(Guid? sessionId, bool active)
+    {
+        lock (remoteAssistGate)
+        {
+            remoteAssistSessionId = active ? sessionId : null;
+            remoteAssistActive = active && sessionId is { } id && id != Guid.Empty;
+        }
+    }
+
     public DesktopStatusData GetCurrent()
     {
         var sharing = Volatile.Read(ref screenSharingEnabled) == 1;
+        Guid? activeRemoteAssistSessionId;
+        bool activeRemoteAssist;
+        lock (remoteAssistGate)
+        {
+            activeRemoteAssistSessionId = remoteAssistSessionId;
+            activeRemoteAssist = remoteAssistActive;
+        }
         return new DesktopStatusData(
             GetForegroundActivity(),
             GetBatteryPercent(),
@@ -53,7 +77,9 @@ public sealed class WindowsStudentStatusProvider
             sharing ? CapturePrimaryScreen() : null,
             sharing,
             Volatile.Read(ref helpRequested) == 1,
-            Volatile.Read(ref screenShareIntervalMilliseconds));
+            Volatile.Read(ref screenShareIntervalMilliseconds),
+            activeRemoteAssistSessionId,
+            activeRemoteAssist);
     }
 
     private static ScreenFrame? CapturePrimaryScreen()

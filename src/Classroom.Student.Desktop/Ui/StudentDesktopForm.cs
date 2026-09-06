@@ -48,14 +48,24 @@ public sealed class StudentDesktopForm : Form
     private readonly Label deviceLabel;
     private readonly NotifyIcon trayIcon = new();
     private readonly System.Windows.Forms.Timer disconnectFailsafeTimer = new() { Interval = 60_000 };
+    private readonly System.Windows.Forms.Timer remoteAssistTimer = new() { Interval = 1_000 };
     private bool screenSharingActive;
+    private int screenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds;
     private bool approvedExit;
     private bool exitPromptOpen;
     private bool initialVisibilityHandled;
     private bool backgroundNoticeShown;
     private bool helpRequestAvailable;
     private bool helpRequested;
+    private bool serverConnected;
+    private Guid serverSessionId;
+    private long serverConnectionEpoch;
     private FocusOverlayForm? focusOverlay;
+    private RemoteAssistOverlayForm? remoteAssistOverlay;
+    private Guid? remoteAssistSessionId;
+    private DateTimeOffset remoteAssistExpiresAtUtc;
+    private bool remoteAssistScreenSharingWasActive;
+    private int remoteAssistPreviousScreenShareIntervalMilliseconds;
 
     public StudentDesktopForm(
         StudentDesktopOptions options,
@@ -179,6 +189,13 @@ public sealed class StudentDesktopForm : Form
             disconnectFailsafeTimer.Stop();
             ClearFocusMode();
         };
+        remoteAssistTimer.Tick += (_, _) =>
+        {
+            if (remoteAssistSessionId is not null && DateTimeOffset.UtcNow >= remoteAssistExpiresAtUtc)
+            {
+                EndRemoteAssist(restoreScreenSharing: true);
+            }
+        };
         FormClosing += (_, eventArgs) =>
         {
             if (eventArgs.CloseReason == CloseReason.UserClosing && !approvedExit)
@@ -190,6 +207,11 @@ public sealed class StudentDesktopForm : Form
         FormClosed += (_, _) =>
         {
             disconnectFailsafeTimer.Dispose();
+            remoteAssistTimer.Stop();
+            remoteAssistTimer.Dispose();
+            RemoteAssistInputInjector.ReleaseAll();
+            statusProvider.SetRemoteAssist(null, false);
+            remoteAssistOverlay?.Dismiss();
             trayIcon.Visible = false;
             trayIcon.Dispose();
             trayMenu.Dispose();
@@ -223,10 +245,14 @@ public sealed class StudentDesktopForm : Form
     {
         RunOnUiThread(() =>
         {
+            serverConnectionEpoch++;
+            serverConnected = connected;
+            serverSessionId = connected ? sessionId : Guid.Empty;
             if (connected)
             {
                 if (sessionId == Guid.Empty)
                 {
+                    EndRemoteAssist(restoreScreenSharing: false);
                     ApplyScreenSharingState(false);
                     SetHelpRequestAvailability(false, clearRequest: true);
                 }
@@ -247,6 +273,7 @@ public sealed class StudentDesktopForm : Form
             }
             else
             {
+                EndRemoteAssist(restoreScreenSharing: false);
                 ApplyScreenSharingState(false);
                 SetHelpRequestAvailability(false, clearRequest: false);
                 serverLabel.Text = "● Classroom 서버 재연결 중";
@@ -369,6 +396,10 @@ public sealed class StudentDesktopForm : Form
                     Task.FromResult(LaunchApprovedApp(command)),
                 ClassroomCommandKind.ScreenShare =>
                     Task.FromResult(SetScreenSharing(command)),
+                ClassroomCommandKind.RemoteAssistRequest =>
+                    RequestRemoteAssistAsync(command),
+                ClassroomCommandKind.RemoteAssistEnd =>
+                    Task.FromResult(EndRemoteAssistCommand(command)),
                 _ => Task.FromResult(new DesktopCommandApplyResult(false, "COMMAND_UNSUPPORTED", "Unsupported command."))
             };
         }
@@ -429,6 +460,10 @@ public sealed class StudentDesktopForm : Form
     private DesktopCommandApplyResult SetScreenSharing(CommandRequest command)
     {
         var enabled = command.ScreenShareEnabled is true;
+        if (!enabled && remoteAssistSessionId is not null)
+        {
+            EndRemoteAssist(restoreScreenSharing: false);
+        }
         var intervalMilliseconds = command.ScreenShareIntervalMilliseconds
             ?? ProtocolConstants.ScreenShareStandardIntervalMilliseconds;
         ApplyScreenSharingState(enabled, intervalMilliseconds);
@@ -445,18 +480,160 @@ public sealed class StudentDesktopForm : Form
 
     private void ApplyScreenSharingState(bool enabled, int? intervalMilliseconds = null)
     {
+        var remoteAssistActive = remoteAssistSessionId is not null;
+        var minimumInterval = remoteAssistActive
+            ? ProtocolConstants.RemoteAssistScreenShareIntervalMilliseconds
+            : ProtocolConstants.ScreenShareMinimumIntervalMilliseconds;
+        var requestedInterval = remoteAssistActive
+            ? ProtocolConstants.RemoteAssistScreenShareIntervalMilliseconds
+            : intervalMilliseconds ?? ProtocolConstants.ScreenShareStandardIntervalMilliseconds;
+        screenShareIntervalMilliseconds = enabled
+            ? Math.Clamp(requestedInterval, minimumInterval, ProtocolConstants.ScreenShareMaximumIntervalMilliseconds)
+            : ProtocolConstants.ScreenShareStandardIntervalMilliseconds;
         screenSharingActive = enabled;
-        statusProvider.SetScreenSharing(enabled, intervalMilliseconds);
+        statusProvider.SetScreenSharing(enabled, screenShareIntervalMilliseconds, remoteAssistActive);
         screenSharingLabel.Visible = true;
         screenSharingLabel.Text = enabled
-            ? "● 화면 공유 중 · 최대 720p로 자동 조정됩니다"
+            ? remoteAssistActive
+                ? "● 원격 지원 중 · 화면이 선생님께 공유됩니다"
+                : "● 화면 공유 중 · 최대 720p로 자동 조정됩니다"
             : "● Windows 시작 시 자동 연결 · 화면 공유 대기";
         screenSharingLabel.ForeColor = enabled
             ? Color.FromArgb(188, 42, 52)
             : Color.FromArgb(62, 92, 165);
         trayIcon.Text = enabled
-            ? "Classroom Student · 화면 공유 중"
+            ? remoteAssistActive
+                ? "Classroom Student · 원격 지원 중"
+                : "Classroom Student · 화면 공유 중"
             : "Classroom Student · 학교 관리 활성화";
+    }
+
+    private async Task<DesktopCommandApplyResult> RequestRemoteAssistAsync(CommandRequest command)
+    {
+        if (command.RemoteAssistSessionId is not { } requestSessionId
+            || command.RemoteAssistDurationSeconds is not { } durationSeconds
+            || string.IsNullOrWhiteSpace(command.RemoteAssistTeacherDisplayName))
+        {
+            return new DesktopCommandApplyResult(false, "REMOTE_ASSIST_INVALID", "Remote assistance request is missing required metadata.");
+        }
+
+        if (remoteAssistSessionId is not null)
+        {
+            return new DesktopCommandApplyResult(false, "REMOTE_ASSIST_ALREADY_ACTIVE", "A remote assistance session is already active.");
+        }
+
+        var connectionEpoch = serverConnectionEpoch;
+        using var consent = new RemoteAssistConsentForm(command.RemoteAssistTeacherDisplayName, durationSeconds);
+        if (consent.ShowDialog(this) != DialogResult.OK)
+        {
+            return new DesktopCommandApplyResult(false, "REMOTE_ASSIST_DECLINED", "The student declined remote assistance.");
+        }
+
+        if (!serverConnected
+            || serverSessionId != command.SessionId
+            || serverConnectionEpoch != connectionEpoch)
+        {
+            return new DesktopCommandApplyResult(false, "REMOTE_ASSIST_UNAVAILABLE", "The Classroom session is no longer connected.");
+        }
+
+        remoteAssistSessionId = requestSessionId;
+        remoteAssistExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(durationSeconds);
+        remoteAssistScreenSharingWasActive = screenSharingActive;
+        remoteAssistPreviousScreenShareIntervalMilliseconds = screenShareIntervalMilliseconds;
+        statusProvider.SetRemoteAssist(requestSessionId, true);
+        ApplyScreenSharingState(true, ProtocolConstants.RemoteAssistScreenShareIntervalMilliseconds);
+        remoteAssistOverlay = new RemoteAssistOverlayForm(
+            command.RemoteAssistTeacherDisplayName,
+            remoteAssistExpiresAtUtc);
+        remoteAssistOverlay.StopRequested += (_, _) => EndRemoteAssist(restoreScreenSharing: true);
+        remoteAssistOverlay.Show(this);
+        remoteAssistTimer.Start();
+        return new DesktopCommandApplyResult(true, "REMOTE_ASSIST_ACCEPTED", "The student approved remote assistance.");
+    }
+
+    private DesktopCommandApplyResult EndRemoteAssistCommand(CommandRequest command)
+    {
+        if (command.RemoteAssistSessionId is not { } requestSessionId)
+        {
+            return new DesktopCommandApplyResult(false, "REMOTE_ASSIST_INVALID", "Remote assistance session ID is missing.");
+        }
+
+        if (remoteAssistSessionId is { } activeSessionId && activeSessionId != requestSessionId)
+        {
+            return new DesktopCommandApplyResult(false, "REMOTE_ASSIST_MISMATCH", "Remote assistance session does not match the active session.");
+        }
+
+        EndRemoteAssist(restoreScreenSharing: true);
+        return new DesktopCommandApplyResult(true, "REMOTE_ASSIST_ENDED", "Remote assistance ended.");
+    }
+
+    private void EndRemoteAssist(bool restoreScreenSharing)
+    {
+        if (remoteAssistSessionId is null)
+        {
+            return;
+        }
+
+        var restoreSharing = remoteAssistScreenSharingWasActive;
+        var restoreInterval = remoteAssistPreviousScreenShareIntervalMilliseconds;
+        remoteAssistTimer.Stop();
+        remoteAssistSessionId = null;
+        remoteAssistExpiresAtUtc = DateTimeOffset.MinValue;
+        remoteAssistScreenSharingWasActive = false;
+        remoteAssistPreviousScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds;
+        RemoteAssistInputInjector.ReleaseAll();
+        statusProvider.SetRemoteAssist(null, false);
+        remoteAssistOverlay?.Dismiss();
+        remoteAssistOverlay = null;
+        if (restoreScreenSharing)
+        {
+            ApplyScreenSharingState(restoreSharing, restoreInterval);
+        }
+    }
+
+    public Task ApplyRemoteAssistInputAsync(RemoteAssistInput input)
+    {
+        if (IsDisposed)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (!InvokeRequired)
+        {
+            ApplyRemoteAssistInputOnUi(input);
+            return Task.CompletedTask;
+        }
+
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        BeginInvoke(new Action(() =>
+        {
+            try
+            {
+                ApplyRemoteAssistInputOnUi(input);
+                completion.TrySetResult(true);
+            }
+            catch (Exception exception)
+            {
+                completion.TrySetException(exception);
+            }
+        }));
+        return completion.Task;
+    }
+
+    private void ApplyRemoteAssistInputOnUi(RemoteAssistInput input)
+    {
+        if (remoteAssistSessionId is not { } activeSessionId || activeSessionId != input.RemoteAssistSessionId)
+        {
+            return;
+        }
+
+        if (DateTimeOffset.UtcNow >= remoteAssistExpiresAtUtc)
+        {
+            EndRemoteAssist(restoreScreenSharing: true);
+            return;
+        }
+
+        RemoteAssistInputInjector.TryApply(input);
     }
 
     private void ShowMainWindow()

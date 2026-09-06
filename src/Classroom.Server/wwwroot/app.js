@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.37";
+  const APP_VERSION = "0.5.38";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -100,6 +100,7 @@
     lessonFlow: null,
     lessonFlowClassId: null,
     lessonTimer: null,
+    remoteControl: null,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -188,6 +189,7 @@
     state.detailDeviceId = null;
     state.detailView = "status";
     state.screenFrames.clear();
+    state.remoteControl = null;
     landingView.hidden = false;
     loginView.hidden = true;
     appView.hidden = true;
@@ -506,6 +508,16 @@
         reason: displayText(student.activityRisk.reason, "")
       }
       : null;
+    const remote = student.remoteAssist && typeof student.remoteAssist === "object"
+      ? {
+        remoteAssistSessionId: displayText(student.remoteAssist.remoteAssistSessionId, ""),
+        state: displayText(student.remoteAssist.state, ""),
+        requestedAtUtc: displayText(student.remoteAssist.requestedAtUtc, "") || null,
+        expiresAtUtc: displayText(student.remoteAssist.expiresAtUtc, "") || null,
+        teacherDisplayName: displayText(student.remoteAssist.teacherDisplayName, "선생님"),
+        endReason: displayText(student.remoteAssist.endReason, "") || null
+      }
+      : null;
     return {
       ...student,
       deviceId: student.deviceId,
@@ -526,7 +538,8 @@
       grade: asInteger(student.grade),
       classNumber: asInteger(student.classNumber),
       studentNumber: asInteger(student.studentNumber),
-      lastHeartbeatUtc: displayText(student.lastHeartbeatUtc, "") || null
+      lastHeartbeatUtc: displayText(student.lastHeartbeatUtc, "") || null,
+      remoteAssist: remote?.remoteAssistSessionId ? remote : null
     };
   }
 
@@ -670,6 +683,14 @@
     state.students = Array.isArray(students)
       ? students.map(normalizeStudent).filter(Boolean)
       : [];
+    if (state.remoteControl) {
+      const remoteStudent = state.students.find((student) => student.deviceId === state.remoteControl.deviceId);
+      if (!remoteStudent?.remoteAssist
+        || remoteStudent.remoteAssist.remoteAssistSessionId !== state.remoteControl.remoteAssistSessionId
+        || remoteStudent.remoteAssist.state !== "ACTIVE") {
+        stopRemoteControl("원격 지원 연결이 종료되었습니다.");
+      }
+    }
     const currentIds = new Set(state.students.map((student) => student.deviceId));
     state.selectedDeviceIds = new Set(
       [...state.selectedDeviceIds].filter((deviceId) => currentIds.has(deviceId))
@@ -1008,6 +1029,7 @@
   }
 
   function monitorRefreshIntervalMs(targetCount = state.screenShareTargetIds?.length || 0) {
+    if (state.remoteControl?.enabled) return 250;
     // A classroom wall stays stable at one second once it reaches a typical
     // full class. Small selections get a visibly faster, 0.75-second update.
     return targetCount > 12 ? 1_000 : 750;
@@ -1145,29 +1167,195 @@
     const statusRows = `<div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>학급 / 번호</span><strong>${student.grade ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번` : "학급 정보 없음"}</strong></div><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>수업 신호</span><strong>${escapeHtml(attention?.label || "정상")}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>현재 창</span><strong>${escapeHtml(activity?.windowTitle || "창 정보 미연결")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "AC 전원 또는 정보 없음" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 연결</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div>`;
     const deviceRows = `<div class="detail-section"><h3>학생 앱</h3><div class="detail-row"><span>등록 상태</span><strong>${student.agentVersion && student.agentVersion !== "확인 필요" ? `연결된 설치 앱 · v${escapeHtml(student.agentVersion)}` : "설치 상태 확인 중"}</strong></div><div class="detail-row"><span>Windows 시작</span><strong>학생 설치 앱에서 자동 연결 설정</strong></div><div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div></div>`;
     const header = `<div class="eyebrow">STUDENT DEVICE</div><h2 class="detail-title">${escapeHtml(student.studentDisplayName)}</h2><div class="detail-status"><span class="status-dot ${detailStatusClass}">${detailStatusText}</span></div>`;
+    const remote = student.remoteAssist;
+    const remoteCallout = remote
+      ? `<div class="remote-assist-callout ${remote.state === "ACTIVE" ? "active" : "pending"}"><div><strong>${remote.state === "ACTIVE" ? "원격 지원 연결됨" : "학생 동의 대기 중"}</strong><span>${escapeHtml(remote.teacherDisplayName)} · ${remote.state === "ACTIVE" ? `${formatTime(remote.expiresAtUtc)}까지` : "학생 PC에 허용 창이 표시되었습니다."}</span></div><span class="remote-assist-chip">${remote.state === "ACTIVE" ? "허용됨" : "대기"}</span></div>`
+      : "";
+
+    const remoteActions = state.teacher?.isGuest || !student.online
+      ? ""
+      : remote?.state === "ACTIVE"
+        ? `<button id="detail-remote-toggle" class="remote-control-button${state.remoteControl?.enabled && state.remoteControl.deviceId === student.deviceId ? " active" : ""}" type="button">${state.remoteControl?.enabled && state.remoteControl.deviceId === student.deviceId ? "원격 제어 중지" : "원격 제어 시작"}</button><button id="detail-remote-end" class="remote-end-button" type="button">원격 지원 종료</button>`
+        : remote?.state === "PENDING"
+          ? '<button id="detail-remote-end" class="remote-end-button" type="button">요청 취소</button>'
+          : '<button id="detail-remote-request" class="remote-request-button" type="button">원격 지원 요청</button>';
 
     if (state.detailView === "screen") {
       const frame = state.screenFrames.get(student.deviceId);
       const image = isUsableScreenFrame(frame)
         ? `<img src="data:image/jpeg;base64,${frame.screenFrame.base64Data}" alt="${escapeHtml(student.studentDisplayName)} 학생 화면">`
         : '<div class="screen-frame-empty">학생 화면을 불러오는 중입니다…</div>';
-      $("detail-content").innerHTML = `<div class="screen-detail-layout"><section class="detail-screen-column"><div class="screen-detail-caption"><span class="eyebrow">LIVE STUDENT SCREEN</span><strong>${escapeHtml(student.studentDisplayName)} 학생 화면</strong></div><section id="detail-screen-stage" class="detail-screen-stage"><div class="detail-screen-toolbar"><span class="screen-live-dot">● 화면 공유 중</span><span class="muted small">${screenFrameMeta(frame)} · ${monitorRefreshIntervalMs()}ms 갱신</span></div><div class="detail-screen-frame"${screenFrameStyle(frame)}>${image}</div></section></section><aside class="detail-screen-inspector">${header}${riskMarkup}${statusRows}${deviceRows}<div class="detail-section detail-screen-actions"><button id="detail-screen-fullscreen" class="primary wide" type="button">전체 화면</button><button id="detail-screen-stop" class="danger-action wide" type="button">화면 공유 종료</button></div></aside></div>`;
+      const remoteSurfaceClass = remote?.state === "ACTIVE" ? " remote-surface-active" : "";
+      $("detail-content").innerHTML = `<div class="screen-detail-layout"><section class="detail-screen-column"><div class="screen-detail-caption"><span class="eyebrow">LIVE STUDENT SCREEN</span><strong>${escapeHtml(student.studentDisplayName)} 학생 화면</strong></div>${remoteCallout}<section id="detail-screen-stage" class="detail-screen-stage"><div class="detail-screen-toolbar"><span class="screen-live-dot">● 화면 공유 중</span><span class="muted small">${screenFrameMeta(frame)} · ${monitorRefreshIntervalMs()}ms 갱신</span></div><div id="detail-remote-surface" class="detail-screen-frame${remoteSurfaceClass}"${screenFrameStyle(frame)} tabindex="0" aria-label="${escapeHtml(student.studentDisplayName)} 학생 화면 원격 제어 영역">${image}</div></section></section><aside class="detail-screen-inspector">${header}${riskMarkup}${remoteCallout}${statusRows}${deviceRows}<div class="detail-section detail-screen-actions">${remoteActions}<button id="detail-screen-fullscreen" class="primary wide" type="button">전체 화면</button><button id="detail-screen-stop" class="danger-action wide" type="button">화면 공유 종료</button></div></aside></div>`;
       $("detail-screen-fullscreen").addEventListener("click", () => openDetailScreenFullscreen().catch(() => showToast("전체 화면을 사용할 수 없습니다.")));
       $("detail-screen-stop").addEventListener("click", () => stopScreenSharing().catch((error) => showToast(error.message)));
+      bindRemoteDetailActions(student);
+      bindRemoteSurface($("detail-remote-surface"), student);
       return;
     }
 
     const detailActions = state.teacher?.isGuest
       ? '<div class="detail-section"><div class="privacy-note guest-readonly-note">게스트 계정은 수업 현황과 학생 활동을 읽기 전용으로 확인합니다.</div></div>'
-      : '<div class="detail-section stack"><button class="primary wide" id="detail-screen-button">이 학생 화면 보기</button><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>';
-    $("detail-content").innerHTML = `${header}${riskMarkup}${statusRows}${deviceRows}${detailActions}`;
+      : `<div class="detail-section stack">${remoteCallout}${remoteActions}<button class="primary wide" id="detail-screen-button">이 학생 화면 보기</button><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>`;
+    $("detail-content").innerHTML = `${header}${riskMarkup}${remoteCallout}${statusRows}${deviceRows}${detailActions}`;
     if (state.teacher?.isGuest) return;
     $("detail-screen-button").addEventListener("click", () => openStudentScreen(student.deviceId).catch((error) => showToast(error.message)));
     $("detail-message-button").addEventListener("click", () => openCommandDialog("message", [student.deviceId]));
     $("detail-revoke-button").addEventListener("click", () => revokeDevice(student).catch((error) => showToast(error.message)));
+    bindRemoteDetailActions(student);
+  }
+
+  function bindRemoteDetailActions(student) {
+    $("detail-remote-request")?.addEventListener("click", () => requestRemoteAssist(student).catch((error) => showToast(error.message)));
+    $("detail-remote-end")?.addEventListener("click", () => endRemoteAssist(student).catch((error) => showToast(error.message)));
+    $("detail-remote-toggle")?.addEventListener("click", () => toggleRemoteControl(student).catch((error) => showToast(error.message)));
+  }
+
+  async function requestRemoteAssist(student) {
+    if (!state.session) throw new Error("먼저 수업을 시작하세요.");
+    if (!student.online) throw new Error("온라인인 학생 PC만 원격 지원할 수 있습니다.");
+    if (!await askConfirmation("원격 지원 요청", `${student.studentDisplayName} 학생 PC에 원격 지원 허용 창을 띄울까요? 학생이 직접 허용해야 연결됩니다.`, "요청 보내기")) return;
+    await api(`/api/classes/${state.classId}/devices/${student.deviceId}/remote-assist`, { method: "POST", body: { durationSeconds: 600 } });
+    showToast(`${student.studentDisplayName} 학생에게 허용 요청을 보냈습니다.`);
+    await refreshClass();
+  }
+
+  async function endRemoteAssist(student) {
+    const remote = student.remoteAssist;
+    if (!remote?.remoteAssistSessionId) return;
+    const label = remote.state === "PENDING" ? "원격 지원 요청을 취소할까요?" : "학생 PC 원격 지원을 종료할까요?";
+    if (!await askConfirmation(remote.state === "PENDING" ? "요청 취소" : "원격 지원 종료", label, remote.state === "PENDING" ? "요청 취소" : "지원 종료")) return;
+    stopRemoteControl();
+    await api(`/api/classes/${state.classId}/remote-assist/${remote.remoteAssistSessionId}`, { method: "DELETE" });
+    showToast("원격 지원을 종료했습니다.");
+    await refreshClass();
+  }
+
+  async function toggleRemoteControl(student) {
+    const remote = student.remoteAssist;
+    if (!remote || remote.state !== "ACTIVE") throw new Error("학생이 먼저 원격 지원을 허용해야 합니다.");
+    if (state.remoteControl?.enabled && state.remoteControl.deviceId === student.deviceId) {
+      stopRemoteControl();
+      renderDetail();
+      return;
+    }
+    if (state.remoteControl) stopRemoteControl();
+    if (!await askConfirmation("원격 제어 시작", "학생 화면에서 마우스와 허용된 키보드 입력을 보낼까요? 학생 화면에 원격 지원 표시가 계속 나타납니다.", "제어 시작")) return;
+    state.remoteControl = {
+      enabled: true,
+      deviceId: student.deviceId,
+      remoteAssistSessionId: remote.remoteAssistSessionId,
+      sequence: 0,
+      sendChain: Promise.resolve(),
+      lastPointerMoveAt: 0,
+      pressedKeys: new Set(),
+      pressedButtons: new Set()
+    };
+    try {
+      await openStudentScreen(student.deviceId);
+    } catch (error) {
+      stopRemoteControl();
+      throw error;
+    }
+    showToast("원격 제어가 시작되었습니다. 화면을 클릭해 입력을 보내세요.");
+    renderDetail();
+  }
+
+  function stopRemoteControl(message = "") {
+    const control = state.remoteControl;
+    if (!control) return;
+    for (const keyCode of control.pressedKeys || []) queueRemoteInput(control, { kind: "key", keyCode, isDown: false });
+    for (const button of control.pressedButtons || []) queueRemoteInput(control, { kind: "pointerButton", x: 0.5, y: 0.5, button, isDown: false });
+    state.remoteControl = null;
+    if (message) showToast(message);
+  }
+
+  function remotePoint(event, surface) {
+    const rect = surface.getBoundingClientRect();
+    if (!rect.width || !rect.height) return { x: 0.5, y: 0.5 };
+    return { x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)), y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)) };
+  }
+
+  function safeRemoteKeyCode(code) {
+    return /^(Key[A-Z]|Digit[0-9]|F(?:[1-9]|1[0-2])|Backspace|Tab|Enter|ShiftLeft|ShiftRight|ControlLeft|ControlRight|CapsLock|Escape|Space|PageUp|PageDown|End|Home|ArrowLeft|ArrowUp|ArrowRight|ArrowDown|Insert|Delete|Semicolon|Equal|Comma|Minus|Period|Slash|Backquote|BracketLeft|Backslash|BracketRight|Quote)$/.test(code || "");
+  }
+
+  function queueRemoteInput(control, input) {
+    if (!control || !control.remoteAssistSessionId) return;
+    const payload = { remoteAssistSessionId: control.remoteAssistSessionId, sequence: ++control.sequence, ...input };
+    control.sendChain = control.sendChain
+      .catch(() => {})
+      .then(() => api(`/api/classes/${state.classId}/remote-assist/${control.remoteAssistSessionId}/input`, { method: "POST", body: payload }))
+      .catch((error) => {
+        if (state.remoteControl === control) stopRemoteControl("원격 입력 연결이 종료되었습니다.");
+        throw error;
+      });
+  }
+
+  function bindRemoteSurface(surface, student) {
+    if (!surface || state.teacher?.isGuest || student.remoteAssist?.state !== "ACTIVE") return;
+    surface.addEventListener("pointermove", (event) => {
+      const control = state.remoteControl;
+      if (!control?.enabled || control.deviceId !== student.deviceId) return;
+      const now = performance.now();
+      if (now - control.lastPointerMoveAt < 45) return;
+      control.lastPointerMoveAt = now;
+      queueRemoteInput(control, { kind: "pointerMove", ...remotePoint(event, surface) });
+    });
+    surface.addEventListener("pointerdown", (event) => {
+      const control = state.remoteControl;
+      if (!control?.enabled || control.deviceId !== student.deviceId) return;
+      const button = ({ 0: "left", 1: "middle", 2: "right" })[event.button];
+      if (!button) return;
+      event.preventDefault();
+      surface.focus();
+      surface.setPointerCapture?.(event.pointerId);
+      control.pressedButtons.add(button);
+      queueRemoteInput(control, { kind: "pointerButton", ...remotePoint(event, surface), button, isDown: true });
+    });
+    surface.addEventListener("pointerup", (event) => {
+      const control = state.remoteControl;
+      if (!control?.enabled || control.deviceId !== student.deviceId) return;
+      const button = ({ 0: "left", 1: "middle", 2: "right" })[event.button];
+      if (!button) return;
+      event.preventDefault();
+      control.pressedButtons.delete(button);
+      queueRemoteInput(control, { kind: "pointerButton", ...remotePoint(event, surface), button, isDown: false });
+    });
+    surface.addEventListener("pointercancel", () => {
+      const control = state.remoteControl;
+      if (!control?.enabled || control.deviceId !== student.deviceId) return;
+      for (const button of control.pressedButtons) {
+        control.pressedButtons.delete(button);
+        queueRemoteInput(control, { kind: "pointerButton", x: 0.5, y: 0.5, button, isDown: false });
+      }
+    });
+    surface.addEventListener("wheel", (event) => {
+      const control = state.remoteControl;
+      if (!control?.enabled || control.deviceId !== student.deviceId) return;
+      event.preventDefault();
+      const wheelDelta = Math.max(-1200, Math.min(1200, Math.round(-event.deltaY)));
+      if (wheelDelta) queueRemoteInput(control, { kind: "pointerWheel", ...remotePoint(event, surface), wheelDelta });
+    }, { passive: false });
+    surface.addEventListener("keydown", (event) => {
+      const control = state.remoteControl;
+      if (!control?.enabled || control.deviceId !== student.deviceId || event.repeat || !safeRemoteKeyCode(event.code)) return;
+      event.preventDefault();
+      if (control.pressedKeys.has(event.code)) return;
+      control.pressedKeys.add(event.code);
+      queueRemoteInput(control, { kind: "key", keyCode: event.code, isDown: true });
+    });
+    surface.addEventListener("keyup", (event) => {
+      const control = state.remoteControl;
+      if (!control?.enabled || control.deviceId !== student.deviceId || !safeRemoteKeyCode(event.code)) return;
+      event.preventDefault();
+      control.pressedKeys.delete(event.code);
+      queueRemoteInput(control, { kind: "key", keyCode: event.code, isDown: false });
+    });
   }
 
   async function closeDetail() {
+    stopRemoteControl();
     $("detail-pane").hidden = true;
     $("detail-pane").classList.remove("screen-mode");
     state.detailView = "status";

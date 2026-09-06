@@ -21,6 +21,11 @@ const PRIVACY_VERSION = "2026-08-30";
 const MAX_MESSAGE_BYTES = 128 * 1024;
 const MAX_COMMAND_TARGETS = 30;
 const MAX_ROSTER_ROWS = 100;
+const REMOTE_ASSIST_MIN_DURATION_SECONDS = 60;
+const REMOTE_ASSIST_MAX_DURATION_SECONDS = 600;
+const REMOTE_ASSIST_CONSENT_TIMEOUT_MS = 45 * 1000;
+const REMOTE_ASSIST_MAX_INPUTS_PER_SECOND = 30;
+const EMPTY_SESSION_ID = "00000000-0000-0000-0000-000000000000";
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PUBLIC_DOWNLOADS = Object.freeze({
   "/downloads/student-setup": {
@@ -269,6 +274,25 @@ export class ClassroomState {
       result TEXT NOT NULL,
       reason TEXT
     )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS RemoteAssistSessions (
+      remote_assist_session_id TEXT PRIMARY KEY,
+      school_id TEXT NOT NULL,
+      class_id TEXT NOT NULL,
+      class_session_id TEXT NOT NULL,
+      teacher_id TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      student_id TEXT NOT NULL,
+      teacher_display_name TEXT NOT NULL,
+      duration_seconds INTEGER NOT NULL,
+      requested_at_utc TEXT NOT NULL,
+      expires_at_utc TEXT NOT NULL,
+      state TEXT NOT NULL,
+      end_reason TEXT,
+      request_command_id TEXT NOT NULL UNIQUE,
+      last_input_sequence INTEGER NOT NULL DEFAULT 0,
+      input_window_started_at_ms INTEGER NOT NULL DEFAULT 0,
+      input_count INTEGER NOT NULL DEFAULT 0
+    )`);
     this.exec(`CREATE TABLE IF NOT EXISTS RateLimits (
       rate_key TEXT PRIMARY KEY,
       attempt_count INTEGER NOT NULL,
@@ -307,6 +331,9 @@ export class ClassroomState {
     this.exec("CREATE INDEX IF NOT EXISTS idx_guest_sessions_school ON GuestSessions(school_id, expires_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_audit_class ON AuditEvents(class_id, timestamp_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_student_admin_school ON StudentAdminGrants(school_id, active)");
+    this.exec("CREATE INDEX IF NOT EXISTS idx_remote_assist_class ON RemoteAssistSessions(class_id, requested_at_utc)");
+    this.exec("CREATE INDEX IF NOT EXISTS idx_remote_assist_device ON RemoteAssistSessions(device_id, state)");
+    this.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_remote_assist_open_device ON RemoteAssistSessions(device_id) WHERE state IN ('PENDING', 'ACTIVE')");
 
     // Existing Durable Object databases predate school and roster metadata.
     // Additive migrations keep already-enrolled devices and accounts intact.
@@ -413,6 +440,13 @@ export class ClassroomState {
       if (studentsMatch && request.method === "GET") return this.getStudents(request, studentsMatch[1], cors);
       const screensMatch = path.match(/^\/api\/classes\/([^/]+)\/screens$/);
       if (screensMatch && request.method === "GET") return this.getScreens(request, screensMatch[1], cors);
+      const remoteAssistRequestMatch = path.match(/^\/api\/classes\/([^/]+)\/devices\/([^/]+)\/remote-assist$/);
+      if (remoteAssistRequestMatch && request.method === "POST") return this.requestRemoteAssist(request, remoteAssistRequestMatch[1], remoteAssistRequestMatch[2], cors);
+      const remoteAssistInputMatch = path.match(/^\/api\/classes\/([^/]+)\/remote-assist\/([^/]+)\/input$/);
+      if (remoteAssistInputMatch && request.method === "POST") return this.queueRemoteAssistInput(request, remoteAssistInputMatch[1], remoteAssistInputMatch[2], cors);
+      const remoteAssistSessionMatch = path.match(/^\/api\/classes\/([^/]+)\/remote-assist\/([^/]+)$/);
+      if (remoteAssistSessionMatch && request.method === "GET") return this.getRemoteAssistStatus(request, remoteAssistSessionMatch[1], remoteAssistSessionMatch[2], cors);
+      if (remoteAssistSessionMatch && request.method === "DELETE") return this.endRemoteAssist(request, remoteAssistSessionMatch[1], remoteAssistSessionMatch[2], cors);
       const revokeMatch = path.match(/^\/api\/classes\/([^/]+)\/devices\/([^/]+)$/);
       if (revokeMatch && request.method === "DELETE") return this.revokeDevice(request, revokeMatch[1], revokeMatch[2], cors);
       const commandMatch = path.match(/^\/api\/classes\/([^/]+)\/commands$/);
@@ -852,6 +886,7 @@ export class ClassroomState {
     const session = this.one("SELECT * FROM ClassSessions WHERE session_id = ? AND class_id = ? AND ended_at_utc IS NULL", sessionId, classId);
     if (!session) return responseError("SESSION_NOT_FOUND", "진행 중인 수업을 찾지 못했습니다.", 404, cors);
     const now = isoNow();
+    this.endRemoteAssistForClass(classId, "CLASS_ENDED");
     this.exec("UPDATE ClassSessions SET ended_at_utc = ? WHERE session_id = ?", now, sessionId);
     this.exec("UPDATE Devices SET policy_applied = 0, needs_help = 0, active_session_id = NULL WHERE class_id = ?", classId);
     for (const device of this.all("SELECT device_id FROM Devices WHERE class_id = ?", classId)) this.screenFrames.delete(device.device_id);
@@ -865,10 +900,14 @@ export class ClassroomState {
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     this.deduplicateActiveDevices();
+    this.expireRemoteAssistSessions();
     const active = this.one("SELECT session_id FROM ClassSessions WHERE class_id = ? AND ended_at_utc IS NULL ORDER BY started_at_utc DESC LIMIT 1", classId);
     const now = Date.now();
     const devices = this.all("SELECT * FROM Devices WHERE class_id = ? AND revoked_at_utc IS NULL ORDER BY COALESCE(student_number, 999), student_display_name COLLATE NOCASE, computer_name COLLATE NOCASE", classId);
-    return responseJson(devices.map((device) => serializeDevice(device, active?.session_id || null, now)), 200, cors);
+    return responseJson(devices.map((device) => {
+      const remoteAssist = this.one("SELECT * FROM RemoteAssistSessions WHERE device_id = ? AND state IN ('PENDING', 'ACTIVE') ORDER BY requested_at_utc DESC LIMIT 1", device.device_id);
+      return serializeDevice(device, active?.session_id || null, now, remoteAssist);
+    }), 200, cors);
   }
 
   async getScreens(request, classId, cors) {
@@ -898,6 +937,121 @@ export class ClassroomState {
     return responseJson(screens, 200, cors);
   }
 
+  async requestRemoteAssist(request, classId, deviceId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 원격 지원을 사용할 수 없습니다.", 403, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    if (!validId(deviceId)) return responseError("DEVICE_NOT_FOUND", "학생 장치를 찾지 못했습니다.", 404, cors);
+
+    const activeSession = this.activeSessionForClass(classId);
+    if (!activeSession) return responseError("SESSION_NOT_ACTIVE", "수업을 시작한 후 원격 지원을 요청할 수 있습니다.", 409, cors);
+    const body = await readJson(request);
+    const durationSeconds = numberInRange(body?.durationSeconds, REMOTE_ASSIST_MIN_DURATION_SECONDS, REMOTE_ASSIST_MAX_DURATION_SECONDS)
+      || REMOTE_ASSIST_MAX_DURATION_SECONDS;
+    const device = this.one("SELECT * FROM Devices WHERE device_id = ? AND class_id = ? AND revoked_at_utc IS NULL", deviceId, classId);
+    if (!device) return responseError("TARGET_FORBIDDEN", "선택한 학생 장치에 접근할 수 없습니다.", 403, cors);
+    this.expireRemoteAssistSessions();
+    if (!this.isDeviceOnline(device) || !this.isDeviceConnected(deviceId)) {
+      return responseError("STUDENT_OFFLINE", "학생 컴퓨터가 온라인 상태가 아닙니다.", 409, cors);
+    }
+    if (this.one("SELECT remote_assist_session_id FROM RemoteAssistSessions WHERE device_id = ? AND state IN ('PENDING', 'ACTIVE')", deviceId)) {
+      return responseError("REMOTE_ASSIST_ALREADY_OPEN", "이 학생 컴퓨터에는 이미 원격 지원 요청이 진행 중입니다.", 409, cors);
+    }
+
+    const remoteAssistSessionId = crypto.randomUUID();
+    const requestCommandId = crypto.randomUUID();
+    const requestedAtUtc = isoNow();
+    const consentExpiresAtUtc = new Date(Date.now() + REMOTE_ASSIST_CONSENT_TIMEOUT_MS).toISOString();
+    const teacherDisplayName = text(user.display_name, 128) || "선생님";
+    this.exec(`INSERT INTO RemoteAssistSessions (
+      remote_assist_session_id, school_id, class_id, class_session_id, teacher_id, device_id, student_id,
+      teacher_display_name, duration_seconds, requested_at_utc, expires_at_utc, state, request_command_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)`,
+    remoteAssistSessionId, device.school_id, classId, activeSession.session_id, user.id, deviceId, device.student_id,
+    teacherDisplayName, durationSeconds, requestedAtUtc, consentExpiresAtUtc, requestCommandId);
+
+    const command = {
+      requestId: requestCommandId,
+      sessionId: activeSession.session_id,
+      targetDeviceIds: [deviceId],
+      kind: "remoteAssistRequest",
+      requiresAcknowledgement: true,
+      remoteAssistSessionId,
+      remoteAssistDurationSeconds: durationSeconds,
+      remoteAssistTeacherDisplayName: teacherDisplayName
+    };
+    if (!this.sendRemoteAssistCommand(deviceId, command)) {
+      this.endRemoteAssistSession(remoteAssistSessionId, "STUDENT_OFFLINE", false);
+      return responseError("STUDENT_OFFLINE", "학생 컴퓨터 연결이 끊겼습니다. 다시 시도해 주세요.", 409, cors);
+    }
+    this.audit({ schoolId: device.school_id, classId, sessionId: activeSession.session_id, teacherId: user.id, studentId: device.student_id, deviceId, requestId: requestCommandId, action: "REMOTE_ASSIST", result: "REQUESTED", reason: "STUDENT_CONSENT_REQUIRED" });
+    return responseJson(this.remoteAssistStatus(remoteAssistSessionId), 200, cors);
+  }
+
+  async getRemoteAssistStatus(request, classId, remoteAssistSessionId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    if (!validId(remoteAssistSessionId)) return responseError("REMOTE_ASSIST_NOT_FOUND", "원격 지원 세션을 찾지 못했습니다.", 404, cors);
+    this.expireRemoteAssistSessions();
+    const session = this.one("SELECT * FROM RemoteAssistSessions WHERE remote_assist_session_id = ? AND class_id = ? AND teacher_id = ?", remoteAssistSessionId, classId, user.id);
+    if (!session) return responseError("REMOTE_ASSIST_NOT_FOUND", "원격 지원 세션을 찾지 못했습니다.", 404, cors);
+    return responseJson(serializeRemoteAssist(session), 200, cors);
+  }
+
+  async queueRemoteAssistInput(request, classId, remoteAssistSessionId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 원격 지원을 사용할 수 없습니다.", 403, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    if (!validId(remoteAssistSessionId)) return responseError("REMOTE_ASSIST_NOT_FOUND", "원격 지원 세션을 찾지 못했습니다.", 404, cors);
+    this.expireRemoteAssistSessions();
+    const session = this.one("SELECT * FROM RemoteAssistSessions WHERE remote_assist_session_id = ? AND class_id = ? AND teacher_id = ?", remoteAssistSessionId, classId, user.id);
+    if (!session) return responseError("REMOTE_ASSIST_NOT_FOUND", "원격 지원 세션을 찾지 못했습니다.", 404, cors);
+    if (session.state !== "ACTIVE") return responseError("REMOTE_ASSIST_NOT_ACTIVE", "학생이 원격 지원을 아직 허용하지 않았습니다.", 409, cors);
+    const active = this.activeSessionForClass(classId);
+    if (!active || active.session_id !== session.class_session_id) {
+      this.endRemoteAssistSession(remoteAssistSessionId, "CLASS_ENDED", false);
+      return responseError("SESSION_NOT_ACTIVE", "수업이 종료되었습니다.", 409, cors);
+    }
+    const device = this.one("SELECT * FROM Devices WHERE device_id = ? AND class_id = ? AND revoked_at_utc IS NULL", session.device_id, classId);
+    if (!device || !this.isDeviceOnline(device) || !this.isDeviceConnected(session.device_id)) {
+      this.endRemoteAssistSession(remoteAssistSessionId, "STUDENT_OFFLINE", false);
+      return responseError("STUDENT_OFFLINE", "학생 컴퓨터 연결이 끊겼습니다.", 409, cors);
+    }
+    const input = normalizeRemoteAssistInput(await readJson(request), remoteAssistSessionId);
+    if (!input) return responseError("REMOTE_INPUT_INVALID", "원격 입력 형식이 올바르지 않습니다.", 400, cors);
+    if (input.sequence <= Number(session.last_input_sequence || 0)) return responseError("REMOTE_INPUT_REPLAYED", "원격 입력 순서가 올바르지 않습니다.", 409, cors);
+
+    const nowMs = Date.now();
+    let windowStartedAt = Number(session.input_window_started_at_ms || 0);
+    let inputCount = Number(session.input_count || 0);
+    if (!windowStartedAt || nowMs - windowStartedAt >= 1000) {
+      windowStartedAt = nowMs;
+      inputCount = 0;
+    }
+    if (inputCount >= REMOTE_ASSIST_MAX_INPUTS_PER_SECOND) return responseError("REMOTE_INPUT_RATE_LIMITED", "원격 입력이 너무 빠릅니다.", 429, cors);
+    if (!this.sendRemoteAssistInput(session.device_id, input)) {
+      this.endRemoteAssistSession(remoteAssistSessionId, "STUDENT_OFFLINE", false);
+      return responseError("STUDENT_OFFLINE", "학생 컴퓨터 연결이 끊겼습니다.", 409, cors);
+    }
+    this.exec(`UPDATE RemoteAssistSessions SET last_input_sequence = ?, input_window_started_at_ms = ?, input_count = ? WHERE remote_assist_session_id = ?`, input.sequence, windowStartedAt, inputCount + 1, remoteAssistSessionId);
+    return responseJson({ remoteAssistSessionId, sequence: input.sequence, acceptedAtUtc: isoNow() }, 200, cors);
+  }
+
+  async endRemoteAssist(request, classId, remoteAssistSessionId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 원격 지원을 사용할 수 없습니다.", 403, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    this.expireRemoteAssistSessions();
+    const session = this.one("SELECT * FROM RemoteAssistSessions WHERE remote_assist_session_id = ? AND class_id = ? AND teacher_id = ?", remoteAssistSessionId, classId, user.id);
+    if (!session) return responseError("REMOTE_ASSIST_NOT_FOUND", "원격 지원 세션을 찾지 못했습니다.", 404, cors);
+    if (session.state !== "ENDED") this.endRemoteAssistSession(remoteAssistSessionId, "TEACHER_ENDED", true);
+    return responseJson(this.remoteAssistStatus(remoteAssistSessionId), 200, cors);
+  }
+
   async revokeDevice(request, classId, deviceId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
@@ -906,6 +1060,7 @@ export class ClassroomState {
     const device = this.one("SELECT * FROM Devices WHERE device_id = ? AND class_id = ? AND revoked_at_utc IS NULL", deviceId, classId);
     if (!device) return responseError("DEVICE_NOT_FOUND", "학생 장치를 찾지 못했습니다.", 404, cors);
     const now = isoNow();
+    this.endRemoteAssistForDevice(deviceId, "DEVICE_REVOKED");
     this.exec("UPDATE Devices SET revoked_at_utc = ? WHERE device_id = ?", now, deviceId);
     this.screenFrames.delete(deviceId);
     this.closeDeviceSockets(deviceId, 1008, "Device revoked");
@@ -1352,6 +1507,12 @@ export class ClassroomState {
       const now = isoNow();
       const activity = normalizeActivity(incoming.payload.activity);
       const screenFrame = normalizeScreenFrame(incoming.payload.screenFrame);
+      const heartbeatRemoteSessionId = text(incoming.payload.remoteAssistSessionId, 80) || null;
+      if ((incoming.payload.remoteAssistActive === true && !validId(heartbeatRemoteSessionId))
+        || (heartbeatRemoteSessionId && !validId(heartbeatRemoteSessionId))) {
+        socket.send(envelope("ERROR", { code: "INVALID_REMOTE_ASSIST_STATUS", message: "원격 지원 상태가 올바르지 않습니다." }));
+        return;
+      }
       if (incoming.payload.screenSharingEnabled === true && screenFrame) {
         this.screenFrames.set(device.device_id, { screenFrame, receivedAt: Date.now() });
       } else if (incoming.payload.screenSharingEnabled !== true) {
@@ -1367,7 +1528,12 @@ export class ClassroomState {
         incoming.payload.needsHelp === true ? 1 : 0,
         active?.session_id || null,
         device.device_id);
-      if (incoming.payload.sessionId !== (active?.session_id || "00000000-0000-0000-0000-000000000000")) this.sendSessionAccepted(socket, device.device_id, active?.session_id || "00000000-0000-0000-0000-000000000000");
+      this.reconcileRemoteAssistHeartbeat(device, {
+        ...incoming.payload,
+        remoteAssistSessionId: heartbeatRemoteSessionId,
+        remoteAssistActive: incoming.payload.remoteAssistActive === true
+      });
+      if (incoming.payload.sessionId !== (active?.session_id || EMPTY_SESSION_ID)) this.sendSessionAccepted(socket, device.device_id, active?.session_id || EMPTY_SESSION_ID);
       return;
     }
     if (incoming.type === "DEVICE_EXIT_PIN_VERIFICATION_REQUEST") {
@@ -1428,6 +1594,7 @@ export class ClassroomState {
     if (incoming.type === "COMMAND_ACK") {
       const payload = incoming.payload;
       if (payload.deviceId !== device.device_id) return;
+      this.handleRemoteAssistCommandResult(device, payload, incoming.type);
       const now = isoNow();
       const state = payload.accepted === false ? "REJECTED" : "ACCEPTED";
       this.exec("UPDATE CommandTargets SET state = ?, acknowledged_at_utc = ? WHERE request_id = ? AND device_id = ?", state, now, payload.requestId, device.device_id);
@@ -1436,6 +1603,7 @@ export class ClassroomState {
     if (incoming.type === "COMMAND_RESULT") {
       const payload = incoming.payload;
       if (payload.deviceId !== device.device_id) return;
+      this.handleRemoteAssistCommandResult(device, payload, incoming.type);
       const now = isoNow();
       this.exec("UPDATE CommandTargets SET state = ?, completed_at_utc = ?, result_json = ? WHERE request_id = ? AND device_id = ?", payload.success === true ? "SUCCESS" : "FAILED", now, JSON.stringify(payload), payload.requestId, device.device_id);
       return;
@@ -1444,14 +1612,134 @@ export class ClassroomState {
   }
 
   webSocketClose(socket, code, reason) {
+    const deviceId = socket.deserializeAttachment()?.deviceId;
+    if (deviceId && !this.isDeviceConnected(deviceId, socket)) this.endRemoteAssistForDevice(deviceId, "STUDENT_DISCONNECTED");
     try { socket.close(code, reason); } catch (_) { /* close handshake is handled by the runtime */ }
   }
 
   acceptDeviceSession(socket, device) {
     const active = this.activeSessionForClass(device.class_id);
-    const sessionId = active?.session_id || "00000000-0000-0000-0000-000000000000";
+    const sessionId = active?.session_id || EMPTY_SESSION_ID;
     this.exec("UPDATE Devices SET last_heartbeat_utc = ?, active_session_id = ? WHERE device_id = ?", isoNow(), active?.session_id || null, device.device_id);
     this.sendSessionAccepted(socket, device.device_id, sessionId);
+  }
+
+  remoteAssistStatus(remoteAssistSessionId) {
+    const row = this.one("SELECT * FROM RemoteAssistSessions WHERE remote_assist_session_id = ?", remoteAssistSessionId);
+    return row ? serializeRemoteAssist(row) : null;
+  }
+
+  isDeviceOnline(device) {
+    const lastSeen = device?.last_heartbeat_utc ? Date.parse(device.last_heartbeat_utc) : 0;
+    return Boolean(lastSeen && Date.now() - lastSeen <= ONLINE_WINDOW_MS);
+  }
+
+  deviceSockets(deviceId, excludedSocket = null) {
+    return this.ctx.getWebSockets().filter((socket) => {
+      if (socket === excludedSocket) return false;
+      return socket.deserializeAttachment()?.deviceId === deviceId;
+    });
+  }
+
+  isDeviceConnected(deviceId, excludedSocket = null) {
+    return this.deviceSockets(deviceId, excludedSocket).length > 0;
+  }
+
+  sendRemoteAssistCommand(deviceId, command) {
+    const sockets = this.deviceSockets(deviceId);
+    if (!sockets.length) return false;
+    const payload = envelope("COMMAND_REQUEST", command);
+    let sent = 0;
+    for (const socket of sockets) {
+      try {
+        socket.send(payload);
+        sent += 1;
+      } catch (_) {
+        try { socket.close(1011, "Remote assistance delivery failed"); } catch (_) { /* best effort */ }
+      }
+    }
+    return sent > 0;
+  }
+
+  sendRemoteAssistInput(deviceId, input) {
+    const sockets = this.deviceSockets(deviceId);
+    if (!sockets.length) return false;
+    const payload = envelope("REMOTE_ASSIST_INPUT", input);
+    let sent = 0;
+    for (const socket of sockets) {
+      try {
+        socket.send(payload);
+        sent += 1;
+      } catch (_) {
+        try { socket.close(1011, "Remote input delivery failed"); } catch (_) { /* best effort */ }
+      }
+    }
+    return sent > 0;
+  }
+
+  handleRemoteAssistCommandResult(device, payload, type) {
+    const requestId = validId(payload?.requestId) ? payload.requestId : null;
+    if (!requestId) return;
+    const session = this.one("SELECT * FROM RemoteAssistSessions WHERE request_command_id = ? AND device_id = ?", requestId, device.device_id);
+    if (!session || session.state !== "PENDING") return;
+    if (type === "COMMAND_ACK") {
+      if (payload.accepted === false) this.endRemoteAssistSession(session.remote_assist_session_id, "STUDENT_DECLINED", false);
+      return;
+    }
+    if (payload.success === true && payload.code === "REMOTE_ASSIST_ACCEPTED") {
+      const expiresAtUtc = new Date(Date.now() + Number(session.duration_seconds) * 1000).toISOString();
+      this.exec("UPDATE RemoteAssistSessions SET state = 'ACTIVE', expires_at_utc = ? WHERE remote_assist_session_id = ? AND state = 'PENDING'", expiresAtUtc, session.remote_assist_session_id);
+      this.audit({ schoolId: session.school_id, classId: session.class_id, sessionId: session.class_session_id, teacherId: session.teacher_id, studentId: session.student_id, deviceId: session.device_id, requestId, action: "REMOTE_ASSIST", result: "ACTIVE", reason: "STUDENT_APPROVED" });
+      return;
+    }
+    this.endRemoteAssistSession(session.remote_assist_session_id, payload.code === "REMOTE_ASSIST_DECLINED" ? "STUDENT_DECLINED" : "REQUEST_FAILED", false);
+  }
+
+  reconcileRemoteAssistHeartbeat(device, heartbeat) {
+    this.expireRemoteAssistSessions();
+    const sessions = this.all("SELECT * FROM RemoteAssistSessions WHERE device_id = ? AND state = 'ACTIVE'", device.device_id);
+    for (const session of sessions) {
+      if (heartbeat.remoteAssistActive !== true || heartbeat.remoteAssistSessionId !== session.remote_assist_session_id) {
+        this.endRemoteAssistSession(session.remote_assist_session_id, "STUDENT_ENDED", false);
+      }
+    }
+  }
+
+  expireRemoteAssistSessions() {
+    const now = Date.now();
+    const sessions = this.all("SELECT remote_assist_session_id, state, expires_at_utc FROM RemoteAssistSessions WHERE state IN ('PENDING', 'ACTIVE')");
+    for (const session of sessions) {
+      if (Date.parse(session.expires_at_utc) <= now) {
+        this.endRemoteAssistSession(session.remote_assist_session_id, session.state === "PENDING" ? "CONSENT_TIMEOUT" : "TIMEOUT", true);
+      }
+    }
+  }
+
+  endRemoteAssistForClass(classId, reason) {
+    const sessions = this.all("SELECT remote_assist_session_id FROM RemoteAssistSessions WHERE class_id = ? AND state IN ('PENDING', 'ACTIVE')", classId);
+    for (const session of sessions) this.endRemoteAssistSession(session.remote_assist_session_id, reason, true);
+  }
+
+  endRemoteAssistForDevice(deviceId, reason) {
+    const sessions = this.all("SELECT remote_assist_session_id FROM RemoteAssistSessions WHERE device_id = ? AND state IN ('PENDING', 'ACTIVE')", deviceId);
+    for (const session of sessions) this.endRemoteAssistSession(session.remote_assist_session_id, reason, true);
+  }
+
+  endRemoteAssistSession(remoteAssistSessionId, reason, notifyStudent) {
+    const session = this.one("SELECT * FROM RemoteAssistSessions WHERE remote_assist_session_id = ?", remoteAssistSessionId);
+    if (!session || session.state === "ENDED") return;
+    this.exec("UPDATE RemoteAssistSessions SET state = 'ENDED', end_reason = ?, input_count = 0 WHERE remote_assist_session_id = ? AND state IN ('PENDING', 'ACTIVE')", reason, remoteAssistSessionId);
+    if (notifyStudent && this.isDeviceConnected(session.device_id)) {
+      this.sendRemoteAssistCommand(session.device_id, {
+        requestId: crypto.randomUUID(),
+        sessionId: session.class_session_id,
+        targetDeviceIds: [session.device_id],
+        kind: "remoteAssistEnd",
+        requiresAcknowledgement: true,
+        remoteAssistSessionId
+      });
+    }
+    this.audit({ schoolId: session.school_id, classId: session.class_id, sessionId: session.class_session_id, teacherId: session.teacher_id, studentId: session.student_id, deviceId: session.device_id, action: "REMOTE_ASSIST", result: "ENDED", reason });
   }
 
   sendSessionAccepted(socket, deviceId, sessionId) {
@@ -1882,7 +2170,7 @@ function serializeSession(row) {
   return { sessionId: row.session_id, schoolId: row.school_id, classId: row.class_id, subject: row.subject, startedAtUtc: row.started_at_utc, endedAtUtc: row.ended_at_utc || null };
 }
 
-function serializeDevice(device, activeSessionId, now) {
+function serializeDevice(device, activeSessionId, now, remoteAssistRow = null) {
   let activity = null;
   try { activity = device.activity_json ? JSON.parse(device.activity_json) : null; } catch (_) { activity = null; }
   const lastSeen = device.last_heartbeat_utc ? Date.parse(device.last_heartbeat_utc) : 0;
@@ -1906,7 +2194,19 @@ function serializeDevice(device, activeSessionId, now) {
     policyApplied: Boolean(device.policy_applied),
     needsHelp: Boolean(device.needs_help),
     screenSharingAvailable: true,
-    statusSharingMode: "visible-status"
+    statusSharingMode: "visible-status",
+    remoteAssist: remoteAssistRow ? serializeRemoteAssist(remoteAssistRow) : null
+  };
+}
+
+function serializeRemoteAssist(row) {
+  return {
+    remoteAssistSessionId: row.remote_assist_session_id,
+    state: row.state,
+    requestedAtUtc: row.requested_at_utc,
+    expiresAtUtc: row.expires_at_utc,
+    teacherDisplayName: row.teacher_display_name,
+    endReason: row.end_reason || null
   };
 }
 
@@ -1947,6 +2247,42 @@ function normalizeScreenFrame(value) {
     height,
     capturedAtUtc: Number.isFinite(capturedAt) ? new Date(capturedAt).toISOString() : isoNow()
   };
+}
+
+function normalizeRemoteAssistInput(value, sessionId) {
+  if (!value || typeof value !== "object" || value.remoteAssistSessionId !== sessionId) return null;
+  const sequence = Number(value.sequence);
+  if (!Number.isSafeInteger(sequence) || sequence < 1) return null;
+  const kind = text(value.kind, 32);
+  const coordinate = (candidate) => {
+    const number = Number(candidate);
+    return Number.isFinite(number) && number >= 0 && number <= 1 ? number : null;
+  };
+  const x = coordinate(value.x);
+  const y = coordinate(value.y);
+  if (kind === "pointerMove") {
+    return x === null || y === null ? null : { remoteAssistSessionId: sessionId, sequence, kind, x, y };
+  }
+  if (kind === "pointerButton") {
+    const button = text(value.button, 16);
+    return x === null || y === null || !["left", "middle", "right"].includes(button) || typeof value.isDown !== "boolean"
+      ? null
+      : { remoteAssistSessionId: sessionId, sequence, kind, x, y, button, isDown: value.isDown };
+  }
+  if (kind === "pointerWheel") {
+    const wheelDelta = Number(value.wheelDelta);
+    return x === null || y === null || !Number.isInteger(wheelDelta) || wheelDelta === 0 || wheelDelta < -1200 || wheelDelta > 1200
+      ? null
+      : { remoteAssistSessionId: sessionId, sequence, kind, x, y, wheelDelta };
+  }
+  if (kind === "key") {
+    const keyCode = text(value.keyCode, 32);
+    const safeKey = /^(Key[A-Z]|Digit[0-9]|F(?:[1-9]|1[0-2])|Backspace|Tab|Enter|ShiftLeft|ShiftRight|ControlLeft|ControlRight|CapsLock|Escape|Space|PageUp|PageDown|End|Home|ArrowLeft|ArrowUp|ArrowRight|ArrowDown|Insert|Delete|Semicolon|Equal|Comma|Minus|Period|Slash|Backquote|BracketLeft|Backslash|BracketRight|Quote)$/.test(keyCode);
+    return !safeKey || typeof value.isDown !== "boolean"
+      ? null
+      : { remoteAssistSessionId: sessionId, sequence, kind, keyCode, isDown: value.isDown };
+  }
+  return null;
 }
 
 function normalizeBrowserDomain(value) {

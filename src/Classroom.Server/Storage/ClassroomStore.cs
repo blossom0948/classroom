@@ -17,12 +17,14 @@ public sealed class ClassroomStore
     private readonly Dictionary<Guid, StudentDeviceState> devices = [];
     private readonly Dictionary<Guid, SessionState> sessions = [];
     private readonly Dictionary<CommandKey, CommandRecord> commands = [];
+    private readonly Dictionary<Guid, RemoteAssistSessionState> remoteAssistSessions = [];
     private readonly Dictionary<Guid, ExitPinAttemptState> exitPinAttempts = [];
     private readonly Queue<AuditEvent> auditEvents = [];
     private const int MaximumAuditEvents = 10_000;
     private const int JoinCodeLength = 8;
     private const string JoinCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private const int MaximumExitPinAttempts = 5;
+    private const int MaximumRemoteAssistEventsPerSecond = ProtocolConstants.MaxRemoteAssistInputsPerSecond;
     private static readonly TimeSpan ExitPinCooldown = TimeSpan.FromMinutes(5);
 
     public ClassroomStore(ServerOptions options, ClassroomDatabase? database = null)
@@ -365,6 +367,12 @@ public sealed class ClassroomStore
             var sessionId = device.SessionId;
             device.ConnectionActive = false;
             device.SessionId = null;
+            foreach (var remoteAssistSession in remoteAssistSessions.Values
+                         .Where(session => session.DeviceId == deviceId && session.IsOpen)
+                         .ToArray())
+            {
+                EndRemoteAssistLocked(remoteAssistSession, "STUDENT_DISCONNECTED", notifyStudent: false, now: DateTimeOffset.UtcNow);
+            }
             database?.SaveDevice(device.ToPersisted());
             AddAuditLocked(AuditEvent.Create(
                 "DEVICE_CONNECTION",
@@ -407,12 +415,15 @@ public sealed class ClassroomStore
             var active = FindActiveSessionLocked(device.ClassId);
             var acceptedSessionId = active?.SessionId ?? Guid.Empty;
             var normalizedHeartbeat = heartbeat with { SessionId = acceptedSessionId };
+            var now = DateTimeOffset.UtcNow;
+            ExpireRemoteAssistSessionsLocked(now);
 
             device.ConnectionActive = true;
             device.SessionId = active?.SessionId;
             device.AgentVersion = heartbeat.AgentVersion;
             device.LatestHeartbeat = normalizedHeartbeat;
-            device.LastHeartbeatUtc = DateTimeOffset.UtcNow;
+            device.LastHeartbeatUtc = now;
+            ReconcileRemoteAssistHeartbeatLocked(device, normalizedHeartbeat, now);
             RestorePendingCommandsLocked(device, acceptedSessionId);
             database?.SaveDevice(device.ToPersisted());
             return StoreResult<Guid>.Success(acceptedSessionId);
@@ -422,7 +433,8 @@ public sealed class ClassroomStore
     public StoreResult<CommandDispatchSummary> QueueCommand(
         Guid teacherId,
         Guid classId,
-        CommandRequest command)
+        CommandRequest command,
+        bool allowRemoteAssist = false)
     {
         try
         {
@@ -431,6 +443,14 @@ public sealed class ClassroomStore
         catch (ProtocolValidationException exception)
         {
             return StoreResult<CommandDispatchSummary>.Failure("INVALID_COMMAND", exception.Message);
+        }
+
+        if (!allowRemoteAssist
+            && command.Kind is ClassroomCommandKind.RemoteAssistRequest or ClassroomCommandKind.RemoteAssistEnd)
+        {
+            return StoreResult<CommandDispatchSummary>.Failure(
+                "REMOTE_ASSIST_INTERNAL_ONLY",
+                "Remote assistance must use its student-consent workflow.");
         }
 
         lock (gate)
@@ -474,14 +494,17 @@ public sealed class ClassroomStore
                     var key = new CommandKey(command.RequestId, deviceId);
                     commands[key] = new CommandRecord(command, teacherId, DateTimeOffset.UtcNow);
                     device.QueuedCommandKeys.Add(key);
-                    database?.SaveCommand(new PersistedCommand(
-                        command.RequestId,
-                        deviceId,
-                        teacherId,
-                        classId,
-                        command,
-                        "QUEUED",
-                        DateTimeOffset.UtcNow));
+                    if (!IsRemoteAssistCommand(command))
+                    {
+                        database?.SaveCommand(new PersistedCommand(
+                            command.RequestId,
+                            deviceId,
+                            teacherId,
+                            classId,
+                            command,
+                            "QUEUED",
+                            DateTimeOffset.UtcNow));
+                    }
                     AddAuditLocked(AuditEvent.Create(
                         "COMMAND_REQUEST",
                         "QUEUED",
@@ -518,6 +541,207 @@ public sealed class ClassroomStore
                     queued.Count,
                     queued,
                     rejected));
+        }
+    }
+
+    public StoreResult<RemoteAssistStatus> RequestRemoteAssist(
+        Guid teacherId,
+        Guid classId,
+        Guid deviceId,
+        int? requestedDurationSeconds,
+        string teacherDisplayName)
+    {
+        var durationSeconds = requestedDurationSeconds ?? ProtocolConstants.RemoteAssistMaximumDurationSeconds;
+        if (durationSeconds is < ProtocolConstants.RemoteAssistMinimumDurationSeconds
+            or > ProtocolConstants.RemoteAssistMaximumDurationSeconds)
+        {
+            return StoreResult<RemoteAssistStatus>.Failure(
+                "REMOTE_ASSIST_DURATION_INVALID",
+                $"Remote assistance must last {ProtocolConstants.RemoteAssistMinimumDurationSeconds} to {ProtocolConstants.RemoteAssistMaximumDurationSeconds} seconds.");
+        }
+
+        try
+        {
+            RequireText(teacherDisplayName, nameof(teacherDisplayName), 128);
+        }
+        catch (ClassroomStoreException exception)
+        {
+            return StoreResult<RemoteAssistStatus>.Failure(exception.Code, exception.Message);
+        }
+
+        lock (gate)
+        {
+            EnsureTeacherAccess(teacherId, classId);
+            var now = DateTimeOffset.UtcNow;
+            ExpireRemoteAssistSessionsLocked(now);
+            var activeClassSession = FindActiveSessionLocked(classId);
+            if (activeClassSession is null)
+            {
+                return StoreResult<RemoteAssistStatus>.Failure("SESSION_NOT_ACTIVE", "Remote assistance requires an active class session.");
+            }
+
+            if (!devices.TryGetValue(deviceId, out var device)
+                || device.Revoked
+                || device.ClassId != classId)
+            {
+                return StoreResult<RemoteAssistStatus>.Failure("TARGET_FORBIDDEN", "The selected student device does not belong to this class.");
+            }
+
+            if (!device.IsOnline(now, options.HeartbeatTimeout))
+            {
+                return StoreResult<RemoteAssistStatus>.Failure("STUDENT_OFFLINE", "The student device must be online before requesting remote assistance.");
+            }
+
+            if (remoteAssistSessions.Values.Any(session => session.DeviceId == deviceId && session.IsOpen))
+            {
+                return StoreResult<RemoteAssistStatus>.Failure("REMOTE_ASSIST_ALREADY_OPEN", "A remote assistance request is already waiting for this student.");
+            }
+
+            var remoteAssistSession = new RemoteAssistSessionState(
+                Guid.NewGuid(), teacherId, device.SchoolId, classId, activeClassSession.SessionId,
+                deviceId, teacherDisplayName, durationSeconds, now,
+                now.AddSeconds(ProtocolConstants.RemoteAssistConsentTimeoutSeconds));
+            remoteAssistSessions[remoteAssistSession.RemoteAssistSessionId] = remoteAssistSession;
+            var command = new CommandRequest(
+                Guid.NewGuid(), activeClassSession.SessionId, [deviceId],
+                ClassroomCommandKind.RemoteAssistRequest,
+                RequiresAcknowledgement: true,
+                RemoteAssistSessionId: remoteAssistSession.RemoteAssistSessionId,
+                RemoteAssistDurationSeconds: durationSeconds,
+                RemoteAssistTeacherDisplayName: teacherDisplayName);
+            var dispatch = QueueCommand(teacherId, classId, command, allowRemoteAssist: true);
+            if (!dispatch.Succeeded || dispatch.Value?.QueuedCount != 1)
+            {
+                remoteAssistSessions.Remove(remoteAssistSession.RemoteAssistSessionId);
+                return StoreResult<RemoteAssistStatus>.Failure(dispatch.Code, dispatch.Message);
+            }
+
+            AddAuditLocked(AuditEvent.Create(
+                "REMOTE_ASSIST", "REQUESTED", reason: "STUDENT_CONSENT_REQUIRED",
+                schoolId: device.SchoolId, classId: classId, sessionId: activeClassSession.SessionId,
+                teacherId: teacherId, studentId: device.StudentId, studentDeviceId: deviceId,
+                requestId: command.RequestId));
+            return StoreResult<RemoteAssistStatus>.Success(remoteAssistSession.ToStatus());
+        }
+    }
+
+    public StoreResult<RemoteAssistStatus> GetRemoteAssistStatus(Guid teacherId, Guid classId, Guid remoteAssistSessionId)
+    {
+        lock (gate)
+        {
+            EnsureTeacherAccess(teacherId, classId);
+            ExpireRemoteAssistSessionsLocked(DateTimeOffset.UtcNow);
+            if (!remoteAssistSessions.TryGetValue(remoteAssistSessionId, out var remoteAssistSession)
+                || remoteAssistSession.ClassId != classId
+                || remoteAssistSession.TeacherId != teacherId)
+            {
+                return StoreResult<RemoteAssistStatus>.Failure("REMOTE_ASSIST_NOT_FOUND", "The remote assistance session was not found.");
+            }
+
+            return StoreResult<RemoteAssistStatus>.Success(remoteAssistSession.ToStatus());
+        }
+    }
+
+    public StoreResult<RemoteAssistInputReceipt> QueueRemoteAssistInput(
+        Guid teacherId,
+        Guid classId,
+        Guid remoteAssistSessionId,
+        RemoteAssistInput input)
+    {
+        try
+        {
+            ProtocolValidation.ValidateRemoteAssistInput(input);
+        }
+        catch (ProtocolValidationException exception)
+        {
+            return StoreResult<RemoteAssistInputReceipt>.Failure("REMOTE_INPUT_INVALID", exception.Message);
+        }
+
+        lock (gate)
+        {
+            EnsureTeacherAccess(teacherId, classId);
+            var now = DateTimeOffset.UtcNow;
+            ExpireRemoteAssistSessionsLocked(now);
+            if (input.RemoteAssistSessionId != remoteAssistSessionId
+                || !remoteAssistSessions.TryGetValue(remoteAssistSessionId, out var remoteAssistSession)
+                || remoteAssistSession.ClassId != classId
+                || remoteAssistSession.TeacherId != teacherId)
+            {
+                return StoreResult<RemoteAssistInputReceipt>.Failure("REMOTE_ASSIST_NOT_FOUND", "The remote assistance session was not found.");
+            }
+
+            if (remoteAssistSession.State != RemoteAssistSessionState.Active)
+            {
+                return StoreResult<RemoteAssistInputReceipt>.Failure("REMOTE_ASSIST_NOT_ACTIVE", "The student has not approved remote assistance.");
+            }
+
+            var activeClassSession = FindActiveSessionLocked(classId);
+            if (activeClassSession is null || activeClassSession.SessionId != remoteAssistSession.ClassSessionId)
+            {
+                EndRemoteAssistLocked(remoteAssistSession, "CLASS_ENDED", notifyStudent: false, now: now);
+                return StoreResult<RemoteAssistInputReceipt>.Failure("SESSION_NOT_ACTIVE", "The class session has ended.");
+            }
+
+            if (!devices.TryGetValue(remoteAssistSession.DeviceId, out var device)
+                || device.Revoked
+                || !device.IsOnline(now, options.HeartbeatTimeout))
+            {
+                EndRemoteAssistLocked(remoteAssistSession, "STUDENT_OFFLINE", notifyStudent: false, now: now);
+                return StoreResult<RemoteAssistInputReceipt>.Failure("STUDENT_OFFLINE", "The student device is no longer online.");
+            }
+
+            if (input.Sequence <= remoteAssistSession.LastInputSequence)
+            {
+                return StoreResult<RemoteAssistInputReceipt>.Failure("REMOTE_INPUT_REPLAYED", "Remote input events must be received in order.");
+            }
+
+            remoteAssistSession.TrimInputRateWindow(now);
+            if (remoteAssistSession.RecentInputTimes.Count >= MaximumRemoteAssistEventsPerSecond)
+            {
+                return StoreResult<RemoteAssistInputReceipt>.Failure("REMOTE_INPUT_RATE_LIMITED", "Remote input is limited to a safe rate.");
+            }
+
+            if (!device.RemoteAssistInputs.Writer.TryWrite(input))
+            {
+                return StoreResult<RemoteAssistInputReceipt>.Failure("REMOTE_INPUT_QUEUE_FULL", "The student device cannot receive more remote input right now.");
+            }
+
+            remoteAssistSession.LastInputSequence = input.Sequence;
+            remoteAssistSession.RecentInputTimes.Enqueue(now);
+            return StoreResult<RemoteAssistInputReceipt>.Success(
+                new RemoteAssistInputReceipt(remoteAssistSession.RemoteAssistSessionId, input.Sequence, now));
+        }
+    }
+
+    public StoreResult<RemoteAssistStatus> EndRemoteAssist(Guid teacherId, Guid classId, Guid remoteAssistSessionId)
+    {
+        lock (gate)
+        {
+            EnsureTeacherAccess(teacherId, classId);
+            var now = DateTimeOffset.UtcNow;
+            ExpireRemoteAssistSessionsLocked(now);
+            if (!remoteAssistSessions.TryGetValue(remoteAssistSessionId, out var remoteAssistSession)
+                || remoteAssistSession.ClassId != classId
+                || remoteAssistSession.TeacherId != teacherId)
+            {
+                return StoreResult<RemoteAssistStatus>.Failure("REMOTE_ASSIST_NOT_FOUND", "The remote assistance session was not found.");
+            }
+
+            EndRemoteAssistLocked(remoteAssistSession, "TEACHER_ENDED", notifyStudent: true, now: now);
+            return StoreResult<RemoteAssistStatus>.Success(remoteAssistSession.ToStatus());
+        }
+    }
+
+    public ValueTask<RemoteAssistInput> WaitForRemoteAssistInputAsync(Guid deviceId, CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            if (!devices.TryGetValue(deviceId, out var device) || device.Revoked)
+            {
+                return ValueTask.FromException<RemoteAssistInput>(new InvalidOperationException("Student device is not enrolled."));
+            }
+
+            return device.RemoteAssistInputs.Reader.ReadAsync(cancellationToken);
         }
     }
 
@@ -614,19 +838,42 @@ public sealed class ClassroomStore
         StudentDeviceState device,
         CancellationToken cancellationToken)
     {
-        var command = await device.Commands.Reader.ReadAsync(cancellationToken);
-        lock (gate)
+        while (true)
         {
-            var key = new CommandKey(command.RequestId, device.DeviceId);
-            device.QueuedCommandKeys.Remove(key);
-            if (commands.TryGetValue(key, out var commandRecord))
+            var command = await device.Commands.Reader.ReadAsync(cancellationToken);
+            var discard = false;
+            lock (gate)
             {
-                commandRecord.State = "DISPATCHED";
-            }
-            database?.UpdateCommandState(command.RequestId, device.DeviceId, "DISPATCHED");
-        }
+                var key = new CommandKey(command.RequestId, device.DeviceId);
+                device.QueuedCommandKeys.Remove(key);
 
-        return command;
+                // Consent prompts are live-session UI, so a prompt that was
+                // queued before disconnect/restart must never be shown later.
+                if (IsRemoteAssistCommand(command))
+                {
+                    discard = !commands.TryGetValue(key, out var remoteCommandRecord)
+                        || remoteCommandRecord.Command.RemoteAssistSessionId is not { } remoteAssistSessionId
+                        || !remoteAssistSessions.TryGetValue(remoteAssistSessionId, out var remoteAssistSession)
+                        || remoteAssistSession.DeviceId != device.DeviceId
+                        || !remoteAssistSession.IsOpen;
+                }
+
+                if (!discard)
+                {
+                    if (commands.TryGetValue(key, out var commandRecord))
+                    {
+                        commandRecord.State = "DISPATCHED";
+                    }
+
+                    database?.UpdateCommandState(command.RequestId, device.DeviceId, "DISPATCHED");
+                }
+            }
+
+            if (!discard)
+            {
+                return command;
+            }
+        }
     }
 
     public StoreResult<bool> RecordCommandAck(
@@ -717,6 +964,7 @@ public sealed class ClassroomStore
                 identity.DeviceId,
                 result.Success ? "COMPLETED" : "FAILED");
             commandRecord.State = result.Success ? "COMPLETED" : "FAILED";
+            TrackRemoteAssistCommandResultLocked(commandRecord, devices[identity.DeviceId], result, DateTimeOffset.UtcNow);
             return StoreResult<bool>.Success(true);
         }
     }
@@ -797,6 +1045,13 @@ public sealed class ClassroomStore
                 }
             }
 
+            foreach (var remoteAssistSession in remoteAssistSessions.Values
+                         .Where(remoteAssist => remoteAssist.ClassId == classId && remoteAssist.IsOpen)
+                         .ToArray())
+            {
+                EndRemoteAssistLocked(remoteAssistSession, "CLASS_ENDED", notifyStudent: true, now: DateTimeOffset.UtcNow);
+            }
+
             session.EndedAtUtc = DateTimeOffset.UtcNow;
             foreach (var device in devices.Values.Where(device => device.ClassId == classId))
             {
@@ -845,10 +1100,15 @@ public sealed class ClassroomStore
         {
             var active = FindActiveSessionLocked(classId);
             var now = DateTimeOffset.UtcNow;
+            ExpireRemoteAssistSessionsLocked(now);
             return devices.Values
                 .Where(device => device.ClassId == classId && !device.Revoked)
                 .OrderBy(device => device.StudentDisplayName, StringComparer.Ordinal)
-                .Select(device => device.ToStatus(active?.SessionId ?? Guid.Empty, now, options.HeartbeatTimeout))
+                .Select(device => device.ToStatus(
+                    active?.SessionId ?? Guid.Empty,
+                    now,
+                    options.HeartbeatTimeout,
+                    GetOpenRemoteAssistStatusForDeviceLocked(device.DeviceId)))
                 .ToArray();
         }
     }
@@ -890,6 +1150,13 @@ public sealed class ClassroomStore
                 || device.Revoked)
             {
                 throw new ClassroomStoreException("DEVICE_NOT_FOUND", "The student device was not found.");
+            }
+
+            foreach (var remoteAssistSession in remoteAssistSessions.Values
+                         .Where(remoteAssist => remoteAssist.DeviceId == deviceId && remoteAssist.IsOpen)
+                         .ToArray())
+            {
+                EndRemoteAssistLocked(remoteAssistSession, "DEVICE_REVOKED", notifyStudent: false, now: DateTimeOffset.UtcNow);
             }
 
             device.Revoked = true;
@@ -1034,6 +1301,135 @@ public sealed class ClassroomStore
         }
     }
 
+    private RemoteAssistStatus? GetOpenRemoteAssistStatusForDeviceLocked(Guid deviceId) =>
+        remoteAssistSessions.Values
+            .Where(session => session.DeviceId == deviceId && session.IsOpen)
+            .OrderByDescending(session => session.RequestedAtUtc)
+            .Select(session => session.ToStatus())
+            .FirstOrDefault();
+
+    private void TrackRemoteAssistCommandResultLocked(
+        CommandRecord commandRecord,
+        StudentDeviceState device,
+        CommandResult result,
+        DateTimeOffset now)
+    {
+        if (commandRecord.Command.Kind is not ClassroomCommandKind.RemoteAssistRequest
+            || commandRecord.Command.RemoteAssistSessionId is not { } remoteAssistSessionId
+            || !remoteAssistSessions.TryGetValue(remoteAssistSessionId, out var remoteAssistSession)
+            || remoteAssistSession.DeviceId != device.DeviceId
+            || remoteAssistSession.State != RemoteAssistSessionState.Pending)
+        {
+            return;
+        }
+
+        if (result.Success && string.Equals(result.Code, "REMOTE_ASSIST_ACCEPTED", StringComparison.Ordinal))
+        {
+            remoteAssistSession.Activate(now);
+            AddAuditLocked(AuditEvent.Create(
+                "REMOTE_ASSIST", "ACTIVE", reason: "STUDENT_APPROVED",
+                schoolId: device.SchoolId, classId: device.ClassId,
+                sessionId: remoteAssistSession.ClassSessionId,
+                teacherId: remoteAssistSession.TeacherId, studentId: device.StudentId,
+                studentDeviceId: device.DeviceId, requestId: result.RequestId));
+            return;
+        }
+
+        EndRemoteAssistLocked(
+            remoteAssistSession,
+            string.Equals(result.Code, "REMOTE_ASSIST_DECLINED", StringComparison.Ordinal)
+                ? "STUDENT_DECLINED"
+                : "REQUEST_FAILED",
+            notifyStudent: false,
+            now: now);
+    }
+
+    private void ReconcileRemoteAssistHeartbeatLocked(
+        StudentDeviceState device,
+        DeviceHeartbeat heartbeat,
+        DateTimeOffset now)
+    {
+        foreach (var remoteAssistSession in remoteAssistSessions.Values
+                     .Where(session => session.DeviceId == device.DeviceId
+                         && session.State == RemoteAssistSessionState.Active)
+                     .ToArray())
+        {
+            if (!heartbeat.RemoteAssistActive
+                || heartbeat.RemoteAssistSessionId != remoteAssistSession.RemoteAssistSessionId)
+            {
+                EndRemoteAssistLocked(remoteAssistSession, "STUDENT_ENDED", notifyStudent: false, now: now);
+            }
+        }
+    }
+
+    private void ExpireRemoteAssistSessionsLocked(DateTimeOffset now)
+    {
+        foreach (var remoteAssistSession in remoteAssistSessions.Values
+                     .Where(session => session.IsOpen && session.ExpiresAtUtc <= now)
+                     .ToArray())
+        {
+            EndRemoteAssistLocked(
+                remoteAssistSession,
+                remoteAssistSession.State == RemoteAssistSessionState.Pending ? "CONSENT_TIMEOUT" : "TIMEOUT",
+                notifyStudent: true,
+                now: now);
+        }
+    }
+
+    private void EndRemoteAssistLocked(
+        RemoteAssistSessionState remoteAssistSession,
+        string reason,
+        bool notifyStudent,
+        DateTimeOffset now)
+    {
+        if (!remoteAssistSession.IsOpen) return;
+
+        var wasOpen = remoteAssistSession.IsOpen;
+        remoteAssistSession.End(now, reason);
+        if (notifyStudent
+            && wasOpen
+            && devices.TryGetValue(remoteAssistSession.DeviceId, out var device)
+            && !device.Revoked
+            && FindActiveSessionLocked(remoteAssistSession.ClassId) is { } activeClassSession
+            && activeClassSession.SessionId == remoteAssistSession.ClassSessionId)
+        {
+            var command = new CommandRequest(
+                Guid.NewGuid(),
+                remoteAssistSession.ClassSessionId,
+                [device.DeviceId],
+                ClassroomCommandKind.RemoteAssistEnd,
+                RequiresAcknowledgement: true,
+                RemoteAssistSessionId: remoteAssistSession.RemoteAssistSessionId);
+            var dispatch = QueueCommand(
+                remoteAssistSession.TeacherId,
+                remoteAssistSession.ClassId,
+                command,
+                allowRemoteAssist: true);
+            if (!dispatch.Succeeded)
+            {
+                AddAuditLocked(AuditEvent.Create(
+                    "REMOTE_ASSIST_END_DELIVERY", "FAILED", reason: dispatch.Code,
+                    schoolId: device.SchoolId, classId: device.ClassId,
+                    sessionId: remoteAssistSession.ClassSessionId,
+                    teacherId: remoteAssistSession.TeacherId, studentId: device.StudentId,
+                    studentDeviceId: device.DeviceId, requestId: command.RequestId));
+            }
+        }
+
+        if (devices.TryGetValue(remoteAssistSession.DeviceId, out var targetDevice))
+        {
+            AddAuditLocked(AuditEvent.Create(
+                "REMOTE_ASSIST", "ENDED", reason: reason,
+                schoolId: targetDevice.SchoolId, classId: targetDevice.ClassId,
+                sessionId: remoteAssistSession.ClassSessionId,
+                teacherId: remoteAssistSession.TeacherId, studentId: targetDevice.StudentId,
+                studentDeviceId: targetDevice.DeviceId));
+        }
+    }
+
+    private static bool IsRemoteAssistCommand(CommandRequest command) =>
+        command.Kind is ClassroomCommandKind.RemoteAssistRequest or ClassroomCommandKind.RemoteAssistEnd;
+
     private SessionState? FindActiveSessionLocked(Guid classId) =>
         sessions.Values.FirstOrDefault(session =>
             session.ClassId == classId && session.EndedAtUtc is null);
@@ -1110,6 +1506,13 @@ public sealed class ClassroomStore
     {
         foreach (var pair in commands)
         {
+            // Consent prompts are tied to the live student connection and
+            // must never be replayed after a service/server restart.
+            if (IsRemoteAssistCommand(pair.Value.Command))
+            {
+                continue;
+            }
+
             var isSessionCleanup = pair.Value.Command.Kind == ClassroomCommandKind.FocusMode
                 && pair.Value.Command.FocusEnabled is false;
             if (pair.Key.DeviceId != device.DeviceId
@@ -1354,6 +1757,13 @@ public sealed class ClassroomStore
                 SingleWriter = false,
                 FullMode = BoundedChannelFullMode.Wait
             });
+        public Channel<RemoteAssistInput> RemoteAssistInputs { get; } =
+            Channel.CreateBounded<RemoteAssistInput>(new BoundedChannelOptions(128)
+            {
+                SingleReader = true,
+                SingleWriter = false,
+                FullMode = BoundedChannelFullMode.DropWrite
+            });
         public HashSet<CommandKey> QueuedCommandKeys { get; } = [];
 
         public AuthenticatedDevice ToIdentity() =>
@@ -1388,7 +1798,8 @@ public sealed class ClassroomStore
         public DeviceStatus ToStatus(
             Guid activeSessionId,
             DateTimeOffset now,
-            TimeSpan heartbeatTimeout)
+            TimeSpan heartbeatTimeout,
+            RemoteAssistStatus? remoteAssist)
         {
             var latest = LatestHeartbeat;
             var lastHeartbeat = LastHeartbeatUtc ?? EnrolledAtUtc;
@@ -1410,7 +1821,8 @@ public sealed class ClassroomStore
                 latest?.NetworkStatus,
                 latest?.PolicyApplied ?? false,
                 true,
-                latest?.NeedsHelp ?? false);
+                latest?.NeedsHelp ?? false,
+                remoteAssist);
         }
     }
 
@@ -1441,6 +1853,73 @@ public sealed class ClassroomStore
         DateTimeOffset CreatedAtUtc)
     {
         public string State { get; set; } = "QUEUED";
+    }
+
+    private sealed class RemoteAssistSessionState(
+        Guid remoteAssistSessionId,
+        Guid teacherId,
+        Guid schoolId,
+        Guid classId,
+        Guid classSessionId,
+        Guid deviceId,
+        string teacherDisplayName,
+        int durationSeconds,
+        DateTimeOffset requestedAtUtc,
+        DateTimeOffset expiresAtUtc)
+    {
+        public const string Pending = "PENDING";
+        public const string Active = "ACTIVE";
+        public const string Ended = "ENDED";
+
+        public Guid RemoteAssistSessionId { get; } = remoteAssistSessionId;
+        public Guid TeacherId { get; } = teacherId;
+        public Guid SchoolId { get; } = schoolId;
+        public Guid ClassId { get; } = classId;
+        public Guid ClassSessionId { get; } = classSessionId;
+        public Guid DeviceId { get; } = deviceId;
+        public string TeacherDisplayName { get; } = teacherDisplayName;
+        public int DurationSeconds { get; } = durationSeconds;
+        public DateTimeOffset RequestedAtUtc { get; } = requestedAtUtc;
+        public DateTimeOffset ExpiresAtUtc { get; private set; } = expiresAtUtc;
+        public DateTimeOffset? ActivatedAtUtc { get; private set; }
+        public DateTimeOffset? EndedAtUtc { get; private set; }
+        public string? EndReason { get; private set; }
+        public string State { get; private set; } = Pending;
+        public long LastInputSequence { get; set; }
+        public Queue<DateTimeOffset> RecentInputTimes { get; } = [];
+        public bool IsOpen => State is Pending or Active;
+
+        public void Activate(DateTimeOffset now)
+        {
+            State = Active;
+            ActivatedAtUtc = now;
+            ExpiresAtUtc = now.AddSeconds(DurationSeconds);
+        }
+
+        public void End(DateTimeOffset now, string reason)
+        {
+            State = Ended;
+            EndedAtUtc = now;
+            EndReason = reason;
+            RecentInputTimes.Clear();
+        }
+
+        public void TrimInputRateWindow(DateTimeOffset now)
+        {
+            while (RecentInputTimes.TryPeek(out var earliest)
+                && now - earliest >= TimeSpan.FromSeconds(1))
+            {
+                RecentInputTimes.Dequeue();
+            }
+        }
+
+        public RemoteAssistStatus ToStatus() => new(
+            RemoteAssistSessionId,
+            State,
+            RequestedAtUtc,
+            ExpiresAtUtc,
+            TeacherDisplayName,
+            EndReason);
     }
 
     private sealed class ExitPinAttemptState

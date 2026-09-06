@@ -6,7 +6,9 @@ public enum ClassroomCommandKind
     OpenUrl,
     FocusMode,
     LaunchApprovedApp,
-    ScreenShare
+    ScreenShare,
+    RemoteAssistRequest,
+    RemoteAssistEnd
 }
 
 /// <summary>
@@ -32,7 +34,10 @@ public sealed record CommandRequest(
     bool? FocusEnabled = null,
     bool? ScreenShareEnabled = null,
     int? ScreenShareIntervalMilliseconds = null,
-    FocusDisplayMode? FocusDisplayMode = null);
+    FocusDisplayMode? FocusDisplayMode = null,
+    Guid? RemoteAssistSessionId = null,
+    int? RemoteAssistDurationSeconds = null,
+    string? RemoteAssistTeacherDisplayName = null);
 
 public sealed record CommandAck(
     Guid RequestId,
