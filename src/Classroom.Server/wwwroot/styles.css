@@ -3631,7 +3631,7 @@ html[data-theme="dark"] .auth-mode-header .inline-link { background: #f7faff; }
   #app-view .filter { flex: 1 1 calc(50% - 4px); }
 }
 
-/* 0.5.38 — The live desk, lesson planning, intervention queue, and remote
+/* 0.5.39 — The live desk, lesson planning, intervention queue, and remote
    support surface have different jobs, so they deliberately use different visual shapes and
    contrast levels instead of repeating the same white settings card. */
 #class-section > .class-command-strip {
