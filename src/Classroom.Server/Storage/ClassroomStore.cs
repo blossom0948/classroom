@@ -582,6 +582,7 @@ public sealed class ClassroomStore
             }
 
             if (!devices.TryGetValue(deviceId, out var device)
+                || device is null
                 || device.Revoked
                 || device.ClassId != classId)
             {
@@ -684,6 +685,7 @@ public sealed class ClassroomStore
             }
 
             if (!devices.TryGetValue(remoteAssistSession.DeviceId, out var device)
+                || device is null
                 || device.Revoked
                 || !device.IsOnline(now, options.HeartbeatTimeout))
             {
@@ -1766,6 +1768,11 @@ public sealed class ClassroomStore
                 FullMode = BoundedChannelFullMode.DropWrite
             });
         public HashSet<CommandKey> QueuedCommandKeys { get; } = [];
+
+        public bool IsOnline(DateTimeOffset now, TimeSpan heartbeatTimeout) =>
+            ConnectionActive
+            && LastHeartbeatUtc is not null
+            && now - LastHeartbeatUtc <= heartbeatTimeout;
 
         public AuthenticatedDevice ToIdentity() =>
             new(DeviceId, SchoolId, ClassId, StudentId, StudentDisplayName, DeviceName);
