@@ -14,7 +14,7 @@ namespace Blossom.Classroom.Student.Setup;
 
 internal sealed class StudentSetupForm : Form
 {
-    private const string AgentVersion = "0.5.39";
+    private const string AgentVersion = "0.5.40";
     private const int JoinCodeLength = 8;
     private static readonly string[] StudentPackageUrls =
     [

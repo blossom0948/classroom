@@ -48,14 +48,11 @@ assert.match(html, /id="class-sync-status"/, "The console needs a visible sync r
 assert.match(html, /id="student-sort"/, "The class roster needs a sorting control.");
 assert.match(html, /id="focus-display-mode"/, "The focus command needs a visible presentation selector.");
 assert.match(script, /focusDisplayMode: state\.focusDisplayMode/, "The console must send the selected focus presentation.");
-assert.match(html, /id="lesson-flow-card"/, "The class dashboard needs a distinct lesson-flow workspace.");
-assert.match(html, /id="lesson-goal"/, "Teachers need a visible lesson objective field.");
-assert.match(html, /id="signal-center"/, "The class dashboard needs one visible intervention queue.");
+assert.doesNotMatch(html, /id="lesson-flow-card"/, "The removed lesson-flow card should not take dashboard space.");
+assert.doesNotMatch(html, /id="signal-center"/, "The removed signal center should not take dashboard space.");
 assert.match(html, /data-filter="help"/, "Help requests need a dedicated roster filter.");
 assert.match(html, /class="command-group command-group-focus"/, "Focus controls must be visually grouped instead of reading as another identical action.");
-assert.match(script, /function renderLessonFlow\(\)/, "Lesson goals, stages, and timer state must render from one flow model.");
-assert.match(script, /function renderSignalCenter\(\)/, "Teacher intervention signals must render from the existing student status data.");
-assert.match(script, /data-signal-screen/, "A signal must lead directly to a student screen when a class is active.");
+assert.doesNotMatch(script, /lessonFlow|renderLessonFlow|renderSignalCenter|data-signal-screen/, "Removed dashboard cards must not leave stale lesson or signal code behind.");
 assert.doesNotMatch(html, /id="student-density-button"/, "The unused density control should not occupy the classroom toolbar.");
 assert.doesNotMatch(html, /id="history-nav"/, "The unused history tab must not occupy the teacher navigation.");
 assert.match(html, /id="close-console-button"/, "The installed shell keeps a compatibility close-action hook.");
