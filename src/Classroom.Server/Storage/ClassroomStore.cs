@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Blossom.Classroom.Core.Audit;
 using Blossom.Classroom.Core.Security;
+using Blossom.Classroom.Protocol;
 using Blossom.Classroom.Protocol.Models;
 using Blossom.Classroom.Protocol.Validation;
 using Blossom.Classroom.Server.Configuration;

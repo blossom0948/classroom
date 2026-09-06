@@ -510,6 +510,10 @@ public sealed class StudentDesktopForm : Form
 
     private async Task<DesktopCommandApplyResult> RequestRemoteAssistAsync(CommandRequest command)
     {
+        // Keep the command contract asynchronous while the consent dialog is
+        // being shown synchronously on the WinForms UI thread.
+        await Task.CompletedTask;
+
         if (command.RemoteAssistSessionId is not { } requestSessionId
             || command.RemoteAssistDurationSeconds is not { } durationSeconds
             || string.IsNullOrWhiteSpace(command.RemoteAssistTeacherDisplayName))
