@@ -39,9 +39,11 @@ public sealed class WindowsStudentStatusProvider
         var minimumInterval = allowRemoteAssistRate
             ? ProtocolConstants.RemoteAssistScreenShareIntervalMilliseconds
             : ProtocolConstants.ScreenShareMinimumIntervalMilliseconds;
-        var effectiveInterval = enabled && intervalMilliseconds is >= minimumInterval
-            and <= ProtocolConstants.ScreenShareMaximumIntervalMilliseconds
-            ? intervalMilliseconds.Value
+        var effectiveInterval = enabled
+            && intervalMilliseconds is int requestedInterval
+            && requestedInterval >= minimumInterval
+            && requestedInterval <= ProtocolConstants.ScreenShareMaximumIntervalMilliseconds
+            ? requestedInterval
             : ProtocolConstants.ScreenShareStandardIntervalMilliseconds;
         Interlocked.Exchange(ref screenShareIntervalMilliseconds, effectiveInterval);
         Interlocked.Exchange(ref screenSharingEnabled, enabled ? 1 : 0);

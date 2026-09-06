@@ -381,8 +381,8 @@ public sealed class DesktopStatusBridge(
                     var minimumScreenShareInterval = status.RemoteAssistActive
                         ? ProtocolConstants.RemoteAssistScreenShareIntervalMilliseconds
                         : ProtocolConstants.ScreenShareMinimumIntervalMilliseconds;
-                    if (status.ScreenShareIntervalMilliseconds is < minimumScreenShareInterval
-                        or > ProtocolConstants.ScreenShareMaximumIntervalMilliseconds)
+                    if (status.ScreenShareIntervalMilliseconds < minimumScreenShareInterval
+                        || status.ScreenShareIntervalMilliseconds > ProtocolConstants.ScreenShareMaximumIntervalMilliseconds)
                     {
                         throw new ProtocolValidationException("Desktop screen-share interval is invalid.");
                     }
@@ -592,7 +592,9 @@ public sealed class DesktopStatusBridge(
         ScreenFrame? ScreenFrame,
         bool ScreenSharingEnabled,
         bool NeedsHelp = false,
-        int ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds);
+        int ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareStandardIntervalMilliseconds,
+        Guid? RemoteAssistSessionId = null,
+        bool RemoteAssistActive = false);
 
     private sealed record DesktopServerStatusMessage(
         string Kind,

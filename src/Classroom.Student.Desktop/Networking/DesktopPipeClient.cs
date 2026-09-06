@@ -6,6 +6,7 @@ using Blossom.Classroom.Core.Desktop;
 using Blossom.Classroom.Core.Serialization;
 using Blossom.Classroom.Protocol;
 using Blossom.Classroom.Protocol.Models;
+using Blossom.Classroom.Protocol.Validation;
 using Blossom.Classroom.Student.Desktop.Commands;
 using Blossom.Classroom.Student.Desktop.Configuration;
 using Blossom.Classroom.Student.Desktop.Status;
