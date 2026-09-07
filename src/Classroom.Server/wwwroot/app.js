@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.6.3";
+  const APP_VERSION = "0.6.4";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -247,14 +247,26 @@
     layer.className = "easter-egg-layer";
     layer.setAttribute("role", "dialog");
     layer.setAttribute("aria-label", "Classroom 비밀 모드");
-    layer.innerHTML = `<div class="easter-egg-card"><div class="easter-egg-kicker">✦ CLASSROOM SECRET</div><h2>오늘 수업도 레벨 업!</h2><p>숨겨진 교실 축하 모드를 찾았어요.<br>선생님의 수업에 작은 별을 보냅니다.</p><button class="secondary easter-egg-close" type="button">수업으로 돌아가기</button></div>`;
+    layer.innerHTML = `<div class="easter-egg-aurora" aria-hidden="true"></div><div class="easter-egg-rays" aria-hidden="true"></div><div class="easter-egg-vortex" aria-hidden="true"></div><div class="easter-egg-stage"><div class="easter-egg-kicker">✦ CLASSROOM SECRET ✦</div><div class="easter-egg-emblem" aria-hidden="true"><span>✦</span></div><h2>오늘 수업도<br><span>레벨 업!</span></h2><p>숨겨진 교실 축하 모드를 찾았어요.<br>선생님의 수업에 작은 별을 보냅니다.</p><button class="secondary easter-egg-close" type="button">수업으로 돌아가기</button></div>`;
     const colors = ["#6d83ff", "#f4b35f", "#63c9a3", "#ef7d91", "#b38cff"];
-    for (let index = 0; index < 24; index += 1) {
+    for (let index = 0; index < 110; index += 1) {
+      const star = document.createElement("span");
+      star.className = "easter-egg-star";
+      star.style.setProperty("--left", `${(Math.random() * 100).toFixed(2)}%`);
+      star.style.setProperty("--top", `${(Math.random() * 100).toFixed(2)}%`);
+      star.style.setProperty("--size", `${(Math.random() * 3.5 + 1).toFixed(1)}px`);
+      star.style.setProperty("--delay", `${(Math.random() * 3).toFixed(2)}s`);
+      star.style.setProperty("--duration", `${(Math.random() * 2.8 + 1.8).toFixed(2)}s`);
+      star.style.setProperty("--star-color", colors[index % colors.length]);
+      layer.append(star);
+    }
+    for (let index = 0; index < 52; index += 1) {
       const piece = document.createElement("span");
       piece.className = "easter-egg-confetti";
-      piece.style.setProperty("--dx", `${Math.round(Math.random() * 560 - 280)}px`);
-      piece.style.setProperty("--dy", `${Math.round(Math.random() * 430 + 180)}px`);
-      piece.style.setProperty("--delay", `${(Math.random() * .32).toFixed(2)}s`);
+      piece.style.setProperty("--dx", `${Math.round(Math.random() * 1500 - 750)}px`);
+      piece.style.setProperty("--dy", `${Math.round(Math.random() * 1000 - 500)}px`);
+      piece.style.setProperty("--spin", `${Math.round(Math.random() * 900 - 450)}deg`);
+      piece.style.setProperty("--delay", `${(Math.random() * .85).toFixed(2)}s`);
       piece.style.setProperty("--confetti-color", colors[index % colors.length]);
       layer.append(piece);
     }

@@ -316,26 +316,41 @@ body { min-width: 320px; }
 .theme-options .secondary.active { background: var(--blue-soft); border-color: #aabbf3; color: var(--blue); font-weight: 850; }
 .enrollment-dialog .dialog-actions { flex-wrap: wrap; }
 
-.easter-egg-layer { align-items: center; background: rgba(20, 31, 54, .32); display: grid; inset: 0; justify-items: center; overflow: hidden; position: fixed; z-index: 100; }
-.easter-egg-card { animation: easter-egg-pop .45s cubic-bezier(.2, .8, .2, 1) both; background: var(--soft); border: 1px solid rgba(255, 255, 255, .7); border-radius: 22px; box-shadow: 0 28px 90px rgba(11, 20, 38, .34); max-width: min(420px, calc(100vw - 32px)); padding: 30px; position: relative; text-align: center; z-index: 1; }
-.easter-egg-kicker { color: var(--blue); font-size: 10px; font-weight: 900; letter-spacing: .16em; }
-.easter-egg-card h2 { color: var(--ink); font-size: 26px; margin: 12px 0 9px; }
-.easter-egg-card p { color: var(--muted); font-size: 13px; line-height: 1.65; margin: 0 0 20px; }
-.easter-egg-close { background: var(--blue-soft); border-color: #b9c7f6; color: var(--blue); width: 100%; }
-.easter-egg-confetti { animation: easter-egg-confetti 1.25s cubic-bezier(.14, .72, .33, 1) var(--delay) both; background: var(--confetti-color); border-radius: 3px; height: 14px; left: 50%; position: absolute; top: calc(50% - 18px); width: 7px; }
+.easter-egg-layer { align-items: center; background: #06091a; color: #fff; display: grid; isolation: isolate; inset: 0; justify-items: center; overflow: hidden; position: fixed; z-index: 100; }
+.easter-egg-layer::before { animation: easter-egg-spin 18s linear infinite; background: conic-gradient(from 15deg, transparent 0 12%, rgba(75, 94, 255, .2) 18%, transparent 26% 44%, rgba(241, 126, 219, .16) 52%, transparent 64% 78%, rgba(71, 224, 207, .18) 86%, transparent 94%); content: ""; inset: -55%; pointer-events: none; position: absolute; }
+.easter-egg-layer::after { background-image: linear-gradient(rgba(255, 255, 255, .035) 1px, transparent 1px); background-size: 100% 4px; content: ""; inset: 0; mix-blend-mode: screen; opacity: .35; pointer-events: none; position: absolute; }
+.easter-egg-aurora { animation: easter-egg-aurora 9s ease-in-out infinite alternate; background: conic-gradient(from 120deg, #5666ff, #d753d8, #41d8cf, #4c74ff, #5666ff); border-radius: 50%; filter: blur(36px); height: min(115vw, 1200px); opacity: .52; position: absolute; width: min(115vw, 1200px); }
+.easter-egg-rays { animation: easter-egg-spin-reverse 28s linear infinite; background: repeating-conic-gradient(from 2deg, transparent 0 7deg, rgba(138, 160, 255, .16) 7.4deg 8.1deg, transparent 8.5deg 15deg); border-radius: 50%; height: min(150vw, 1500px); mask-image: radial-gradient(circle, #000 0 24%, transparent 70%); opacity: .9; position: absolute; width: min(150vw, 1500px); }
+.easter-egg-vortex { animation: easter-egg-spin-reverse 24s linear infinite; aspect-ratio: 1; border: 1px solid rgba(151, 168, 255, .42); border-radius: 50%; box-shadow: 0 0 0 24px rgba(112, 124, 255, .06), 0 0 0 70px rgba(224, 91, 218, .045), 0 0 80px rgba(97, 125, 255, .5), inset 0 0 65px rgba(91, 221, 213, .22); height: min(78vw, 840px); position: absolute; width: min(78vw, 840px); }
+.easter-egg-vortex::before, .easter-egg-vortex::after { border: 1px dashed rgba(148, 180, 255, .34); border-radius: 50%; content: ""; inset: 9%; position: absolute; }
+.easter-egg-vortex::before { animation: easter-egg-orbit 10s linear infinite; border-color: rgba(255, 146, 223, .52); transform: rotate(27deg) scaleX(.62); }
+.easter-egg-vortex::after { animation: easter-egg-orbit 13s linear infinite reverse; border-color: rgba(78, 234, 216, .5); transform: rotate(-34deg) scaleY(.58); }
+.easter-egg-stage { animation: easter-egg-stage-in .7s cubic-bezier(.18, .9, .22, 1) both; background: linear-gradient(145deg, rgba(21, 29, 78, .92), rgba(20, 11, 53, .86)); border: 1px solid rgba(202, 214, 255, .48); border-radius: 32px; box-shadow: 0 30px 110px rgba(0, 0, 0, .56), 0 0 80px rgba(102, 119, 255, .25), inset 0 1px rgba(255, 255, 255, .18); max-width: min(480px, calc(100vw - 44px)); padding: 42px 34px 34px; position: relative; text-align: center; width: 100%; z-index: 3; }
+.easter-egg-kicker { color: #a9b9ff; font-size: 10px; font-weight: 900; letter-spacing: .2em; text-shadow: 0 0 16px rgba(138, 159, 255, .9); }
+.easter-egg-emblem { align-items: center; animation: easter-egg-emblem 2.2s ease-in-out infinite; background: conic-gradient(from 40deg, #6f7cff, #ee68d2, #5ce3d0, #6f7cff); border: 4px solid rgba(255, 255, 255, .75); border-radius: 50%; box-shadow: 0 0 0 11px rgba(120, 141, 255, .13), 0 0 42px rgba(114, 132, 255, .75), 0 0 80px rgba(232, 100, 213, .42); display: flex; font-size: 48px; height: 112px; justify-content: center; margin: 0 auto 22px; position: relative; width: 112px; }
+.easter-egg-emblem::before, .easter-egg-emblem::after { border: 1px solid rgba(255, 255, 255, .62); border-radius: 50%; content: ""; inset: -18px; position: absolute; }
+.easter-egg-emblem::after { animation: easter-egg-orbit 4s linear infinite reverse; border-style: dashed; inset: -29px; }
+.easter-egg-emblem span { filter: drop-shadow(0 0 12px #fff); }
+.easter-egg-stage h2 { color: #f5f7ff; font-size: 34px; letter-spacing: -.06em; line-height: 1.12; margin: 0 0 13px; text-shadow: 0 5px 24px rgba(105, 126, 255, .5); }
+.easter-egg-stage h2 span { background: linear-gradient(90deg, #8fa1ff, #f28de2 48%, #72e8dc); background-clip: text; color: transparent; -webkit-background-clip: text; }
+.easter-egg-stage p { color: #becaff; font-size: 13px; line-height: 1.65; margin: 0 0 24px; }
+.easter-egg-close { background: rgba(255, 255, 255, .12); border: 1px solid rgba(215, 224, 255, .56); color: #fff; width: 100%; }
+.easter-egg-close:hover { background: rgba(255, 255, 255, .22); border-color: #fff; box-shadow: 0 0 28px rgba(141, 161, 255, .32); }
+.easter-egg-star { animation: easter-egg-twinkle var(--duration) ease-in-out var(--delay) infinite; background: var(--star-color); border-radius: 50%; box-shadow: 0 0 7px 1px var(--star-color), 0 0 18px var(--star-color); height: var(--size); left: var(--left); opacity: .2; position: absolute; top: var(--top); width: var(--size); z-index: 1; }
+.easter-egg-confetti { animation: easter-egg-confetti 1.9s cubic-bezier(.13, .73, .28, 1) var(--delay) both; background: var(--confetti-color); border-radius: 4px; box-shadow: 0 0 12px var(--confetti-color); height: 17px; left: 50%; position: absolute; top: 50%; width: 8px; z-index: 2; }
 
-@keyframes easter-egg-pop {
-  from { opacity: 0; transform: translateY(16px) scale(.92); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes easter-egg-confetti {
-  0% { opacity: 0; transform: translate(-50%, -50%) rotate(0); }
-  12% { opacity: 1; }
-  100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), var(--dy)) rotate(520deg); }
-}
+@keyframes easter-egg-spin { to { transform: rotate(360deg); } }
+@keyframes easter-egg-spin-reverse { to { transform: rotate(-360deg); } }
+@keyframes easter-egg-aurora { from { transform: rotate(-12deg) scale(.94); } to { transform: rotate(28deg) scale(1.08); } }
+@keyframes easter-egg-orbit { to { transform: rotate(360deg) scaleX(.62); } }
+@keyframes easter-egg-stage-in { from { opacity: 0; transform: translateY(20px) scale(.78) rotateX(12deg); } to { opacity: 1; transform: translateY(0) scale(1) rotateX(0); } }
+@keyframes easter-egg-emblem { 0%, 100% { transform: translateY(0) rotate(-5deg) scale(1); } 50% { transform: translateY(-8px) rotate(5deg) scale(1.05); } }
+@keyframes easter-egg-twinkle { 0%, 100% { opacity: .2; transform: scale(.6); } 45% { opacity: 1; transform: scale(1.35); } }
+@keyframes easter-egg-confetti { 0% { opacity: 0; transform: translate(-50%, -50%) rotate(0) scale(.2); } 10% { opacity: 1; } 100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--spin)) scale(1); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .easter-egg-card, .easter-egg-confetti { animation: none; }
+  .easter-egg-layer::before, .easter-egg-aurora, .easter-egg-rays, .easter-egg-vortex, .easter-egg-vortex::before, .easter-egg-vortex::after, .easter-egg-stage, .easter-egg-emblem, .easter-egg-emblem::after, .easter-egg-star, .easter-egg-confetti { animation: none; }
+  .easter-egg-star { opacity: .7; }
   .easter-egg-confetti { display: none; }
 }
 

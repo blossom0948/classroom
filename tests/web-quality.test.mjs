@@ -62,6 +62,8 @@ assert.match(script, /function isSessionAuthenticationFailure\(error\)/, "Sessio
 assert.match(script, /저장된 로그인 상태는 유지하고 재연결 중입니다/, "Transient startup failures should preserve the stored login.");
 assert.match(script, /function activateEasterEgg\(\)/, "The teacher console should include a small hidden delight.");
 assert.match(styles, /\.easter-egg-layer/, "The hidden classroom celebration needs a dedicated visual layer.");
+assert.match(script, /easter-egg-aurora/, "The hidden celebration should render the full-screen visual layers.");
+assert.match(styles, /\.easter-egg-vortex/, "The hidden celebration needs an immersive full-screen vortex.");
 assert.match(desktopForm, /label\.Text = string\.Empty;[\s\S]*label\.Visible = false;[\s\S]*if \(!blackScreen\)/, "Black-screen focus mode must hide the overlay label and clear its text.");
 assert.match(html, /id="alert-drawer"/, "The classroom needs a compact intervention drawer instead of a permanent signal card.");
 assert.match(html, /id="tools-dialog"/, "Teacher-only lesson tools should open on demand.");
