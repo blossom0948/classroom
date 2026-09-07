@@ -184,20 +184,22 @@ public sealed class DesktopPipeClient(
             {
                 return;
             }
-            catch (Exception exception) when (
-                exception is IOException
-                or UnauthorizedAccessException
-                or TimeoutException
-                or InvalidDataException
-                or JsonException
-                or ProtocolValidationException)
+            catch (Exception exception)
             {
-                log($"Student Service IPC connection ended: {exception.Message}");
+                SafeLog($"Student Service IPC connection ended; retrying: {exception}");
             }
 
-            connectionHandler(false);
-            serverConnectionHandler(false, Guid.Empty);
-            await Task.Delay(retryDelay, cancellationToken);
+            NotifyConnectionState(connectionHandler, false);
+            NotifyServerConnectionState(serverConnectionHandler, false, Guid.Empty);
+            try
+            {
+                await Task.Delay(retryDelay, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
             retryDelay = TimeSpan.FromSeconds(Math.Min(retryDelay.TotalSeconds * 2, 15));
         }
     }
@@ -248,7 +250,7 @@ public sealed class DesktopPipeClient(
             throw new InvalidDataException(reply.Message);
         }
 
-        connectionHandler(true);
+        NotifyConnectionState(connectionHandler, true);
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var activeExitPinConnection = new ExitPinConnection(writer, writeGate);
         lock (exitPinGate)
@@ -256,16 +258,23 @@ public sealed class DesktopPipeClient(
             exitPinConnection = activeExitPinConnection;
         }
         var statusTask = SendStatusLoopAsync(writer, writeGate, statusHandler, lifetime.Token);
+        var receiveTask = ReceiveLoopAsync(
+            reader,
+            writer,
+            writeGate,
+            commandHandler,
+            remoteInputHandler,
+            serverConnectionHandler,
+            lifetime.Token);
         try
         {
-            await ReceiveLoopAsync(
-                reader,
-                writer,
-                writeGate,
-                commandHandler,
-                remoteInputHandler,
-                serverConnectionHandler,
-                lifetime.Token);
+            var completedTask = await Task.WhenAny(receiveTask, statusTask);
+            await completedTask;
+            if (ReferenceEquals(completedTask, statusTask) && !receiveTask.IsCompleted)
+            {
+                lifetime.Cancel();
+                await receiveTask;
+            }
         }
         finally
         {
@@ -280,10 +289,14 @@ public sealed class DesktopPipeClient(
             lifetime.Cancel();
             try
             {
-                await statusTask;
+                await Task.WhenAll(receiveTask, statusTask);
             }
             catch (OperationCanceledException)
             {
+            }
+            catch (Exception exception)
+            {
+                SafeLog($"Student Desktop status loop ended; reconnecting: {exception}");
             }
         }
     }
@@ -296,8 +309,30 @@ public sealed class DesktopPipeClient(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            var status = statusProvider.GetCurrent();
-            statusHandler(status);
+            DesktopStatusData status;
+            try
+            {
+                status = statusProvider.GetCurrent();
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                SafeLog($"Student Desktop status collection failed; using a safe fallback: {exception}");
+                status = new DesktopStatusData(
+                    Activity: null,
+                    BatteryPercent: null,
+                    NetworkStatus: "unknown",
+                    PolicyApplied: false);
+            }
+
+            try
+            {
+                statusHandler(status);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                SafeLog($"Student Desktop status callback failed: {exception}");
+            }
+
             await WriteAsync(
                 writer,
                 writeGate,
@@ -344,7 +379,10 @@ public sealed class DesktopPipeClient(
             if (string.Equals(kind, "server-status", StringComparison.Ordinal))
             {
                 var serverStatus = ClassroomJson.Deserialize<DesktopServerStatusMessage>(json);
-                serverConnectionHandler(serverStatus.Connected, serverStatus.SessionId);
+                NotifyServerConnectionState(
+                    serverConnectionHandler,
+                    serverStatus.Connected,
+                    serverStatus.SessionId);
                 continue;
             }
 
@@ -452,6 +490,42 @@ public sealed class DesktopPipeClient(
         foreach (var completion in pendingUpdateChecks.Values)
         {
             completion.TrySetException(exception);
+        }
+    }
+
+    private void NotifyConnectionState(Action<bool> handler, bool connected)
+    {
+        try
+        {
+            handler(connected);
+        }
+        catch (Exception exception)
+        {
+            SafeLog($"Student Desktop connection state callback failed: {exception}");
+        }
+    }
+
+    private void NotifyServerConnectionState(Action<bool, Guid> handler, bool connected, Guid sessionId)
+    {
+        try
+        {
+            handler(connected, sessionId);
+        }
+        catch (Exception exception)
+        {
+            SafeLog($"Student Desktop server state callback failed: {exception}");
+        }
+    }
+
+    private void SafeLog(string message)
+    {
+        try
+        {
+            log(message);
+        }
+        catch (Exception exception)
+        {
+            StudentDesktopDiagnostics.Log("Student Desktop diagnostic callback failed.", exception);
         }
     }
 

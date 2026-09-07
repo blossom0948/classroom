@@ -197,6 +197,14 @@ internal static class ElevatedStudentInstaller
                 "restart/5000/restart/15000/restart/60000"
             },
             logPath);
+        RunScOptional(
+            new[]
+            {
+                "failureflag",
+                ServiceName,
+                "1"
+            },
+            logPath);
 
         using var serviceKey = Registry.LocalMachine.CreateSubKey(ServiceRegistryPath, writable: true)
             ?? throw new InvalidOperationException("Windows 서비스 레지스트리 키를 열지 못했습니다.");

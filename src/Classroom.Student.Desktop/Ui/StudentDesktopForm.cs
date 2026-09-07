@@ -405,7 +405,7 @@ public sealed class StudentDesktopForm : Form
                 _ => Task.FromResult(new DesktopCommandApplyResult(false, "COMMAND_UNSUPPORTED", "Unsupported command."))
             };
         }
-        catch (Exception exception) when (exception is InvalidOperationException or IOException or System.ComponentModel.Win32Exception)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             return Task.FromResult(new DesktopCommandApplyResult(false, "COMMAND_APPLY_FAILED", exception.Message));
         }
@@ -805,7 +805,20 @@ public sealed class StudentDesktopForm : Form
 
         if (InvokeRequired)
         {
-            BeginInvoke(action);
+            try
+            {
+                BeginInvoke(action);
+            }
+            catch (InvalidOperationException)
+            {
+                // The service can finish a pending callback at the same time
+                // the tray window is closing. The watchdog keeps the process
+                // alive; this callback simply has no UI left to update.
+            }
+            catch (ObjectDisposedException)
+            {
+                // See the InvalidOperationException comment above.
+            }
         }
         else
         {

@@ -115,16 +115,23 @@ public sealed class ClassroomServerClient(
             {
                 return;
             }
-            catch (Exception exception) when (exception is WebSocketException or IOException or ProtocolValidationException)
+            catch (Exception exception)
             {
                 logger.LogWarning(
-                    "Classroom server connection ended: {Message}. Retrying in {RetrySeconds}s.",
-                    exception.Message,
+                    exception,
+                    "Classroom server connection ended. Retrying in {RetrySeconds}s.",
                     retryDelay.TotalSeconds);
             }
             finally
             {
-                await desktopBridge.UpdateServerConnectionAsync(false, Guid.Empty, CancellationToken.None);
+                try
+                {
+                    await desktopBridge.UpdateServerConnectionAsync(false, Guid.Empty, CancellationToken.None);
+                }
+                catch (Exception exception)
+                {
+                    logger.LogDebug(exception, "Could not clear the Student Desktop server state.");
+                }
             }
 
             await Task.Delay(retryDelay, cancellationToken);
@@ -156,9 +163,16 @@ public sealed class ClassroomServerClient(
             lifetime.Token);
 
         var heartbeatTask = SendHeartbeatLoopAsync(socket, sendGate, sessionState, lifetime.Token);
+        var receiveTask = ReceiveLoopAsync(socket, sendGate, sessionState, lifetime.Token);
         try
         {
-            await ReceiveLoopAsync(socket, sendGate, sessionState, lifetime.Token);
+            var completedTask = await Task.WhenAny(receiveTask, heartbeatTask);
+            await completedTask;
+            if (ReferenceEquals(completedTask, heartbeatTask) && !receiveTask.IsCompleted)
+            {
+                lifetime.Cancel();
+                await receiveTask;
+            }
         }
         finally
         {
@@ -173,10 +187,14 @@ public sealed class ClassroomServerClient(
             lifetime.Cancel();
             try
             {
-                await heartbeatTask;
+                await Task.WhenAll(receiveTask, heartbeatTask);
             }
             catch (OperationCanceledException)
             {
+            }
+            catch (Exception exception)
+            {
+                logger.LogDebug(exception, "Student heartbeat loop ended while the server connection was closing.");
             }
         }
     }
@@ -311,8 +329,13 @@ public sealed class ClassroomServerClient(
         {
             applied = await commandSink.ApplyAsync(command, cancellationToken);
         }
-        catch (Exception exception) when (exception is InvalidOperationException or IOException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Student command {CommandKind} failed locally.", command.Kind);
             applied = new CommandApplyResult(false, "COMMAND_APPLY_FAILED", exception.Message);
         }
 

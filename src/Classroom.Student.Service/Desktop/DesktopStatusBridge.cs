@@ -195,7 +195,10 @@ public sealed class DesktopStatusBridge(
 
         lock (gate)
         {
-            acceptTask ??= Task.Run(() => AcceptLoopAsync(lifetime.Token));
+            if (acceptTask is null || acceptTask.IsCompleted)
+            {
+                acceptTask = Task.Run(() => AcceptLoopAsync(lifetime.Token));
+            }
         }
     }
 
@@ -232,6 +235,21 @@ public sealed class DesktopStatusBridge(
                 or ProtocolValidationException)
             {
                 logger.LogWarning("Student Desktop IPC connection ended: {Message}", exception.Message);
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+            }
+            catch (Exception exception)
+            {
+                // A malformed status or an unexpected Windows pipe error must
+                // only reset this desktop connection. The LocalSystem service
+                // must stay alive and accept the watchdog's next connection.
+                logger.LogWarning(exception, "Student Desktop IPC recovered from an unexpected error.");
                 try
                 {
                     await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
@@ -497,6 +515,18 @@ public sealed class DesktopStatusBridge(
         }
         catch (ObjectDisposedException) when (!cancellationToken.IsCancellationRequested)
         {
+            return false;
+        }
+        catch (Exception exception) when (
+            !cancellationToken.IsCancellationRequested
+            && (exception is IOException or UnauthorizedAccessException or InvalidOperationException))
+        {
+            logger.LogDebug(exception, "Student Desktop IPC write failed; waiting for the watchdog to reconnect.");
+            return false;
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogDebug(exception, "Student Desktop IPC write failed unexpectedly; waiting for the watchdog to reconnect.");
             return false;
         }
         finally

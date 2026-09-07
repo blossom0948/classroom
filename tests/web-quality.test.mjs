@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [html, script, styles, config, updater, helper, desktopProgram, desktopForm, watchdog, desktopOptions, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, cloudflareWorker] = await Promise.all([
+const [html, script, styles, config, updater, helper, desktopProgram, desktopForm, watchdog, desktopOptions, desktopPipeClient, agentWorker, desktopBridge, diagnostics, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, cloudflareWorker] = await Promise.all([
   readFile(new URL("../src/Classroom.Server/wwwroot/index.html", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/app.js", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/styles.css", import.meta.url), "utf8"),
@@ -12,6 +12,10 @@ const [html, script, styles, config, updater, helper, desktopProgram, desktopFor
   readFile(new URL("../src/Classroom.Student.Desktop/Ui/StudentDesktopForm.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Desktop/StudentDesktopWatchdog.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Desktop/Configuration/StudentDesktopOptions.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Desktop/Networking/DesktopPipeClient.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Service/StudentAgentWorker.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Service/Desktop/DesktopStatusBridge.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Desktop/StudentDesktopDiagnostics.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Setup/Program.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Setup/StudentSetupForm.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Setup/ElevatedStudentInstaller.cs", import.meta.url), "utf8"),
@@ -205,6 +209,12 @@ assert.match(desktopForm, /helpButton\.Click \+=/, "Students need a direct help-
 assert.match(desktopForm, /statusProvider\.SetHelpRequested\(helpRequested\)/, "Student help requests must enter the existing status heartbeat path.");
 assert.match(desktopForm, /SetHelpRequestAvailability\(false, clearRequest: true\)/, "Help requests must clear after a class session ends.");
 assert.match(watchdog, /Arguments = "--classroom-background"/, "The watchdog must launch the student UI without showing its window.");
+assert.match(watchdog, /catch \(Exception exception\)\n\s*\{[\s\S]*?StudentDesktopDiagnostics\.Log/, "The watchdog must survive unexpected process and profile errors.");
+assert.match(desktopPipeClient, /catch \(Exception exception\)\n\s*\{[\s\S]*?retrying:/, "Student Desktop IPC must retry after any unexpected service error.");
+assert.match(desktopPipeClient, /status collection failed; using a safe fallback/, "Student status collection errors must not terminate the desktop process.");
+assert.match(agentWorker, /while \(!stoppingToken\.IsCancellationRequested\)/, "The Windows service must restart its connection loop if it returns unexpectedly.");
+assert.match(desktopBridge, /IPC recovered from an unexpected error/, "The service pipe listener must keep accepting desktop reconnects after unexpected errors.");
+assert.match(diagnostics, /student-desktop\.log/, "The background student process must leave a diagnosable local log.");
 assert.match(desktopOptions, /StudentDesktopConfigurationStore\.TryLoad/, "The tray process must recover enrollment from machine-level configuration.");
 assert.match(setupProgram, /TryStartExistingInstallation/, "Rerunning the installer must reuse an existing enrollment.");
 assert.match(setupForm, /백그라운드에서 실행 중입니다/, "Successful enrollment must not leave a setup completion window open.");

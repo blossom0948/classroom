@@ -10,7 +10,24 @@ internal static class StudentDesktopWatchdog
 
     public static async Task RunAsync()
     {
-        var options = StudentDesktopOptions.FromEnvironment();
+        StudentDesktopOptions options;
+        while (true)
+        {
+            try
+            {
+                options = StudentDesktopOptions.FromEnvironment();
+                break;
+            }
+            catch (Exception exception)
+            {
+                // Enrollment can be restored a moment after the Windows user
+                // session starts. Keep retrying instead of letting a missing
+                // environment value permanently disable the watchdog.
+                StudentDesktopDiagnostics.Log("Student Desktop configuration is not ready; retrying.", exception);
+                await DelayBeforeRetryAsync(PollInterval);
+            }
+        }
+
         using var mutex = new Mutex(
             initiallyOwned: true,
             $"Local\\BlossomClassroomStudentWatchdog-{options.DeviceId:N}",
@@ -48,11 +65,22 @@ internal static class StudentDesktopWatchdog
                 {
                     // A transient Windows startup failure must not disable the
                     // watchdog itself. Retry the visible student window.
+                    StudentDesktopDiagnostics.Log("Student Desktop restart attempt failed.", exception);
+                    studentProcess?.Dispose();
+                    studentProcess = null;
+                }
+                catch (Exception exception)
+                {
+                    // Process handles, profile transitions, and security
+                    // products can throw exceptions that are not predictable
+                    // at install time. Keep the watchdog alive for all of
+                    // them instead of losing the background connection.
+                    StudentDesktopDiagnostics.Log("Student Desktop watchdog recovered from an unexpected error.", exception);
                     studentProcess?.Dispose();
                     studentProcess = null;
                 }
 
-                await Task.Delay(PollInterval);
+                await DelayBeforeRetryAsync(PollInterval);
             }
         }
         finally
@@ -69,4 +97,19 @@ internal static class StudentDesktopWatchdog
             WorkingDirectory = workingDirectory ?? string.Empty,
             UseShellExecute = true
         }) ?? throw new InvalidOperationException("학생 화면을 시작하지 못했습니다.");
+
+    private static async Task DelayBeforeRetryAsync(TimeSpan delay)
+    {
+        try
+        {
+            await Task.Delay(delay);
+        }
+        catch (Exception exception)
+        {
+            // A delay failure should not end the watchdog. Yield once and
+            // immediately continue the supervision loop.
+            StudentDesktopDiagnostics.Log("Student Desktop watchdog delay failed; continuing.", exception);
+            await Task.Yield();
+        }
+    }
 }
