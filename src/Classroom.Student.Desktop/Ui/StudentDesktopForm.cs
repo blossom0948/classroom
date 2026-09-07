@@ -809,13 +809,13 @@ public sealed class StudentDesktopForm : Form
             {
                 BeginInvoke(action);
             }
-            catch (InvalidOperationException)
+            catch (ObjectDisposedException)
             {
                 // The service can finish a pending callback at the same time
                 // the tray window is closing. The watchdog keeps the process
                 // alive; this callback simply has no UI left to update.
             }
-            catch (ObjectDisposedException)
+            catch (InvalidOperationException)
             {
                 // See the InvalidOperationException comment above.
             }
