@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.6.6";
+  const APP_VERSION = "0.6.7";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -107,6 +107,7 @@
     easterEggCloseTimer: null,
     easterEggActive: false,
     easterEggCleanup: null,
+    mobileCommandOpen: false,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -114,6 +115,7 @@
   const loginView = $("login-view");
   const appView = $("app-view");
   const loginError = $("login-error");
+  const mobileCommandMedia = window.matchMedia("(max-width: 820px)");
 
   function apiUrl(path) {
     return apiOrigin ? `${apiOrigin}${path}` : path;
@@ -216,6 +218,8 @@
     state.alertAcknowledgedKeys = new Set();
     state.auditEntries = [];
     state.lessonTool = { goal: "", stage: "prepare", durationSeconds: 1200, remainingSeconds: 1200, endsAtUtc: null };
+    state.mobileCommandOpen = false;
+    syncMobileCommandUi();
     closeAlertDrawer();
     landingView.hidden = false;
     loginView.hidden = true;
@@ -330,6 +334,55 @@
     const menu = $("class-select-menu");
     if (menu) menu.hidden = true;
     if (button) button.setAttribute("aria-expanded", "false");
+  }
+
+  function isMobileCommandLayout() {
+    return mobileCommandMedia.matches && state.activeSection === "class" && !appView.hidden;
+  }
+
+  function syncMobileCommandDeckPlacement() {
+    const deck = $("bulk-actions");
+    const anchor = $("bulk-actions-anchor");
+    if (!deck || !anchor) return;
+    if (mobileCommandMedia.matches) {
+      if (deck.parentElement !== appView) appView.append(deck);
+      return;
+    }
+    if (deck.previousElementSibling !== anchor) anchor.before(deck);
+  }
+
+  function syncMobileCommandUi() {
+    syncMobileCommandDeckPlacement();
+    const available = isMobileCommandLayout();
+    if (!available) state.mobileCommandOpen = false;
+    const open = Boolean(state.mobileCommandOpen && available);
+    const deck = $("bulk-actions");
+    const launcher = $("mobile-command-launcher");
+    appView.classList.toggle("mobile-command-open", open);
+    launcher?.setAttribute("aria-expanded", String(open));
+    if (deck) {
+      if (open) {
+        deck.setAttribute("role", "dialog");
+        deck.setAttribute("aria-modal", "true");
+        deck.setAttribute("aria-labelledby", "mobile-command-title");
+      } else {
+        deck.removeAttribute("role");
+        deck.removeAttribute("aria-modal");
+        deck.removeAttribute("aria-labelledby");
+      }
+    }
+  }
+
+  function setMobileCommandOpen(open, restoreFocus = false) {
+    const wasOpen = state.mobileCommandOpen;
+    state.mobileCommandOpen = Boolean(open);
+    syncMobileCommandUi();
+    if (!state.mobileCommandOpen && restoreFocus && wasOpen) {
+      window.requestAnimationFrame(() => $("mobile-command-launcher")?.focus({ preventScroll: true }));
+    }
+    if (state.mobileCommandOpen) {
+      window.requestAnimationFrame(() => $("mobile-command-close")?.focus({ preventScroll: true }));
+    }
   }
 
   function renderClassPicker() {
@@ -483,6 +536,7 @@
     landingView.hidden = true;
     loginView.hidden = true;
     appView.hidden = false;
+    syncMobileCommandUi();
     applyTheme(state.theme);
     syncProfileControls(session);
     renderTodayInfo();
@@ -1151,6 +1205,10 @@
     const count = state.selectedDeviceIds.size;
     $("selection-caption").textContent = count ? `${count}명 선택됨` : "전체 학생 대상";
     $("clear-selection-button").hidden = count === 0;
+    const mobileCaption = $("mobile-command-caption");
+    const mobileTarget = $("mobile-command-target");
+    if (mobileCaption) mobileCaption.textContent = count ? `${count}명 선택` : "전체 학생 대상";
+    if (mobileTarget) mobileTarget.textContent = count ? `선택한 학생 ${count}명에게만 적용됩니다.` : "현재 학급 전체에 적용됩니다.";
   }
 
   function commandTargets() {
@@ -1375,6 +1433,7 @@
 
   function openDetail(deviceId, view = "status") {
     if (!state.students.some((student) => student.deviceId === deviceId)) return;
+    setMobileCommandOpen(false);
     state.detailDeviceId = deviceId;
     state.detailView = view;
     $("detail-pane").hidden = false;
@@ -2125,6 +2184,7 @@
   }
 
   function openCommandDialog(kind, targetIds = null) {
+    setMobileCommandOpen(false);
     if (!state.session) {
       showToast("먼저 수업을 시작하세요.");
       return;
@@ -2252,6 +2312,7 @@
   }
 
   async function openScreenWall() {
+    setMobileCommandOpen(false);
     if (state.screenWallOpen) {
       await stopScreenSharing();
       return;
@@ -2500,6 +2561,7 @@
   }
 
   function showAuth(mode = "school") {
+    setMobileCommandOpen(false);
     const resolvedMode = mode === "signup"
       ? "signup"
       : mode === "admin" || mode === "login"
@@ -2521,6 +2583,7 @@
   }
 
   function showLanding() {
+    setMobileCommandOpen(false);
     landingView.hidden = false;
     loginView.hidden = true;
     appView.hidden = true;
@@ -3157,6 +3220,9 @@
   });
   $("theme-toggle").addEventListener("click", toggleTheme);
   $("close-console-button").addEventListener("click", openConsoleCloseDialog);
+  $("mobile-command-launcher").addEventListener("click", () => setMobileCommandOpen(true));
+  $("mobile-command-close").addEventListener("click", () => setMobileCommandOpen(false, true));
+  $("mobile-command-scrim").addEventListener("click", () => setMobileCommandOpen(false, true));
   document.querySelectorAll("[data-theme-choice]").forEach((button) => {
     button.addEventListener("click", () => applyTheme(button.dataset.themeChoice));
   });
@@ -3178,7 +3244,10 @@
   });
   document.addEventListener("keydown", (event) => {
     handleEasterEggKey(event);
-    if (event.key === "Escape") closeClassPicker();
+    if (event.key === "Escape") {
+      closeClassPicker();
+      setMobileCommandOpen(false, true);
+    }
   });
   $("start-session-button").addEventListener("click", () => {
     const subject = currentClass()?.defaultSubject || state.teacher?.subject || "수업";
@@ -3402,6 +3471,7 @@
   }));
   document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", async () => {
     closeClassPicker();
+    setMobileCommandOpen(false);
     state.activeSection = button.dataset.section;
     document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
     button.classList.add("active");
@@ -3562,6 +3632,7 @@
   });
   let monitorResizeTimer = null;
   window.addEventListener("resize", () => {
+    syncMobileCommandUi();
     if (!state.screenWallOpen) return;
     if (monitorResizeTimer) window.clearTimeout(monitorResizeTimer);
     monitorResizeTimer = window.setTimeout(() => {
@@ -3569,6 +3640,8 @@
       renderStudents();
     }, 120);
   });
+  mobileCommandMedia.addEventListener("change", () => syncMobileCommandUi());
+  syncMobileCommandUi();
   syncInstallUi();
 
   if (!refreshFirebaseAvailability()) {

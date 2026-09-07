@@ -156,6 +156,15 @@ assert.match(html, /id="guest-login-dialog"[^>]*class="command-dialog guest-logi
 assert.match(html, /id="guest-login-submit"[^>]*class="primary"[^>]*>학교 로그인<\/button>/, "The school access dialog must use the same school login action label.");
 assert.doesNotMatch(script, /\$\("school-login-button"\)\.disabled = !firebaseReady/, "School login must not depend on Firebase admin authentication readiness.");
 assert.match(styles, /@media \(max-width: 820px\)/, "The mobile shell must keep a compact breakpoint.");
+assert.match(html, /id="mobile-command-launcher"[^>]*aria-controls="bulk-actions"/, "Phones need one explicit entry point for student commands.");
+assert.match(html, /id="mobile-command-close"/, "The mobile command sheet needs an explicit close action.");
+assert.match(html, /id="mobile-command-scrim"/, "The mobile command sheet needs a tappable outside-dismiss surface.");
+assert.match(script, /function syncMobileCommandDeckPlacement\(\)/, "The mobile command deck must escape animated roster containers.");
+assert.match(script, /appView\.append\(deck\)/, "The mobile command deck must be fixed at the application level.");
+assert.match(script, /mobileCommandMedia\.addEventListener\("change"/, "Crossing the mobile breakpoint must restore the command deck safely.");
+assert.match(styles, /0\.6\.7 — mobile-first teacher console/, "The final mobile-first visual layer must remain documented and intentionally ordered.");
+assert.match(styles, /#app-view\.mobile-command-open #bulk-actions/, "Mobile student commands must use a deliberate bottom-sheet state.");
+assert.match(styles, /#app-view \.toolbar-browse-row \.filters[\s\S]*overflow-x: auto/, "Phone filters must scroll horizontally instead of collapsing into a dense button wall.");
 assert.match(styles, /\.command-dialog\s*\{[\s\S]*max-height:/, "Dialogs must stay inside the viewport.");
 assert.match(styles, /\.class-select-menu\s*\{/, "The class picker menu must use the console visual system.");
 assert.match(styles, /#settings-section > \.password-card,[\s\S]*#settings-section > \.update-card \{ grid-column: 1 \/ -1; grid-row: auto; \}/, "The password card must receive a full readable row on desktop.");
