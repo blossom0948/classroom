@@ -48,6 +48,9 @@ assert.match(html, /id="class-sync-status"/, "The console needs a visible sync r
 assert.match(html, /id="student-sort"/, "The class roster needs a sorting control.");
 assert.match(html, /id="focus-display-mode"/, "The focus command needs a visible presentation selector.");
 assert.match(script, /focusDisplayMode: state\.focusDisplayMode/, "The console must send the selected focus presentation.");
+assert.match(cloudflareWorker, /focusDisplayMode:\s*focusDisplayMode/, "The Worker must forward the selected focus presentation to student devices.");
+assert.match(cloudflareWorker, /집중 화면 표시 방식은 집중 모드에서만 사용할 수 있습니다/, "The Worker must reject focus presentation values on unrelated commands.");
+assert.match(desktopForm, /label\.Text = string\.Empty;[\s\S]*label\.Visible = false;[\s\S]*if \(!blackScreen\)/, "Black-screen focus mode must hide the overlay label and clear its text.");
 assert.match(html, /id="alert-drawer"/, "The classroom needs a compact intervention drawer instead of a permanent signal card.");
 assert.match(html, /id="tools-dialog"/, "Teacher-only lesson tools should open on demand.");
 assert.match(html, /id="preset-dialog"/, "Frequent classroom commands need reusable presets.");

@@ -1157,8 +1157,14 @@ public sealed class StudentDesktopForm : Form
             var background = blackScreen ? Color.Black : MessageBackground;
             BackColor = background;
             label.BackColor = background;
-            label.Visible = !blackScreen;
-            label.Text = blackScreen ? string.Empty : $"집중 모드\n\n{message}";
+            label.Text = string.Empty;
+            label.Visible = false;
+            if (!blackScreen)
+            {
+                label.ForeColor = Color.White;
+                label.Text = $"집중 모드\n\n{message}";
+                label.Visible = true;
+            }
         }
 
         public void Dismiss()

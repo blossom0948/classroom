@@ -1272,6 +1272,19 @@ export class ClassroomState {
     const queued = targets.filter((id) => validTargets.has(id));
     if (!queued.length) return responseError("TARGET_FORBIDDEN", "선택한 장치에 명령을 보낼 수 없습니다.", 403, cors);
 
+    const requestedFocusDisplayMode = body?.focusDisplayMode;
+    const focusDisplayMode = requestedFocusDisplayMode === "blackScreen"
+      ? "blackScreen"
+      : requestedFocusDisplayMode === "message"
+        ? "message"
+        : null;
+    if (requestedFocusDisplayMode !== undefined && requestedFocusDisplayMode !== null && !focusDisplayMode) {
+      return responseError("INVALID_COMMAND", "집중 화면 표시 방식을 확인해 주세요.", 400, cors);
+    }
+    if (kind !== "focusMode" && focusDisplayMode) {
+      return responseError("INVALID_COMMAND", "집중 화면 표시 방식은 집중 모드에서만 사용할 수 있습니다.", 400, cors);
+    }
+
     const payload = {
       requestId,
       sessionId: activeSession.session_id,
@@ -1283,6 +1296,7 @@ export class ClassroomState {
       displaySeconds: numberInRange(body?.displaySeconds, 1, 3600) || null,
       requiresAcknowledgement: body?.requiresAcknowledgement !== false,
       focusEnabled: typeof body?.focusEnabled === "boolean" ? body.focusEnabled : null,
+      focusDisplayMode: focusDisplayMode,
       screenShareEnabled: typeof body?.screenShareEnabled === "boolean" ? body.screenShareEnabled : null
     };
     if (kind === "message" && !payload.message) return responseError("INVALID_COMMAND", "보낼 메시지를 입력해 주세요.", 400, cors);
