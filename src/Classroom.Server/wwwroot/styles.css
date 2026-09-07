@@ -4879,6 +4879,7 @@ html[data-theme="dark"] .auth-tab.active { color: #dce7ff; }
     border: 1px solid #cbd8eb;
     border-bottom: 0;
     border-radius: 28px 28px 0 0;
+    bottom: 0;
     box-shadow: 0 -16px 56px rgba(10, 28, 68, .28);
     display: grid !important;
     gap: 10px;
