@@ -4696,7 +4696,16 @@ html[data-theme="dark"] .auth-tab.active { color: #dce7ff; }
 
   /* Browsing controls are compact and scroll horizontally instead of wrapping
      every filter into a different-shaped button grid. */
-  #app-view .toolbar { background: transparent !important; border: 0 !important; display: block; margin: 0; overflow: visible; padding: 0 !important; }
+  #app-view .toolbar {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: transparent !important;
+    border: 0 !important;
+    display: block;
+    margin: 0;
+    overflow: visible;
+    padding: 0 !important;
+  }
   #app-view .toolbar-row.toolbar-browse-row {
     background: var(--mobile-surface);
     border: 1px solid var(--mobile-line);

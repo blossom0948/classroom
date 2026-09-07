@@ -168,6 +168,7 @@ assert.match(styles, /#app-view \.toolbar-browse-row \.filters[\s\S]*overflow-x:
 assert.match(styles, /#app-view \.sidebar,[\s\S]*?#app-view \.section-view:not\(\[hidden\]\)[\s\S]*?transform: none !important;/, "Mobile fixed controls must not inherit a transformed shell coordinate system.");
 assert.match(styles, /backdrop-filter: none;/, "The sticky mobile app bar must not capture the fixed bottom navigation coordinate system.");
 assert.match(styles, /-webkit-backdrop-filter: none;/, "The prefixed mobile backdrop filter must also release the bottom navigation coordinate system.");
+assert.match(styles, /#app-view \.toolbar\s*\{[\s\S]*?-webkit-backdrop-filter: none;[\s\S]*?backdrop-filter: none;/, "The command sheet parent must not capture the visual viewport with a glass filter.");
 assert.match(styles, /\.command-dialog\s*\{[\s\S]*max-height:/, "Dialogs must stay inside the viewport.");
 assert.match(styles, /\.class-select-menu\s*\{/, "The class picker menu must use the console visual system.");
 assert.match(styles, /#settings-section > \.password-card,[\s\S]*#settings-section > \.update-card \{ grid-column: 1 \/ -1; grid-row: auto; \}/, "The password card must receive a full readable row on desktop.");
