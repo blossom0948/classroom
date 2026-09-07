@@ -4535,7 +4535,8 @@ html[data-theme="dark"] .auth-tab.active { color: #dce7ff; }
      system on mobile Safari/Chromium. Keep the shell and page section stable;
      the individual cards below retain the lightweight entrance motion. */
   #app-view .sidebar,
-  #app-view .section-view:not([hidden]) {
+  #app-view .section-view:not([hidden]),
+  #app-view .toolbar {
     animation: none !important;
     transform: none !important;
   }
@@ -4820,9 +4821,9 @@ html[data-theme="dark"] .auth-tab.active { color: #dce7ff; }
   #app-view .nav-item[data-section="admins"] { order: 3; }
   #app-view .nav-item[data-section="settings"] { order: 4; }
 
-  /* Student commands are intentionally one bottom sheet.  The sheet is moved
-     outside the animated content area by app.js, keeping it fixed on iOS and
-     Android browsers as well as in the installed PWA. */
+  /* Student commands are intentionally one bottom sheet. The stable class
+     section and toolbar above never transform, so it stays viewport-fixed on
+     iOS and Android browsers as well as in the installed PWA. */
   .mobile-command-launcher {
     align-items: center;
     background: linear-gradient(135deg, #315bd1, #243f91);

@@ -344,11 +344,10 @@
     const deck = $("bulk-actions");
     const anchor = $("bulk-actions-anchor");
     if (!deck || !anchor) return;
-    if (mobileCommandMedia.matches) {
-      if (deck.parentElement !== appView) appView.append(deck);
-      return;
-    }
-    if (deck.previousElementSibling !== anchor) anchor.before(deck);
+    // Keep the fixed sheet in the stable class section. Directly appending it
+    // to the tall application shell makes some mobile browsers measure its
+    // fixed bottom edge from the document rather than the visual viewport.
+    if (deck.parentElement !== anchor.parentElement || deck.nextElementSibling !== anchor) anchor.before(deck);
   }
 
   function syncMobileCommandUi() {

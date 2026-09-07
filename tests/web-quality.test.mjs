@@ -159,8 +159,8 @@ assert.match(styles, /@media \(max-width: 820px\)/, "The mobile shell must keep 
 assert.match(html, /id="mobile-command-launcher"[^>]*aria-controls="bulk-actions"/, "Phones need one explicit entry point for student commands.");
 assert.match(html, /id="mobile-command-close"/, "The mobile command sheet needs an explicit close action.");
 assert.match(html, /id="mobile-command-scrim"/, "The mobile command sheet needs a tappable outside-dismiss surface.");
-assert.match(script, /function syncMobileCommandDeckPlacement\(\)/, "The mobile command deck must escape animated roster containers.");
-assert.match(script, /appView\.append\(deck\)/, "The mobile command deck must be fixed at the application level.");
+assert.match(script, /function syncMobileCommandDeckPlacement\(\)/, "The mobile command deck needs a stable placement guard.");
+assert.match(script, /anchor\.before\(deck\)/, "The mobile command deck must remain in the stable class section on mobile browsers.");
 assert.match(script, /mobileCommandMedia\.addEventListener\("change"/, "Crossing the mobile breakpoint must restore the command deck safely.");
 assert.match(styles, /0\.6\.7 — mobile-first teacher console/, "The final mobile-first visual layer must remain documented and intentionally ordered.");
 assert.match(styles, /#app-view\.mobile-command-open #bulk-actions/, "Mobile student commands must use a deliberate bottom-sheet state.");
