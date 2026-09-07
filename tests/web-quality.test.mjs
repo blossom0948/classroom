@@ -165,6 +165,7 @@ assert.match(script, /mobileCommandMedia\.addEventListener\("change"/, "Crossing
 assert.match(styles, /0\.6\.7 — mobile-first teacher console/, "The final mobile-first visual layer must remain documented and intentionally ordered.");
 assert.match(styles, /#app-view\.mobile-command-open #bulk-actions/, "Mobile student commands must use a deliberate bottom-sheet state.");
 assert.match(styles, /#app-view \.toolbar-browse-row \.filters[\s\S]*overflow-x: auto/, "Phone filters must scroll horizontally instead of collapsing into a dense button wall.");
+assert.match(styles, /#app-view \.sidebar,[\s\S]*?#app-view \.section-view:not\(\[hidden\]\)[\s\S]*?transform: none !important;/, "Mobile fixed controls must not inherit a transformed shell coordinate system.");
 assert.match(styles, /\.command-dialog\s*\{[\s\S]*max-height:/, "Dialogs must stay inside the viewport.");
 assert.match(styles, /\.class-select-menu\s*\{/, "The class picker menu must use the console visual system.");
 assert.match(styles, /#settings-section > \.password-card,[\s\S]*#settings-section > \.update-card \{ grid-column: 1 \/ -1; grid-row: auto; \}/, "The password card must receive a full readable row on desktop.");

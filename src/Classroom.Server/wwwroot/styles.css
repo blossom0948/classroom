@@ -4531,6 +4531,14 @@ html[data-theme="dark"] .auth-tab.active { color: #dce7ff; }
     min-height: 100dvh;
   }
   #app-view .app-shell { display: block; padding: 0; }
+  /* A transformed ancestor turns position: fixed into a local coordinate
+     system on mobile Safari/Chromium. Keep the shell and page section stable;
+     the individual cards below retain the lightweight entrance motion. */
+  #app-view .sidebar,
+  #app-view .section-view:not([hidden]) {
+    animation: none !important;
+    transform: none !important;
+  }
 
   /* The old rail becomes a compact, reliable app bar on a phone. */
   #app-view .sidebar {
