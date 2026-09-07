@@ -4545,6 +4545,7 @@ html[data-theme="dark"] .auth-tab.active { color: #dce7ff; }
     align-items: center;
     /* backdrop-filter would make this sticky parent a containing block for
        the fixed bottom navigation in Chromium and Safari. */
+    -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background: rgba(255, 255, 255, .93);
     border: 0;
