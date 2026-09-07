@@ -293,6 +293,32 @@ export class ClassroomState {
       input_window_started_at_ms INTEGER NOT NULL DEFAULT 0,
       input_count INTEGER NOT NULL DEFAULT 0
     )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS ClassGroups (
+      group_id TEXT PRIMARY KEY,
+      school_id TEXT NOT NULL,
+      class_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      color TEXT NOT NULL,
+      created_by_teacher_id TEXT NOT NULL,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS ClassGroupMembers (
+      group_id TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      created_at_utc TEXT NOT NULL,
+      PRIMARY KEY (group_id, device_id)
+    )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS ClassPresets (
+      preset_id TEXT PRIMARY KEY,
+      school_id TEXT NOT NULL,
+      class_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      config_json TEXT NOT NULL,
+      created_by_teacher_id TEXT NOT NULL,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    )`);
     this.exec(`CREATE TABLE IF NOT EXISTS RateLimits (
       rate_key TEXT PRIMARY KEY,
       attempt_count INTEGER NOT NULL,
@@ -334,6 +360,9 @@ export class ClassroomState {
     this.exec("CREATE INDEX IF NOT EXISTS idx_remote_assist_class ON RemoteAssistSessions(class_id, requested_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_remote_assist_device ON RemoteAssistSessions(device_id, state)");
     this.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_remote_assist_open_device ON RemoteAssistSessions(device_id) WHERE state IN ('PENDING', 'ACTIVE')");
+    this.exec("CREATE INDEX IF NOT EXISTS idx_class_groups_class ON ClassGroups(class_id, updated_at_utc)");
+    this.exec("CREATE INDEX IF NOT EXISTS idx_class_group_members_device ON ClassGroupMembers(device_id)");
+    this.exec("CREATE INDEX IF NOT EXISTS idx_class_presets_class ON ClassPresets(class_id, updated_at_utc)");
 
     // Existing Durable Object databases predate school and roster metadata.
     // Additive migrations keep already-enrolled devices and accounts intact.
@@ -455,6 +484,17 @@ export class ClassroomState {
       if (commandStatusMatch && request.method === "GET") return this.getCommandStatus(request, commandStatusMatch[1], commandStatusMatch[2], cors);
       const auditMatch = path.match(/^\/api\/classes\/([^/]+)\/audit$/);
       if (auditMatch && request.method === "GET") return this.getAudit(request, auditMatch[1], url, cors);
+      const groupsMatch = path.match(/^\/api\/classes\/([^/]+)\/groups$/);
+      if (groupsMatch && request.method === "GET") return this.getGroups(request, groupsMatch[1], cors);
+      if (groupsMatch && request.method === "POST") return this.createGroup(request, groupsMatch[1], cors);
+      const groupMatch = path.match(/^\/api\/classes\/([^/]+)\/groups\/([^/]+)$/);
+      if (groupMatch && request.method === "PUT") return this.updateGroup(request, groupMatch[1], groupMatch[2], cors);
+      if (groupMatch && request.method === "DELETE") return this.deleteGroup(request, groupMatch[1], groupMatch[2], cors);
+      const presetsMatch = path.match(/^\/api\/classes\/([^/]+)\/presets$/);
+      if (presetsMatch && request.method === "GET") return this.getPresets(request, presetsMatch[1], cors);
+      if (presetsMatch && request.method === "POST") return this.createPreset(request, presetsMatch[1], cors);
+      const presetMatch = path.match(/^\/api\/classes\/([^/]+)\/presets\/([^/]+)$/);
+      if (presetMatch && request.method === "DELETE") return this.deletePreset(request, presetMatch[1], presetMatch[2], cors);
       return responseError("NOT_FOUND", "요청한 Classroom API를 찾을 수 없습니다.", 404, cors);
     } catch (error) {
       console.error("Classroom cloud API failed", error);
@@ -1227,7 +1267,7 @@ export class ClassroomState {
     const activeSession = this.one("SELECT * FROM ClassSessions WHERE class_id = ? AND ended_at_utc IS NULL ORDER BY started_at_utc DESC LIMIT 1", classId);
     if (!activeSession) return responseError("SESSION_NOT_ACTIVE", "수업을 시작한 후 명령을 보낼 수 있습니다.", 409, cors);
     const kind = text(body?.kind, 64);
-    if (!new Set(["message", "openUrl", "focusMode", "launchApprovedApp", "screenShare"]).has(kind)) {
+    if (!new Set(["message", "openUrl", "focusMode", "launchApprovedApp", "screenShare", "clearHelp"]).has(kind)) {
       return responseError("INVALID_COMMAND", "지원하지 않는 수업 명령입니다.", 400, cors);
     }
     const requestId = validId(body?.requestId) ? body.requestId : crypto.randomUUID();
@@ -1261,6 +1301,7 @@ export class ClassroomState {
     this.exec(`INSERT INTO Commands (request_id, school_id, class_id, session_id, kind, payload_json, created_by_teacher_id, created_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, requestId, activeSession.school_id, classId, activeSession.session_id, kind, JSON.stringify(payload), user.id, now);
     for (const deviceId of queued) this.exec("INSERT INTO CommandTargets (request_id, device_id, state) VALUES (?, ?, 'QUEUED')", requestId, deviceId);
     if (kind === "focusMode") this.exec("UPDATE Devices SET policy_applied = ? WHERE device_id IN (" + placeholders(queued.length) + ")", payload.focusEnabled ? 1 : 0, ...queued);
+    if (kind === "clearHelp") this.exec("UPDATE Devices SET needs_help = 0 WHERE device_id IN (" + placeholders(queued.length) + ")", ...queued);
     this.audit({ schoolId: activeSession.school_id, classId, sessionId: activeSession.session_id, teacherId: user.id, requestId, action: "COMMAND", result: "QUEUED", reason: kind });
     for (const deviceId of queued) this.deliverCommands(deviceId);
     return responseJson({ requestId, requestedCount: targets.length, queuedCount: queued.length, queuedDeviceIds: queued, rejectedDeviceIds: targets.filter((id) => !queued.includes(id)) }, 200, cors);
@@ -1300,6 +1341,158 @@ export class ClassroomState {
       result: entry.result,
       reason: entry.reason
     })), 200, cors);
+  }
+
+  async getGroups(request, classId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    const groups = this.all("SELECT * FROM ClassGroups WHERE class_id = ? ORDER BY name COLLATE NOCASE, created_at_utc", classId);
+    return responseJson(groups.map((group) => this.serializeGroup(group)), 200, cors);
+  }
+
+  async createGroup(request, classId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 그룹을 만들 수 없습니다.", 403, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    const classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
+    if (!classItem) return responseError("CLASS_NOT_FOUND", "학급을 찾지 못했습니다.", 404, cors);
+    const body = await readJson(request);
+    const name = text(body?.name, 80);
+    const color = normalizeGroupColor(body?.color);
+    if (!name) return responseError("INVALID_GROUP", "그룹 이름을 입력해 주세요.", 400, cors);
+    const deviceIds = this.validClassDeviceIds(classId, body?.deviceIds);
+    const now = isoNow();
+    const group = {
+      group_id: crypto.randomUUID(),
+      school_id: classItem.school_id,
+      class_id: classId,
+      name,
+      color,
+      created_by_teacher_id: user.id,
+      created_at_utc: now,
+      updated_at_utc: now
+    };
+    this.exec(`INSERT INTO ClassGroups (group_id, school_id, class_id, name, color, created_by_teacher_id, created_at_utc, updated_at_utc)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, group.group_id, group.school_id, group.class_id, group.name, group.color, group.created_by_teacher_id, group.created_at_utc, group.updated_at_utc);
+    this.replaceGroupMembers(group.group_id, deviceIds, now);
+    this.audit({ schoolId: classItem.school_id, classId, teacherId: user.id, action: "CLASS_GROUP", result: "CREATED", reason: name });
+    return responseJson(this.serializeGroup(group), 200, cors);
+  }
+
+  async updateGroup(request, classId, groupId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 그룹을 수정할 수 없습니다.", 403, cors);
+    if (!this.canAccessClass(user, classId) || !validId(groupId)) return responseError("FORBIDDEN", "이 그룹에 접근할 수 없습니다.", 403, cors);
+    const group = this.one("SELECT * FROM ClassGroups WHERE group_id = ? AND class_id = ?", groupId, classId);
+    if (!group) return responseError("GROUP_NOT_FOUND", "그룹을 찾지 못했습니다.", 404, cors);
+    const body = await readJson(request);
+    const name = text(body?.name, 80) || group.name;
+    const color = normalizeGroupColor(body?.color) || group.color;
+    const deviceIds = this.validClassDeviceIds(classId, body?.deviceIds);
+    const now = isoNow();
+    this.exec("UPDATE ClassGroups SET name = ?, color = ?, updated_at_utc = ? WHERE group_id = ?", name, color, now, groupId);
+    this.replaceGroupMembers(groupId, deviceIds, now);
+    const updated = this.one("SELECT * FROM ClassGroups WHERE group_id = ?", groupId);
+    this.audit({ schoolId: group.school_id, classId, teacherId: user.id, action: "CLASS_GROUP", result: "UPDATED", reason: name });
+    return responseJson(this.serializeGroup(updated), 200, cors);
+  }
+
+  async deleteGroup(request, classId, groupId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 그룹을 삭제할 수 없습니다.", 403, cors);
+    if (!this.canAccessClass(user, classId) || !validId(groupId)) return responseError("FORBIDDEN", "이 그룹에 접근할 수 없습니다.", 403, cors);
+    const group = this.one("SELECT * FROM ClassGroups WHERE group_id = ? AND class_id = ?", groupId, classId);
+    if (!group) return responseError("GROUP_NOT_FOUND", "그룹을 찾지 못했습니다.", 404, cors);
+    this.exec("DELETE FROM ClassGroupMembers WHERE group_id = ?", groupId);
+    this.exec("DELETE FROM ClassGroups WHERE group_id = ?", groupId);
+    this.audit({ schoolId: group.school_id, classId, teacherId: user.id, action: "CLASS_GROUP", result: "DELETED", reason: group.name });
+    return responseJson({ deleted: true, groupId }, 200, cors);
+  }
+
+  async getPresets(request, classId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    const presets = this.all("SELECT * FROM ClassPresets WHERE class_id = ? ORDER BY name COLLATE NOCASE, created_at_utc", classId);
+    return responseJson(presets.map((preset) => this.serializePreset(preset)), 200, cors);
+  }
+
+  async createPreset(request, classId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 프리셋을 만들 수 없습니다.", 403, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    const classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
+    const body = await readJson(request);
+    const name = text(body?.name, 80);
+    const config = normalizePresetConfig(body?.config);
+    if (!classItem || !name || !config) return responseError("INVALID_PRESET", "프리셋 이름과 설정을 확인해 주세요.", 400, cors);
+    const now = isoNow();
+    const preset = {
+      preset_id: crypto.randomUUID(),
+      school_id: classItem.school_id,
+      class_id: classId,
+      name,
+      config_json: JSON.stringify(config),
+      created_by_teacher_id: user.id,
+      created_at_utc: now,
+      updated_at_utc: now
+    };
+    this.exec(`INSERT INTO ClassPresets (preset_id, school_id, class_id, name, config_json, created_by_teacher_id, created_at_utc, updated_at_utc)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, preset.preset_id, preset.school_id, preset.class_id, preset.name, preset.config_json, preset.created_by_teacher_id, preset.created_at_utc, preset.updated_at_utc);
+    this.audit({ schoolId: classItem.school_id, classId, teacherId: user.id, action: "CLASS_PRESET", result: "CREATED", reason: name });
+    return responseJson(this.serializePreset(preset), 200, cors);
+  }
+
+  async deletePreset(request, classId, presetId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 프리셋을 삭제할 수 없습니다.", 403, cors);
+    if (!this.canAccessClass(user, classId) || !validId(presetId)) return responseError("FORBIDDEN", "이 프리셋에 접근할 수 없습니다.", 403, cors);
+    const preset = this.one("SELECT * FROM ClassPresets WHERE preset_id = ? AND class_id = ?", presetId, classId);
+    if (!preset) return responseError("PRESET_NOT_FOUND", "프리셋을 찾지 못했습니다.", 404, cors);
+    this.exec("DELETE FROM ClassPresets WHERE preset_id = ?", presetId);
+    this.audit({ schoolId: preset.school_id, classId, teacherId: user.id, action: "CLASS_PRESET", result: "DELETED", reason: preset.name });
+    return responseJson({ deleted: true, presetId }, 200, cors);
+  }
+
+  serializeGroup(group) {
+    const members = this.all(`SELECT m.device_id, d.student_id, d.student_display_name, d.student_number
+      FROM ClassGroupMembers m LEFT JOIN Devices d ON d.device_id = m.device_id
+      WHERE m.group_id = ? ORDER BY COALESCE(d.student_number, 999), d.student_display_name COLLATE NOCASE`, group.group_id);
+    return {
+      groupId: group.group_id,
+      schoolId: group.school_id,
+      classId: group.class_id,
+      name: group.name,
+      color: group.color,
+      updatedAtUtc: group.updated_at_utc,
+      deviceIds: members.map((member) => member.device_id),
+      members: members.filter((member) => member.student_id).map((member) => ({ deviceId: member.device_id, studentId: member.student_id, studentDisplayName: member.student_display_name, studentNumber: member.student_number ?? null }))
+    };
+  }
+
+  serializePreset(preset) {
+    let config = {};
+    try { config = JSON.parse(preset.config_json || "{}"); } catch (_) { config = {}; }
+    return { presetId: preset.preset_id, schoolId: preset.school_id, classId: preset.class_id, name: preset.name, config, updatedAtUtc: preset.updated_at_utc };
+  }
+
+  validClassDeviceIds(classId, deviceIds) {
+    if (!Array.isArray(deviceIds)) return [];
+    const requested = [...new Set(deviceIds.filter((deviceId) => validId(deviceId)))].slice(0, MAX_COMMAND_TARGETS);
+    if (!requested.length) return [];
+    const valid = new Set(this.all(`SELECT device_id FROM Devices WHERE class_id = ? AND revoked_at_utc IS NULL AND device_id IN (${placeholders(requested.length)})`, classId, ...requested).map((row) => row.device_id));
+    return requested.filter((deviceId) => valid.has(deviceId));
+  }
+
+  replaceGroupMembers(groupId, deviceIds, now) {
+    this.exec("DELETE FROM ClassGroupMembers WHERE group_id = ?", groupId);
+    for (const deviceId of deviceIds) this.exec("INSERT INTO ClassGroupMembers (group_id, device_id, created_at_utc) VALUES (?, ?, ?)", groupId, deviceId, now);
   }
 
   async getAdministrators(request, cors) {
@@ -2091,6 +2284,20 @@ function validId(value) { return typeof value === "string" && /^[0-9a-f]{8}-[0-9
 function numberInRange(value, min, max) { const number = Number(value); return Number.isInteger(number) && number >= min && number <= max ? number : null; }
 function placeholders(count) { return Array.from({ length: count }, () => "?").join(", "); }
 function isSafeHttpsUrl(value) { try { return new URL(value).protocol === "https:"; } catch (_) { return false; } }
+function normalizeGroupColor(value) {
+  const normalized = text(value, 16).toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : "#536fe1";
+}
+function normalizePresetConfig(value) {
+  if (!value || typeof value !== "object") return null;
+  const focusDisplayMode = value.focusDisplayMode === "blackScreen" ? "blackScreen" : value.focusDisplayMode === "message" ? "message" : "none";
+  const message = text(value.message, 2000);
+  const url = text(value.url, 2048);
+  const approvedAppId = text(value.approvedAppId, 128);
+  if (url && !isSafeHttpsUrl(url)) return null;
+  if (!message && !url && !approvedAppId && focusDisplayMode === "none") return null;
+  return { focusDisplayMode, message: message || "", url: url || "", approvedAppId: approvedAppId || "" };
+}
 
 function serializeClass(row) {
   return {

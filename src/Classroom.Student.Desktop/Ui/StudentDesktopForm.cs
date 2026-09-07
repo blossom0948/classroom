@@ -396,6 +396,8 @@ public sealed class StudentDesktopForm : Form
                     Task.FromResult(LaunchApprovedApp(command)),
                 ClassroomCommandKind.ScreenShare =>
                     Task.FromResult(SetScreenSharing(command)),
+                ClassroomCommandKind.ClearHelp =>
+                    Task.FromResult(ClearHelpRequest()),
                 ClassroomCommandKind.RemoteAssistRequest =>
                     RequestRemoteAssistAsync(command),
                 ClassroomCommandKind.RemoteAssistEnd =>
@@ -407,6 +409,14 @@ public sealed class StudentDesktopForm : Form
         {
             return Task.FromResult(new DesktopCommandApplyResult(false, "COMMAND_APPLY_FAILED", exception.Message));
         }
+    }
+
+    private DesktopCommandApplyResult ClearHelpRequest()
+    {
+        helpRequested = false;
+        statusProvider.SetHelpRequested(false);
+        RefreshHelpRequestControls();
+        return new DesktopCommandApplyResult(true, "HELP_REQUEST_ACKNOWLEDGED", "Help request acknowledged by teacher.");
     }
 
     private DesktopCommandApplyResult ShowMessage(CommandRequest command)

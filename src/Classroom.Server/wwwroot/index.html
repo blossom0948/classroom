@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-    <link rel="stylesheet" href="/styles.css?v=0.5.40">
+    <link rel="stylesheet" href="/styles.css?v=0.6.0">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -155,7 +155,7 @@
       <section id="class-section" class="section-view">
         <div class="class-command-strip" aria-label="수업 제어">
           <div class="session-command-copy"><span class="eyebrow">LIVE CLASSROOM</span><p id="session-caption" class="muted">활성 수업이 없습니다.</p></div>
-          <div class="class-status-actions"><button id="start-session-button" class="primary">수업 시작</button><button id="announcement-button" class="secondary">전체 공지</button><button id="end-session-button" class="danger-outline" hidden>수업 종료</button></div>
+          <div class="class-status-actions"><button id="start-session-button" class="primary">수업 시작</button><button id="announcement-button" class="secondary">전체 공지</button><button id="end-session-button" class="danger-outline" hidden>수업 종료</button><button id="alert-drawer-button" class="class-utility-button" type="button" aria-controls="alert-drawer" aria-expanded="false"><span aria-hidden="true">●</span> 알림 <strong id="alert-count" class="notification-badge" hidden>0</strong></button></div>
         </div>
         <div class="class-metrics" aria-label="수업 요약"><article class="metric-card"><span class="metric-label">등록 학생</span><strong id="total-count">0</strong><small>학급 장치</small></article><article class="metric-card metric-online"><span class="metric-label">온라인</span><strong id="metric-online-count">0</strong><small>현재 연결</small></article><article class="metric-card metric-offline"><span class="metric-label">오프라인</span><strong id="offline-count">0</strong><small>연결 끊김</small></article><article class="metric-card metric-attention"><span class="metric-label">확인 필요</span><strong id="needs-attention-count">0</strong><small>상태 점검</small></article></div>
         <div class="toolbar">
@@ -164,7 +164,7 @@
           <div class="student-view-controls" aria-label="학생 목록 보기 설정">
             <label class="student-sort-control"><span class="sr-only">정렬 기준</span><select id="student-sort" aria-label="학생 정렬 기준"><option value="number">번호순</option><option value="name">이름순</option><option value="status">상태 우선</option></select></label>
           </div>
-          <div id="bulk-actions" class="bulk-actions"><div class="command-scope"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button></div><div class="command-group command-group-monitor"><span class="command-group-label">보기</span><button id="screen-wall-button" class="secondary screen-wall-open">화면 보기</button></div><div class="command-group command-group-focus"><span class="command-group-label">집중</span><label class="focus-mode-setting" for="focus-display-mode"><span>표시</span><select id="focus-display-mode" aria-label="집중 모드 표시 방식"><option value="message">안내문</option><option value="blackScreen">검은 화면</option></select></label><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">해제</button></div><div class="command-group command-group-message"><span class="command-group-label">안내</span><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL</button><button id="app-button" class="secondary">앱</button></div></div>
+          <div id="bulk-actions" class="bulk-actions"><div class="command-scope"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button></div><div class="command-group command-group-monitor"><span class="command-group-label">보기</span><button id="screen-wall-button" class="secondary screen-wall-open">화면 보기</button></div><div class="command-group command-group-focus"><span class="command-group-label">집중</span><label class="focus-mode-setting" for="focus-display-mode"><span>표시</span><select id="focus-display-mode" aria-label="집중 모드 표시 방식"><option value="message">안내문</option><option value="blackScreen">검은 화면</option></select></label><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">해제</button></div><div class="command-group command-group-message"><span class="command-group-label">안내</span><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL</button><button id="app-button" class="secondary">앱</button></div><div class="command-group command-group-tools"><span class="command-group-label">도구</span><button id="tools-dialog-button" class="secondary" type="button">수업 도구</button><button id="preset-dialog-button" class="secondary" type="button">프리셋</button><button id="groups-dialog-button" class="secondary" type="button">학생 그룹</button><button id="report-dialog-button" class="secondary" type="button">기록</button></div></div>
         </div>
         <div id="class-sync-status" class="class-sync-status" role="status" aria-live="polite" hidden><span class="class-sync-icon" aria-hidden="true">↻</span><span id="class-sync-message"></span><button id="class-sync-retry" class="ghost-button" type="button">다시 시도</button></div>
         <div id="monitor-session-bar" class="monitor-session-bar" role="status" aria-live="polite" hidden><div><span class="monitor-session-dot" aria-hidden="true"></span><strong id="monitor-session-status">학생 화면을 준비하는 중입니다.</strong><small id="monitor-session-updated">최대 720p 자동 화질로 갱신됩니다.</small></div><div class="monitor-session-actions"><button id="screen-wall-fullscreen" class="secondary" type="button">전체 화면</button><button id="screen-wall-stop" class="danger-outline" type="button">화면 보기 닫기</button></div></div>
@@ -250,7 +250,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.5.40</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.6.0</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -264,7 +264,47 @@
       <button id="close-detail" class="close-button" aria-label="상세 닫기">×</button>
       <div id="detail-content"></div>
     </aside>
+  <aside id="alert-drawer" class="alert-drawer" hidden aria-label="확인 필요 알림">
+    <div class="workspace-drawer-heading"><div><span class="eyebrow">CLASS ALERTS</span><h2>확인 필요</h2><p id="alert-drawer-summary" class="muted small">학생 상태를 불러오는 중입니다.</p></div><button id="alert-drawer-close" class="close-button" type="button" aria-label="알림 닫기">×</button></div>
+    <div id="alert-list" class="alert-list" aria-live="polite"></div>
+  </aside>
   </div>
+
+  <dialog id="tools-dialog" class="workspace-dialog">
+    <form method="dialog" class="stack" id="tools-form">
+      <div class="dialog-heading"><span class="eyebrow">CLASS TOOLS</span><h2>수업 도구</h2><p class="muted dialog-copy">필요할 때만 열어 쓰는 교사용 메모와 타이머입니다. 학생 화면에는 자동으로 노출되지 않습니다.</p></div>
+      <div class="tool-grid">
+        <section class="tool-panel"><div class="tool-panel-heading"><span class="tool-panel-icon">✦</span><div><strong>오늘의 목표</strong><small>교사 화면에만 저장됩니다.</small></div></div><label>목표<input id="tool-goal" type="text" maxlength="140" placeholder="예: 반복문으로 나만의 퀴즈 만들기"></label><label>진행 단계<select id="tool-stage"><option value="prepare">준비</option><option value="explain">설명</option><option value="practice">실습</option><option value="wrap">마무리</option></select></label></section>
+        <section class="tool-panel tool-timer-panel"><div class="tool-panel-heading"><span class="tool-panel-icon timer">◷</span><div><strong>수업 타이머</strong><small>브라우저에서만 동작합니다.</small></div></div><div id="tool-timer-display" class="tool-timer-display">20:00</div><div class="tool-timer-controls"><select id="tool-duration" aria-label="수업 타이머 시간"><option value="10">10분</option><option value="20" selected>20분</option><option value="30">30분</option><option value="45">45분</option></select><button id="tool-timer-start" class="secondary" type="button">타이머 시작</button><button id="tool-timer-reset" class="ghost-button" type="button">초기화</button></div></section>
+      </div>
+      <div class="tool-footer"><span id="tool-status" class="muted small" role="status">이 브라우저에 저장됩니다.</span><div class="dialog-actions"><button id="tool-share-button" class="secondary" type="button">학생에게 목표 안내</button><button class="primary" type="submit">저장하고 닫기</button></div></div>
+    </form>
+  </dialog>
+
+  <dialog id="preset-dialog" class="workspace-dialog preset-dialog">
+    <form method="dialog" class="stack" id="preset-form">
+      <div class="dialog-heading"><span class="eyebrow">CLASS PRESETS</span><h2>수업 프리셋</h2><p class="muted dialog-copy">자주 쓰는 집중·안내·URL·승인 앱 조합을 한 번에 실행합니다.</p></div>
+      <div id="preset-list" class="workspace-list"></div>
+      <details class="workspace-create-section" open><summary>새 프리셋 만들기</summary><div class="workspace-form-grid"><label>이름<input id="preset-name" type="text" maxlength="80" placeholder="실습 시작" required></label><label>집중 표시<select id="preset-focus-mode"><option value="none">사용 안 함</option><option value="message">안내문</option><option value="blackScreen">검은 화면</option></select></label><label class="span-two">안내 메시지 <span class="optional-label">선택</span><textarea id="preset-message" rows="2" maxlength="2000" placeholder="지금부터 실습을 시작합니다."></textarea></label><label class="span-two">HTTPS URL <span class="optional-label">선택</span><input id="preset-url" type="url" placeholder="https://classroom.google.com"></label><label>승인된 앱 <span class="optional-label">선택</span><select id="preset-app"><option value="">사용 안 함</option><option value="notepad">메모장</option><option value="calculator">계산기</option></select></label></div><p id="preset-error" class="error" hidden></p><div class="dialog-actions"><button class="secondary" type="button" data-dialog-cancel>취소</button><button id="preset-save-button" class="primary" type="submit">프리셋 저장</button></div></details>
+    </form>
+  </dialog>
+
+  <dialog id="groups-dialog" class="workspace-dialog groups-dialog">
+    <form method="dialog" class="stack" id="groups-form">
+      <div class="dialog-heading"><span class="eyebrow">STUDENT GROUPS</span><h2>학생 그룹</h2><p class="muted dialog-copy">학생 카드를 선택한 뒤 그룹을 만들거나, 그룹을 눌러 해당 학생만 빠르게 선택하세요.</p></div>
+      <div id="group-list" class="workspace-list"></div>
+      <details class="workspace-create-section" open><summary>새 그룹 만들기</summary><div class="workspace-form-grid group-create-grid"><label>그룹 이름<input id="group-name" type="text" maxlength="80" placeholder="1조 · 발표 준비" required></label><label>색상<input id="group-color" type="color" value="#536fe1" aria-label="그룹 색상"></label></div><p class="muted small">현재 선택된 학생 <strong id="group-selection-count">0명</strong>이 새 그룹에 포함됩니다.</p><p id="group-error" class="error" hidden></p><div class="dialog-actions"><button class="secondary" type="button" data-dialog-cancel>취소</button><button id="group-save-button" class="primary" type="submit">그룹 저장</button></div></details>
+    </form>
+  </dialog>
+
+  <dialog id="report-dialog" class="workspace-dialog report-dialog">
+    <form method="dialog" class="stack">
+      <div class="dialog-heading"><span class="eyebrow">CLASS RECORD</span><h2>수업 기록</h2><p id="report-subtitle" class="muted dialog-copy">명령 결과와 원격 지원·상태 변경 기록을 확인합니다.</p></div>
+      <div id="report-summary" class="report-summary"></div>
+      <div id="report-list" class="report-list"><div class="empty-state">기록을 불러오는 중입니다…</div></div>
+      <div class="dialog-actions"><button id="report-csv-button" class="secondary" type="button">CSV 다운로드</button><button class="primary" type="submit">닫기</button></div>
+    </form>
+  </dialog>
 
   <dialog id="console-close-dialog" class="command-dialog console-close-dialog">
     <form method="dialog" class="stack">
@@ -393,6 +433,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.5.40" defer></script>
+  <script src="/app.js?v=0.6.0" defer></script>
 </body>
 </html>

@@ -16,6 +16,7 @@ var tests = new (string Name, Action Run)[]
     ("open URL rejects non-HTTPS and arbitrary targets", OpenUrlIsConstrained),
     ("approved app command has no shell field", ApprovedAppIsConstrained),
     ("screen sharing command requires an explicit state", ScreenShareCommandWorks),
+    ("help acknowledgement command is minimal and round-trips", ClearHelpCommandWorks),
     ("remote assistance commands and input stay bounded", RemoteAssistProtocolWorks),
     ("commands reject duplicate or oversized targets", TargetLimitsAreEnforced),
     ("student exit PIN verification messages are strictly validated", StudentExitPinVerificationWorks),
@@ -252,6 +253,20 @@ static void ScreenShareCommandWorks()
         {
             ScreenShareIntervalMilliseconds = ProtocolConstants.ScreenShareMinimumIntervalMilliseconds - 1
         }));
+}
+
+static void ClearHelpCommandWorks()
+{
+    var command = new CommandRequest(
+        Guid.NewGuid(),
+        Guid.NewGuid(),
+        new[] { Guid.NewGuid() },
+        ClassroomCommandKind.ClearHelp);
+    ProtocolValidation.ValidateCommand(command);
+    var json = ProtocolCodec.Serialize(ProtocolEnvelope<CommandRequest>.Create(ProtocolConstants.CommandRequest, command));
+    Assert(json.Contains("\"kind\":\"clearHelp\""), "Help acknowledgement kind was not serialized using camelCase.");
+    var parsed = ProtocolCodec.Deserialize<CommandRequest>(json);
+    Assert(parsed.Payload.Kind == ClassroomCommandKind.ClearHelp, "Help acknowledgement command did not round-trip.");
 }
 
 static void RemoteAssistProtocolWorks()

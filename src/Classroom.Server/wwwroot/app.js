@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.5.40";
+  const APP_VERSION = "0.6.0";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -7,6 +7,8 @@
   const TEACHER_TOKEN_KEY = "classroom.teacherToken";
   const PENDING_FIREBASE_ENTRY_KEY = "classroom.pendingFirebaseEntry";
   const FOCUS_DISPLAY_MODE_KEY = "classroom.focusDisplayMode";
+  const LESSON_TOOL_STORAGE_PREFIX = "classroom.lessonTool.";
+  const ALERT_ACK_STORAGE_PREFIX = "classroom.alertAcknowledgements.";
 
   function storageGet(storageName, key) {
     try { return window[storageName]?.getItem(key) || null; } catch (_) { return null; }
@@ -91,6 +93,13 @@
       ? localStorage.getItem("classroom.studentSort")
       : "number",
     remoteControl: null,
+    groups: [],
+    presets: [],
+    workspaceClassId: null,
+    alertAcknowledgedKeys: new Set(),
+    auditEntries: [],
+    lessonToolTimer: null,
+    lessonTool: { goal: "", stage: "prepare", durationSeconds: 1200, remainingSeconds: 1200, endsAtUtc: null },
   };
 
   const $ = (id) => document.getElementById(id);
@@ -180,6 +189,15 @@
     state.detailView = "status";
     state.screenFrames.clear();
     state.remoteControl = null;
+    if (state.lessonToolTimer) clearInterval(state.lessonToolTimer);
+    state.lessonToolTimer = null;
+    state.groups = [];
+    state.presets = [];
+    state.workspaceClassId = null;
+    state.alertAcknowledgedKeys = new Set();
+    state.auditEntries = [];
+    state.lessonTool = { goal: "", stage: "prepare", durationSeconds: 1200, remainingSeconds: 1200, endsAtUtc: null };
+    closeAlertDrawer();
     landingView.hidden = false;
     loginView.hidden = true;
     appView.hidden = true;
@@ -260,8 +278,10 @@
     state.classId = classId;
     state.session = null;
     state.selectedDeviceIds.clear();
+    state.workspaceClassId = null;
     renderClassPicker();
     await refreshClass();
+    await loadWorkspaceData();
   }
 
   function displayText(value, fallback = "확인 필요") {
@@ -364,7 +384,7 @@
       : session.isAdmin
       ? "관리자: 코드 발급 및 재발급 가능"
       : "조회 전용 · 코드는 관리자에게 요청하세요";
-    ["start-session-button", "announcement-button", "end-session-button", "screen-wall-button", "focus-on-button", "focus-off-button", "message-button", "url-button", "app-button"].forEach((id) => {
+    ["start-session-button", "announcement-button", "end-session-button", "screen-wall-button", "focus-on-button", "focus-off-button", "message-button", "url-button", "app-button", "tools-dialog-button", "preset-dialog-button", "groups-dialog-button", "report-dialog-button", "alert-drawer-button"].forEach((id) => {
       const button = $(id);
       if (button) button.hidden = isGuest;
     });
@@ -389,6 +409,7 @@
     renderTodayInfo();
     loadWeather();
     await refreshClass();
+    await loadWorkspaceData();
     startClassPolling();
     window.setTimeout(() => maybeOpenOnboarding(session), 150);
   }
@@ -521,6 +542,7 @@
           : "첫 화면을 기다리는 중입니다. 학생 앱 연결 상태를 확인해 주세요.";
       }
     }
+    renderAlertDrawer();
     renderSelection();
     renderStudentViewControls();
     renderRefreshStatus();
@@ -558,6 +580,458 @@
 
   function primaryAttentionSignal(student) {
     return attentionSignals(student)[0] || null;
+  }
+
+  function readStoredJson(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function writeStoredJson(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) { /* storage can be disabled */ }
+  }
+
+  function lessonToolStorageKey(classId = state.classId) {
+    return `${LESSON_TOOL_STORAGE_PREFIX}${classId || "none"}`;
+  }
+
+  function alertAcknowledgementStorageKey(classId = state.classId) {
+    return `${ALERT_ACK_STORAGE_PREFIX}${classId || "none"}`;
+  }
+
+  function loadLocalWorkspaceState() {
+    state.lessonTool = {
+      goal: "",
+      stage: "prepare",
+      durationSeconds: 1200,
+      remainingSeconds: 1200,
+      endsAtUtc: null,
+      ...readStoredJson(lessonToolStorageKey(), {})
+    };
+    state.alertAcknowledgedKeys = new Set(readStoredJson(alertAcknowledgementStorageKey(), []));
+    state.groups = readStoredJson(`classroom.groups.${state.classId}`, []);
+    state.presets = readStoredJson(`classroom.presets.${state.classId}`, []);
+    if (state.lessonTool.endsAtUtc) startLessonToolTicker();
+  }
+
+  function saveLocalWorkspaceState() {
+    writeStoredJson(lessonToolStorageKey(), state.lessonTool);
+    writeStoredJson(alertAcknowledgementStorageKey(), [...state.alertAcknowledgedKeys].slice(-200));
+    writeStoredJson(`classroom.groups.${state.classId}`, state.groups);
+    writeStoredJson(`classroom.presets.${state.classId}`, state.presets);
+  }
+
+  async function loadWorkspaceData() {
+    if (!state.classId || state.workspaceClassId === state.classId) return;
+    loadLocalWorkspaceState();
+    try {
+      const [groups, presets] = await Promise.all([
+        api(`/api/classes/${state.classId}/groups`),
+        api(`/api/classes/${state.classId}/presets`)
+      ]);
+      if (Array.isArray(groups)) state.groups = groups;
+      if (Array.isArray(presets)) state.presets = presets;
+      saveLocalWorkspaceState();
+    } catch (_) {
+      // Older local Worker deployments do not have workspace tables yet. The
+      // browser copy keeps these tools usable until the API is updated.
+    }
+    state.workspaceClassId = state.classId;
+    renderAlertDrawer();
+    if ($("groups-dialog")?.open) renderGroupsDialog();
+    if ($("preset-dialog")?.open) renderPresets();
+    renderLessonTool();
+  }
+
+  function alertItems() {
+    return state.students.flatMap((student) => attentionSignals(student).map((signal) => ({
+      student,
+      signal,
+      key: `${student.deviceId}:${signal.kind}`
+    })));
+  }
+
+  function renderAlertDrawer() {
+    const list = $("alert-list");
+    const count = $("alert-count");
+    const summary = $("alert-drawer-summary");
+    if (!list || !count || !summary) return;
+    const items = alertItems();
+    const unread = items.filter((item) => !state.alertAcknowledgedKeys.has(item.key));
+    count.textContent = String(unread.length);
+    count.hidden = unread.length === 0;
+    summary.textContent = items.length
+      ? `${items.length}개 신호 · 새 알림 ${unread.length}개`
+      : "현재 확인이 필요한 학생이 없습니다.";
+    if (!items.length) {
+      list.innerHTML = '<div class="alert-empty"><span class="alert-empty-icon">✓</span><strong>지금은 확인할 신호가 없어요.</strong><p>도움 요청이나 상태 경고가 생기면 여기에 모입니다.</p></div>';
+      return;
+    }
+    list.innerHTML = items.map(({ student, signal, key }) => {
+      const unreadClass = state.alertAcknowledgedKeys.has(key) ? " read" : "";
+      const actionLabel = signal.kind === "help" ? "확인 처리" : "읽음";
+      return `<article class="alert-item ${escapeHtml(signal.kind)}${unreadClass}"><div class="alert-item-marker" aria-hidden="true">!</div><div class="alert-item-copy"><strong>${escapeHtml(student.studentDisplayName)}</strong><span>${escapeHtml(signal.label)} · ${escapeHtml(signal.detail)}</span><small>${escapeHtml(student.computerName)}</small></div><div class="alert-item-actions"><button class="ghost-button" type="button" data-alert-open="${escapeHtml(student.deviceId)}">보기</button><button class="secondary" type="button" data-alert-ack="${escapeHtml(student.deviceId)}" data-alert-kind="${escapeHtml(signal.kind)}">${actionLabel}</button></div></article>`;
+    }).join("");
+    list.querySelectorAll("[data-alert-open]").forEach((button) => button.addEventListener("click", () => {
+      closeAlertDrawer();
+      openDetail(button.dataset.alertOpen);
+    }));
+    list.querySelectorAll("[data-alert-ack]").forEach((button) => button.addEventListener("click", () => {
+      acknowledgeAlert(button.dataset.alertOpen || button.dataset.alertAck, button.dataset.alertKind).catch((error) => showToast(error.message));
+    }));
+  }
+
+  function toggleAlertDrawer() {
+    const drawer = $("alert-drawer");
+    const button = $("alert-drawer-button");
+    if (!drawer || !button) return;
+    const willOpen = drawer.hidden;
+    drawer.hidden = !willOpen;
+    button.setAttribute("aria-expanded", String(willOpen));
+    if (willOpen) renderAlertDrawer();
+  }
+
+  function closeAlertDrawer() {
+    const drawer = $("alert-drawer");
+    const button = $("alert-drawer-button");
+    if (drawer) drawer.hidden = true;
+    if (button) button.setAttribute("aria-expanded", "false");
+  }
+
+  async function acknowledgeAlert(deviceId, kind) {
+    if (!deviceId || !kind) return;
+    const item = alertItems().find((entry) => entry.student.deviceId === deviceId && entry.signal.kind === kind);
+    if (!item) return;
+    if (kind === "help") {
+      await sendCommand("clearHelp", [deviceId]);
+    }
+    state.alertAcknowledgedKeys.add(item.key);
+    saveLocalWorkspaceState();
+    renderAlertDrawer();
+    if (kind !== "help") showToast("알림을 읽음 처리했습니다.");
+  }
+
+  function lessonStageLabel(stage) {
+    return ({ prepare: "준비", explain: "설명", practice: "실습", wrap: "마무리" })[stage] || "준비";
+  }
+
+  function lessonRemainingSeconds() {
+    const tool = state.lessonTool;
+    if (tool.endsAtUtc) {
+      const remaining = Math.max(0, Math.ceil((Date.parse(tool.endsAtUtc) - Date.now()) / 1000));
+      tool.remainingSeconds = remaining;
+      if (remaining === 0) tool.endsAtUtc = null;
+    }
+    return Math.max(0, Number(tool.remainingSeconds) || 0);
+  }
+
+  function formatTimerSeconds(seconds) {
+    const safe = Math.max(0, Number(seconds) || 0);
+    return `${String(Math.floor(safe / 60)).padStart(2, "0")}:${String(safe % 60).padStart(2, "0")}`;
+  }
+
+  function renderLessonTool() {
+    const tool = state.lessonTool;
+    const goal = $("tool-goal");
+    const stage = $("tool-stage");
+    const duration = $("tool-duration");
+    const display = $("tool-timer-display");
+    const start = $("tool-timer-start");
+    if (goal) goal.value = tool.goal || "";
+    if (stage) stage.value = tool.stage || "prepare";
+    if (duration) duration.value = String(Math.round((Number(tool.durationSeconds) || 1200) / 60));
+    if (display) display.textContent = formatTimerSeconds(lessonRemainingSeconds());
+    if (start) start.textContent = tool.endsAtUtc ? "타이머 일시정지" : "타이머 시작";
+    const status = $("tool-status");
+    if (status) status.textContent = tool.endsAtUtc ? `${lessonStageLabel(tool.stage)} 진행 중 · ${formatTimerSeconds(lessonRemainingSeconds())} 남음` : "이 브라우저에 저장됩니다.";
+  }
+
+  function startLessonToolTicker() {
+    if (state.lessonToolTimer) return;
+    state.lessonToolTimer = window.setInterval(() => {
+      if (!state.lessonTool.endsAtUtc) return;
+      lessonRemainingSeconds();
+      if (state.lessonTool.remainingSeconds <= 0) {
+        state.lessonTool.endsAtUtc = null;
+        saveLocalWorkspaceState();
+        showToast("수업 타이머가 끝났습니다.");
+      }
+      renderLessonTool();
+    }, 1000);
+  }
+
+  function toggleLessonTimer() {
+    const tool = state.lessonTool;
+    if (tool.endsAtUtc) {
+      tool.remainingSeconds = lessonRemainingSeconds();
+      tool.endsAtUtc = null;
+      saveLocalWorkspaceState();
+      renderLessonTool();
+      return;
+    }
+    const duration = Number($("tool-duration")?.value) || Math.round((Number(tool.durationSeconds) || 1200) / 60);
+    tool.durationSeconds = Math.max(60, duration * 60);
+    if (!tool.remainingSeconds || tool.remainingSeconds > tool.durationSeconds) tool.remainingSeconds = tool.durationSeconds;
+    tool.endsAtUtc = new Date(Date.now() + tool.remainingSeconds * 1000).toISOString();
+    saveLocalWorkspaceState();
+    startLessonToolTicker();
+    renderLessonTool();
+  }
+
+  function resetLessonTimer() {
+    const duration = Number($("tool-duration")?.value) || 20;
+    state.lessonTool.durationSeconds = Math.max(60, duration * 60);
+    state.lessonTool.remainingSeconds = state.lessonTool.durationSeconds;
+    state.lessonTool.endsAtUtc = null;
+    saveLocalWorkspaceState();
+    renderLessonTool();
+  }
+
+  function saveLessonTool() {
+    const duration = Number($("tool-duration")?.value) || 20;
+    state.lessonTool.goal = $("tool-goal")?.value.trim().slice(0, 140) || "";
+    state.lessonTool.stage = $("tool-stage")?.value || "prepare";
+    state.lessonTool.durationSeconds = Math.max(60, duration * 60);
+    if (!state.lessonTool.endsAtUtc) state.lessonTool.remainingSeconds = state.lessonTool.durationSeconds;
+    saveLocalWorkspaceState();
+    renderLessonTool();
+  }
+
+  function shareLessonTool() {
+    const goal = $("tool-goal")?.value.trim();
+    if (!goal) {
+      showToast("학생에게 안내할 수업 목표를 먼저 입력해 주세요.");
+      return;
+    }
+    saveLessonTool();
+    $("tools-dialog")?.close();
+    openCommandDialog("message", commandTargets());
+    $("command-message").value = `오늘의 목표: ${goal}\n진행 단계: ${lessonStageLabel(state.lessonTool.stage)}`;
+  }
+
+  function groupMemberLabel(group) {
+    const names = (group.deviceIds || []).map((deviceId) => state.students.find((student) => student.deviceId === deviceId)?.studentDisplayName).filter(Boolean);
+    if (!names.length) return "학생을 아직 넣지 않았습니다.";
+    return names.length > 3 ? `${names.slice(0, 3).join(", ")} 외 ${names.length - 3}명` : names.join(", ");
+  }
+
+  function renderGroupsDialog() {
+    const list = $("group-list");
+    const count = $("group-selection-count");
+    if (!list) return;
+    if (count) count.textContent = `${state.selectedDeviceIds.size}명`;
+    if (!state.groups.length) {
+      list.innerHTML = '<div class="workspace-empty"><strong>아직 만든 그룹이 없습니다.</strong><span>학생을 선택하고 아래에서 첫 그룹을 만들어 보세요.</span></div>';
+      return;
+    }
+    list.innerHTML = state.groups.map((group) => `<article class="workspace-list-item group-list-item"><button class="group-select-button" type="button" data-group-select="${escapeHtml(group.groupId)}"><span class="group-color-dot" style="--group-color:${escapeHtml(group.color || "#536fe1")}"></span><span><strong>${escapeHtml(group.name)}</strong><small>${escapeHtml(groupMemberLabel(group))}</small></span></button><div class="workspace-list-actions"><button class="ghost-button" type="button" data-group-update="${escapeHtml(group.groupId)}">선택 저장</button><button class="ghost-button danger-text" type="button" data-group-delete="${escapeHtml(group.groupId)}">삭제</button></div></article>`).join("");
+    list.querySelectorAll("[data-group-select]").forEach((button) => button.addEventListener("click", () => {
+      const group = state.groups.find((item) => item.groupId === button.dataset.groupSelect);
+      if (group) applyGroupSelection(group);
+    }));
+    list.querySelectorAll("[data-group-update]").forEach((button) => button.addEventListener("click", () => updateGroupMembers(button.dataset.groupUpdate).catch((error) => showToast(error.message))));
+    list.querySelectorAll("[data-group-delete]").forEach((button) => button.addEventListener("click", () => deleteGroup(button.dataset.groupDelete).catch((error) => showToast(error.message))));
+  }
+
+  function applyGroupSelection(group) {
+    const available = new Set(state.students.map((student) => student.deviceId));
+    state.selectedDeviceIds = new Set((group.deviceIds || []).filter((deviceId) => available.has(deviceId)));
+    state.filter = "all";
+    document.querySelectorAll(".filter").forEach((button) => button.classList.toggle("active", button.dataset.filter === "all"));
+    renderStudents();
+    renderSelection();
+    renderGroupsDialog();
+    showToast(`${group.name} 학생 ${state.selectedDeviceIds.size}명을 선택했습니다.`);
+  }
+
+  function openGroupsDialog() {
+    if (state.teacher?.isGuest) {
+      showToast("게스트 계정은 학생 그룹을 수정할 수 없습니다.");
+      return;
+    }
+    renderGroupsDialog();
+    $("groups-dialog")?.showModal();
+  }
+
+  async function createGroupFromForm() {
+    const name = $("group-name")?.value.trim();
+    const color = $("group-color")?.value || "#536fe1";
+    const errorTarget = $("group-error");
+    if (errorTarget) errorTarget.hidden = true;
+    try {
+      if (!name) throw new Error("그룹 이름을 입력해 주세요.");
+      const result = await api(`/api/classes/${state.classId}/groups`, { method: "POST", body: { name, color, deviceIds: [...state.selectedDeviceIds] } });
+      state.groups = [result, ...state.groups.filter((group) => group.groupId !== result.groupId)];
+      saveLocalWorkspaceState();
+      $("groups-form")?.reset();
+      $("group-color").value = "#536fe1";
+      renderGroupsDialog();
+      showToast(`${name} 그룹을 만들었습니다.`);
+    } catch (error) {
+      if (errorTarget) {
+        errorTarget.textContent = error.message;
+        errorTarget.hidden = false;
+      }
+    }
+  }
+
+  async function updateGroupMembers(groupId) {
+    const group = state.groups.find((item) => item.groupId === groupId);
+    if (!group) return;
+    const result = await api(`/api/classes/${state.classId}/groups/${groupId}`, { method: "PUT", body: { name: group.name, color: group.color, deviceIds: [...state.selectedDeviceIds] } });
+    state.groups = state.groups.map((item) => item.groupId === groupId ? result : item);
+    saveLocalWorkspaceState();
+    renderGroupsDialog();
+    showToast(`${group.name}에 현재 선택 학생을 저장했습니다.`);
+  }
+
+  async function deleteGroup(groupId) {
+    const group = state.groups.find((item) => item.groupId === groupId);
+    if (!group || !await askConfirmation("학생 그룹 삭제", `${group.name} 그룹을 삭제할까요? 학생 장치나 명단은 삭제되지 않습니다.`, "그룹 삭제")) return;
+    await api(`/api/classes/${state.classId}/groups/${groupId}`, { method: "DELETE" });
+    state.groups = state.groups.filter((item) => item.groupId !== groupId);
+    saveLocalWorkspaceState();
+    renderGroupsDialog();
+    showToast("학생 그룹을 삭제했습니다.");
+  }
+
+  function renderPresets() {
+    const list = $("preset-list");
+    if (!list) return;
+    if (!state.presets.length) {
+      list.innerHTML = '<div class="workspace-empty"><strong>저장된 프리셋이 없습니다.</strong><span>아래에서 자주 쓰는 수업 명령 조합을 만들어 보세요.</span></div>';
+      return;
+    }
+    list.innerHTML = state.presets.map((preset) => {
+      const config = preset.config || {};
+      const details = [config.focusDisplayMode === "blackScreen" ? "검은 화면" : config.focusDisplayMode === "message" ? "집중 안내" : "", config.message ? "메시지" : "", config.url ? "URL" : "", config.approvedAppId ? "앱" : ""].filter(Boolean).join(" · ");
+      return `<article class="workspace-list-item preset-list-item"><div><strong>${escapeHtml(preset.name)}</strong><small>${escapeHtml(details || "설정 없음")}</small></div><div class="workspace-list-actions"><button class="primary" type="button" data-preset-run="${escapeHtml(preset.presetId)}">실행</button><button class="ghost-button danger-text" type="button" data-preset-delete="${escapeHtml(preset.presetId)}">삭제</button></div></article>`;
+    }).join("");
+    list.querySelectorAll("[data-preset-run]").forEach((button) => button.addEventListener("click", () => runPreset(button.dataset.presetRun).catch((error) => showToast(error.message))));
+    list.querySelectorAll("[data-preset-delete]").forEach((button) => button.addEventListener("click", () => deletePreset(button.dataset.presetDelete).catch((error) => showToast(error.message))));
+  }
+
+  function openPresetsDialog() {
+    if (state.teacher?.isGuest) {
+      showToast("게스트 계정은 프리셋을 실행할 수 없습니다.");
+      return;
+    }
+    renderPresets();
+    $("preset-dialog")?.showModal();
+  }
+
+  async function createPresetFromForm() {
+    const errorTarget = $("preset-error");
+    if (errorTarget) errorTarget.hidden = true;
+    try {
+      const name = $("preset-name")?.value.trim();
+      const config = {
+        focusDisplayMode: $("preset-focus-mode")?.value || "none",
+        message: $("preset-message")?.value.trim() || "",
+        url: $("preset-url")?.value.trim() || "",
+        approvedAppId: $("preset-app")?.value || ""
+      };
+      if (!name) throw new Error("프리셋 이름을 입력해 주세요.");
+      if (!config.message && !config.url && !config.approvedAppId && config.focusDisplayMode === "none") throw new Error("실행할 동작을 하나 이상 선택해 주세요.");
+      if (config.url && !/^https:\/\//i.test(config.url)) throw new Error("URL은 HTTPS 주소만 저장할 수 있습니다.");
+      const result = await api(`/api/classes/${state.classId}/presets`, { method: "POST", body: { name, config } });
+      state.presets = [result, ...state.presets.filter((preset) => preset.presetId !== result.presetId)];
+      saveLocalWorkspaceState();
+      $("preset-name").value = "";
+      $("preset-message").value = "";
+      $("preset-url").value = "";
+      $("preset-app").value = "";
+      $("preset-focus-mode").value = "none";
+      renderPresets();
+      showToast(`${name} 프리셋을 저장했습니다.`);
+    } catch (error) {
+      if (errorTarget) {
+        errorTarget.textContent = error.message;
+        errorTarget.hidden = false;
+      }
+    }
+  }
+
+  async function deletePreset(presetId) {
+    const preset = state.presets.find((item) => item.presetId === presetId);
+    if (!preset || !await askConfirmation("프리셋 삭제", `${preset.name} 프리셋을 삭제할까요?`, "프리셋 삭제")) return;
+    await api(`/api/classes/${state.classId}/presets/${presetId}`, { method: "DELETE" });
+    state.presets = state.presets.filter((item) => item.presetId !== presetId);
+    saveLocalWorkspaceState();
+    renderPresets();
+    showToast("프리셋을 삭제했습니다.");
+  }
+
+  async function runPreset(presetId) {
+    const preset = state.presets.find((item) => item.presetId === presetId);
+    if (!preset) return;
+    const config = preset.config || {};
+    const targets = commandTargets();
+    if (config.focusDisplayMode && config.focusDisplayMode !== "none") {
+      await sendCommand("focusMode", targets, { message: config.message || "수업에 집중해 주세요.", focusEnabled: true, focusDisplayMode: config.focusDisplayMode });
+    } else if (config.message) {
+      await sendCommand("message", targets, { message: config.message, displaySeconds: 10 });
+    }
+    if (config.url) await sendCommand("openUrl", targets, { url: config.url });
+    if (config.approvedAppId) await sendCommand("launchApprovedApp", targets, { approvedAppId: config.approvedAppId });
+    $("preset-dialog")?.close();
+    showToast(`${preset.name} 프리셋을 실행했습니다.`);
+  }
+
+  async function openReportDialog() {
+    if (state.teacher?.isGuest) {
+      showToast("게스트 계정은 수업 기록을 볼 수 없습니다.");
+      return;
+    }
+    const dialog = $("report-dialog");
+    if (!dialog) return;
+    $("report-list").innerHTML = '<div class="empty-state">기록을 불러오는 중입니다…</div>';
+    $("report-summary").innerHTML = "";
+    dialog.showModal();
+    try {
+      const entries = await api(`/api/classes/${state.classId}/audit?limit=200`);
+      state.auditEntries = Array.isArray(entries) ? entries : [];
+      renderReport();
+    } catch (error) {
+      $("report-list").innerHTML = `<div class="operations-unavailable">기록을 불러오지 못했습니다. ${escapeHtml(error.message)}</div>`;
+    }
+  }
+
+  function renderReport() {
+    const entries = state.auditEntries;
+    const commands = entries.filter((entry) => entry.action === "COMMAND");
+    const completed = entries.filter((entry) => ["SUCCESS", "FAILED", "REJECTED"].includes(entry.result));
+    const remote = entries.filter((entry) => entry.action === "REMOTE_ASSIST");
+    const sessions = entries.filter((entry) => entry.action === "CLASS_SESSION");
+    $("report-subtitle").textContent = state.session ? `${state.session.subject || "수업"} · ${formatTime(state.session.startedAtUtc)} 시작 · 최근 ${entries.length}건` : `최근 ${entries.length}건의 수업 기록`;
+    $("report-summary").innerHTML = `<div class="report-stat"><span>명령</span><strong>${commands.length}</strong><small>교사 명령 대기</small></div><div class="report-stat"><span>처리 결과</span><strong>${completed.length}</strong><small>성공·실패 응답</small></div><div class="report-stat"><span>원격 지원</span><strong>${remote.length}</strong><small>요청·동의·종료</small></div><div class="report-stat"><span>수업 세션</span><strong>${sessions.length}</strong><small>시작·종료 기록</small></div>`;
+    const list = $("report-list");
+    if (!entries.length) {
+      list.innerHTML = '<div class="workspace-empty"><strong>아직 수업 기록이 없습니다.</strong><span>수업을 시작하고 명령을 보내면 이곳에 남습니다.</span></div>';
+      return;
+    }
+    list.innerHTML = `<div class="report-table-wrap"><table class="report-table"><thead><tr><th>시간</th><th>구분</th><th>결과</th><th>내용</th></tr></thead><tbody>${entries.map((entry) => `<tr><td>${escapeHtml(formatTime(entry.timestampUtc))}</td><td><span class="report-action ${escapeHtml(String(entry.action || "").toLowerCase())}">${escapeHtml(entry.action || "기록")}</span></td><td>${escapeHtml(entry.result || "—")}</td><td>${escapeHtml(entry.reason || entry.requestId || "—")}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+
+  function downloadReportCsv() {
+    if (!state.auditEntries.length) {
+      showToast("내보낼 수업 기록이 없습니다.");
+      return;
+    }
+    const csvCell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const rows = [["시간", "구분", "결과", "내용", "요청 ID"], ...state.auditEntries.map((entry) => [entry.timestampUtc, entry.action, entry.result, entry.reason, entry.requestId])];
+    const blob = new Blob(["\uFEFF" + rows.map((row) => row.map(csvCell).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `classroom-${state.classId || "class"}-report.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 500);
+    showToast("수업 기록 CSV를 다운로드했습니다.");
   }
 
   function studentStatusRank(student) {
@@ -2598,6 +3072,33 @@
   });
   $("announcement-button").addEventListener("click", () => openCommandDialog("message"));
   $("end-session-button").addEventListener("click", () => endSession().catch((error) => showToast(error.message)));
+  $("alert-drawer-button").addEventListener("click", toggleAlertDrawer);
+  $("alert-drawer-close").addEventListener("click", closeAlertDrawer);
+  $("tools-dialog-button").addEventListener("click", () => {
+    renderLessonTool();
+    $("tools-dialog").showModal();
+  });
+  $("preset-dialog-button").addEventListener("click", openPresetsDialog);
+  $("groups-dialog-button").addEventListener("click", openGroupsDialog);
+  $("report-dialog-button").addEventListener("click", () => openReportDialog().catch((error) => showToast(error.message)));
+  $("tools-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    saveLessonTool();
+    $("tools-dialog").close();
+    showToast("수업 도구를 저장했습니다.");
+  });
+  $("tool-timer-start").addEventListener("click", toggleLessonTimer);
+  $("tool-timer-reset").addEventListener("click", resetLessonTimer);
+  $("tool-share-button").addEventListener("click", shareLessonTool);
+  $("preset-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    createPresetFromForm();
+  });
+  $("groups-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    createGroupFromForm();
+  });
+  $("report-csv-button").addEventListener("click", downloadReportCsv);
   $("focus-display-mode").addEventListener("change", (event) => {
     const value = event.target.value === "blackScreen" ? "blackScreen" : "message";
     state.focusDisplayMode = value;

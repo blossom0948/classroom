@@ -7,6 +7,7 @@ public enum ClassroomCommandKind
     FocusMode,
     LaunchApprovedApp,
     ScreenShare,
+    ClearHelp,
     RemoteAssistRequest,
     RemoteAssistEnd
 }

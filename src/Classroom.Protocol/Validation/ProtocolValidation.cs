@@ -200,6 +200,8 @@ public static class ProtocolValidation
                         $"ScreenShareIntervalMilliseconds must be between {ProtocolConstants.ScreenShareMinimumIntervalMilliseconds} and {ProtocolConstants.ScreenShareMaximumIntervalMilliseconds}.");
                 }
                 break;
+            case ClassroomCommandKind.ClearHelp:
+                break;
             case ClassroomCommandKind.RemoteAssistRequest:
                 ValidateRemoteAssistCommand(command, requiresDuration: true);
                 break;
