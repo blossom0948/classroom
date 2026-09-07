@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-    <link rel="stylesheet" href="/styles.css?v=0.6.4">
+    <link rel="stylesheet" href="/styles.css?v=0.6.5">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -261,7 +261,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.6.4</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.6.5</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -345,7 +345,7 @@
       <div id="message-presets" class="message-presets" hidden><span class="muted small">빠른 문구</span><button type="button" class="preset-button" data-message-preset="수업을 시작합니다. 기기를 준비해 주세요.">수업 시작</button><button type="button" class="preset-button" data-message-preset="질문이 있으면 학생용 앱에서 도움을 요청해 주세요.">질문 안내</button><button type="button" class="preset-button" data-message-preset="수업 종료 5분 전입니다. 작업을 정리해 주세요.">마무리</button></div>
       <label id="url-field" hidden>HTTPS URL<input id="command-url" type="url" placeholder="https://example.com"></label>
       <label id="app-field" hidden>승인된 앱<select id="command-app"><option value="notepad">메모장</option><option value="calculator">계산기</option></select></label>
-      <label id="schedule-field">실행 시점<select id="command-schedule"><option value="0">지금 보내기</option><option value="60">1분 뒤</option><option value="300">5분 뒤</option><option value="600">10분 뒤</option><option value="1800">30분 뒤</option></select><span class="schedule-help">오프라인 학생은 다시 온라인이 되면 예약 시각 이후 바로 실행됩니다.</span></label>
+      <label id="schedule-field">실행 시점<select id="command-schedule"><option value="0">지금 보내기</option><option value="60">1분 뒤</option><option value="120">2분 뒤</option><option value="300">5분 뒤</option><option value="600">10분 뒤</option><option value="900">15분 뒤</option><option value="1200">20분 뒤</option><option value="1800">30분 뒤</option><option value="2700">45분 뒤</option><option value="3600">1시간 뒤</option><option value="5400">1시간 30분 뒤</option><option value="7200">2시간 뒤</option><option value="10800">3시간 뒤</option><option value="14400">4시간 뒤</option><option value="21600">6시간 뒤</option><option value="43200">12시간 뒤</option><option value="86400">내일 같은 시각</option><option value="172800">2일 뒤</option><option value="259200">3일 뒤</option><option value="604800">7일 뒤</option><option value="custom">직접 설정…</option></select><div id="schedule-custom" class="schedule-custom" hidden><div class="schedule-custom-grid"><label>몇 분 뒤<input id="command-schedule-minutes" type="number" min="1" max="10080" step="1" inputmode="numeric" placeholder="예: 45"></label><span class="schedule-or">또는</span><label>날짜·시각<input id="command-schedule-at" type="datetime-local"></label></div><span class="schedule-custom-help">1분부터 7일(10,080분) 이내로 설정할 수 있습니다.</span></div><span class="schedule-help">오프라인 학생은 다시 온라인이 되면 예약 시각 이후 바로 실행됩니다.</span></label>
       <label id="seconds-field">표시 시간(초)<input id="command-seconds" type="number" min="1" max="3600" value="10"></label>
       <div class="dialog-actions"><button class="secondary" type="button" data-dialog-cancel>취소</button><button id="send-command-button" class="primary" type="submit" value="default">보내기</button></div>
       <p id="dialog-error" class="error" hidden></p>
@@ -445,6 +445,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.6.4" defer></script>
+  <script src="/app.js?v=0.6.5" defer></script>
 </body>
 </html>

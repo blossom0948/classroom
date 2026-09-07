@@ -1293,15 +1293,34 @@ export class ClassroomState {
     }
 
     const requestedScheduleDelay = body?.scheduleDelaySeconds;
-    const scheduleDelaySeconds = requestedScheduleDelay === undefined || requestedScheduleDelay === null
-      ? 0
-      : numberInRange(requestedScheduleDelay, 0, MAX_SCHEDULE_DELAY_SECONDS);
-    if (scheduleDelaySeconds === null) {
-      return responseError("INVALID_COMMAND", `예약 시간은 0초부터 ${MAX_SCHEDULE_DELAY_SECONDS}초 사이여야 합니다.`, 400, cors);
+    const requestedScheduleAt = body?.scheduledForUtc;
+    const hasScheduleDelay = requestedScheduleDelay !== undefined && requestedScheduleDelay !== null;
+    const hasScheduleAt = requestedScheduleAt !== undefined && requestedScheduleAt !== null;
+    if (hasScheduleDelay && hasScheduleAt) {
+      return responseError("INVALID_COMMAND", "예약 방식은 시간 간격 또는 날짜·시각 중 하나만 선택해 주세요.", 400, cors);
     }
-    const scheduledForUtc = scheduleDelaySeconds > 0
-      ? new Date(Date.now() + scheduleDelaySeconds * 1000).toISOString()
-      : null;
+    let scheduleDelaySeconds = 0;
+    let scheduledForUtc = null;
+    if (hasScheduleAt) {
+      const scheduledAtMs = typeof requestedScheduleAt === "string" ? Date.parse(requestedScheduleAt) : Number.NaN;
+      scheduleDelaySeconds = Number.isFinite(scheduledAtMs)
+        ? Math.ceil((scheduledAtMs - Date.now()) / 1000)
+        : null;
+      if (scheduleDelaySeconds === null || scheduleDelaySeconds < 1 || scheduleDelaySeconds > MAX_SCHEDULE_DELAY_SECONDS) {
+        return responseError("INVALID_COMMAND", `예약 시각은 현재부터 7일 이내로 설정해 주세요.`, 400, cors);
+      }
+      scheduledForUtc = new Date(scheduledAtMs).toISOString();
+    } else {
+      scheduleDelaySeconds = hasScheduleDelay
+        ? numberInRange(requestedScheduleDelay, 0, MAX_SCHEDULE_DELAY_SECONDS)
+        : 0;
+      if (scheduleDelaySeconds === null) {
+        return responseError("INVALID_COMMAND", `예약 시간은 0초부터 ${MAX_SCHEDULE_DELAY_SECONDS}초 사이여야 합니다.`, 400, cors);
+      }
+      scheduledForUtc = scheduleDelaySeconds > 0
+        ? new Date(Date.now() + scheduleDelaySeconds * 1000).toISOString()
+        : null;
+    }
 
     const payload = {
       requestId,

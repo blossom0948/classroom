@@ -311,6 +311,12 @@ body { min-width: 320px; }
 .preset-button { background: var(--soft); border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font-size: 10px; padding: 6px 8px; }
 .preset-button:hover { background: var(--blue-soft); color: var(--blue); }
 .schedule-help { color: var(--muted); display: block; font-size: 11px; font-weight: 500; line-height: 1.45; margin-top: -2px; }
+.schedule-custom { background: var(--soft); border: 1px solid var(--line); border-radius: 10px; margin-top: 2px; padding: 10px; }
+.schedule-custom-grid { align-items: end; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.45fr); }
+.schedule-custom-grid label { color: var(--muted); font-size: 11px; font-weight: 750; gap: 5px; }
+.schedule-custom-grid input { min-width: 0; padding: 9px 10px; }
+.schedule-or { align-self: center; color: var(--muted); font-size: 11px; padding-bottom: 10px; }
+.schedule-custom-help { color: var(--muted); display: block; font-size: 10px; font-weight: 500; line-height: 1.45; margin-top: 8px; }
 .theme-options { display: flex; gap: 7px; margin-top: 15px; }
 .theme-options .secondary { font-size: 11px; padding: 7px 10px; }
 .theme-options .secondary.active { background: var(--blue-soft); border-color: #aabbf3; color: var(--blue); font-weight: 850; }
@@ -437,6 +443,8 @@ html[data-theme="dark"] .console-preview { background: #182235; border-color: #2
 
 @media (max-width: 480px) {
   .student-grid { grid-template-columns: 1fr; }
+  .schedule-custom-grid { grid-template-columns: 1fr; }
+  .schedule-or { display: none; }
   .enrollment-code-box { grid-template-columns: 1fr auto; }
   .enrollment-code-box strong { grid-column: 1 / -1; grid-row: 1; }
   .enrollment-code-box span { grid-row: 2; }

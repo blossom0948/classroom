@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.6.4";
+  const APP_VERSION = "0.6.5";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -9,6 +9,7 @@
   const FOCUS_DISPLAY_MODE_KEY = "classroom.focusDisplayMode";
   const LESSON_TOOL_STORAGE_PREFIX = "classroom.lessonTool.";
   const ALERT_ACK_STORAGE_PREFIX = "classroom.alertAcknowledgements.";
+  const MAX_SCHEDULE_DELAY_SECONDS = 7 * 24 * 60 * 60;
 
   function storageGet(storageName, key) {
     try { return window[storageName]?.getItem(key) || null; } catch (_) { return null; }
@@ -2078,6 +2079,51 @@
     showToast("학생용 설치 패키지 다운로드를 시작했습니다.");
   }
 
+  function dateTimeLocalValue(date) {
+    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
+    return localDate.toISOString().slice(0, 16);
+  }
+
+  function syncScheduleControls() {
+    const custom = $("command-schedule").value === "custom";
+    $("schedule-custom").hidden = !custom;
+    if (!custom) return;
+    const now = Date.now();
+    const scheduleAt = $("command-schedule-at");
+    scheduleAt.min = dateTimeLocalValue(new Date(now + 60 * 1000));
+    scheduleAt.max = dateTimeLocalValue(new Date(now + MAX_SCHEDULE_DELAY_SECONDS * 1000));
+  }
+
+  function getSchedulePayload() {
+    const selection = $("command-schedule").value;
+    if (selection !== "custom") {
+      const scheduleDelaySeconds = Number(selection || 0);
+      return scheduleDelaySeconds > 0 ? { scheduleDelaySeconds } : {};
+    }
+    const minutesText = $("command-schedule-minutes").value.trim();
+    const atText = $("command-schedule-at").value;
+    if (minutesText && atText) throw new Error("몇 분 뒤 또는 날짜·시각 중 하나만 입력해 주세요.");
+    if (minutesText) {
+      const minutes = Number(minutesText);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > MAX_SCHEDULE_DELAY_SECONDS / 60) {
+        throw new Error("직접 입력은 1분부터 10,080분(7일) 사이여야 합니다.");
+      }
+      return { scheduleDelaySeconds: minutes * 60 };
+    }
+    if (atText) {
+      const scheduledAtMs = new Date(atText).getTime();
+      const scheduleDelaySeconds = Math.ceil((scheduledAtMs - Date.now()) / 1000);
+      if (!Number.isFinite(scheduledAtMs) || scheduleDelaySeconds < 60) {
+        throw new Error("예약 시각은 지금보다 최소 1분 뒤여야 합니다.");
+      }
+      if (scheduleDelaySeconds > MAX_SCHEDULE_DELAY_SECONDS) {
+        throw new Error("예약 시각은 최대 7일 이내로 설정할 수 있습니다.");
+      }
+      return { scheduledForUtc: new Date(scheduledAtMs).toISOString() };
+    }
+    throw new Error("몇 분 뒤 또는 실행할 날짜·시각을 입력해 주세요.");
+  }
+
   function openCommandDialog(kind, targetIds = null) {
     if (!state.session) {
       showToast("먼저 수업을 시작하세요.");
@@ -2117,6 +2163,9 @@
     $("command-message").value = "";
     $("command-url").value = "";
     $("command-schedule").value = "0";
+    $("command-schedule-minutes").value = "";
+    $("command-schedule-at").value = "";
+    syncScheduleControls();
     $("dialog-error").hidden = true;
     commandDialog.showModal();
   }
@@ -3164,6 +3213,7 @@
     createGroupFromForm();
   });
   $("report-csv-button").addEventListener("click", downloadReportCsv);
+  $("command-schedule").addEventListener("change", syncScheduleControls);
   $("focus-display-mode").addEventListener("change", (event) => {
     const value = event.target.value === "blackScreen" ? "blackScreen" : "message";
     state.focusDisplayMode = value;
@@ -3364,8 +3414,7 @@
     const errorTarget = $("dialog-error");
     errorTarget.hidden = true;
     try {
-      const scheduleDelaySeconds = Number($("command-schedule").value || 0);
-      const schedule = scheduleDelaySeconds > 0 ? { scheduleDelaySeconds } : {};
+      const schedule = getSchedulePayload();
       if (state.commandKind === "url") {
         await sendCommand("openUrl", state.commandTargetIds, { url: $("command-url").value, ...schedule });
       } else if (state.commandKind === "app") {

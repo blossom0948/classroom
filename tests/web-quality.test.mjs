@@ -48,11 +48,14 @@ assert.match(html, /id="class-sync-status"/, "The console needs a visible sync r
 assert.match(html, /id="student-sort"/, "The class roster needs a sorting control.");
 assert.match(html, /id="focus-display-mode"/, "The focus command needs a visible presentation selector.");
 assert.match(html, /id="command-schedule"/, "Command dialogs need a visible delayed-execution selector.");
+assert.match(html, /id="command-schedule-minutes"/, "Command dialogs need a custom minute input.");
+assert.match(html, /id="command-schedule-at"/, "Command dialogs need a custom date-time input.");
 assert.match(script, /focusDisplayMode: state\.focusDisplayMode/, "The console must send the selected focus presentation.");
 assert.match(cloudflareWorker, /focusDisplayMode:\s*focusDisplayMode/, "The Worker must forward the selected focus presentation to student devices.");
 assert.match(cloudflareWorker, /집중 화면 표시 방식은 집중 모드에서만 사용할 수 있습니다/, "The Worker must reject focus presentation values on unrelated commands.");
 assert.match(cloudflareWorker, /MAX_SCHEDULE_DELAY_SECONDS = 7 \* 24 \* 60 \* 60/, "Scheduled commands need a bounded maximum delay.");
 assert.match(cloudflareWorker, /c\.scheduled_for_utc IS NULL OR c\.scheduled_for_utc <= \?/, "Queued commands must wait until their scheduled time before delivery.");
+assert.match(cloudflareWorker, /requestedScheduleAt/, "The Worker must accept an exact scheduled date and time.");
 assert.match(cloudflareWorker, /if \(!scheduledForUtc && kind === "focusMode"\)/, "Scheduled focus commands must not change roster state before delivery.");
 assert.match(script, /scheduleDelaySeconds/, "The command dialog must send the selected delayed-execution interval.");
 assert.match(cloudflareWorker, /SESSION_LIFETIME_MS = 1000 \* 60 \* 60 \* 24 \* 30/, "Sessions need a long-lived lifetime for classroom consoles.");
