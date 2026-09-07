@@ -377,10 +377,14 @@
     state.mobileCommandOpen = Boolean(open);
     syncMobileCommandUi();
     if (!state.mobileCommandOpen && restoreFocus && wasOpen) {
-      window.requestAnimationFrame(() => $("mobile-command-launcher")?.focus({ preventScroll: true }));
+      window.setTimeout(() => {
+        if (!state.mobileCommandOpen) $("mobile-command-launcher")?.focus({ preventScroll: true });
+      }, 280);
     }
     if (state.mobileCommandOpen) {
-      window.requestAnimationFrame(() => $("mobile-command-close")?.focus({ preventScroll: true }));
+      window.setTimeout(() => {
+        if (state.mobileCommandOpen) $("mobile-command-close")?.focus({ preventScroll: true });
+      }, 280);
     }
   }
 

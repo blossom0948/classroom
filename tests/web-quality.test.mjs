@@ -162,6 +162,8 @@ assert.match(html, /id="mobile-command-scrim"/, "The mobile command sheet needs 
 assert.match(script, /function syncMobileCommandDeckPlacement\(\)/, "The mobile command deck needs a stable placement guard.");
 assert.match(script, /anchor\.before\(deck\)/, "The mobile command deck must remain in the stable class section on mobile browsers.");
 assert.match(script, /mobileCommandMedia\.addEventListener\("change"/, "Crossing the mobile breakpoint must restore the command deck safely.");
+assert.match(script, /mobile-command-close"\)\?\.focus/, "Opening the mobile command sheet must move focus to its close control.");
+assert.match(script, /mobile-command-launcher"\)\?\.focus/, "Closing the mobile command sheet must restore focus to its launcher.");
 assert.match(styles, /0\.6\.7 — mobile-first teacher console/, "The final mobile-first visual layer must remain documented and intentionally ordered.");
 assert.match(styles, /#app-view\.mobile-command-open #bulk-actions/, "Mobile student commands must use a deliberate bottom-sheet state.");
 assert.match(styles, /#app-view \.toolbar-browse-row \.filters[\s\S]*overflow-x: auto/, "Phone filters must scroll horizontally instead of collapsing into a dense button wall.");
