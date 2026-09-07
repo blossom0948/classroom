@@ -345,6 +345,7 @@
       <div id="message-presets" class="message-presets" hidden><span class="muted small">빠른 문구</span><button type="button" class="preset-button" data-message-preset="수업을 시작합니다. 기기를 준비해 주세요.">수업 시작</button><button type="button" class="preset-button" data-message-preset="질문이 있으면 학생용 앱에서 도움을 요청해 주세요.">질문 안내</button><button type="button" class="preset-button" data-message-preset="수업 종료 5분 전입니다. 작업을 정리해 주세요.">마무리</button></div>
       <label id="url-field" hidden>HTTPS URL<input id="command-url" type="url" placeholder="https://example.com"></label>
       <label id="app-field" hidden>승인된 앱<select id="command-app"><option value="notepad">메모장</option><option value="calculator">계산기</option></select></label>
+      <label id="schedule-field">실행 시점<select id="command-schedule"><option value="0">지금 보내기</option><option value="60">1분 뒤</option><option value="300">5분 뒤</option><option value="600">10분 뒤</option><option value="1800">30분 뒤</option></select><span class="schedule-help">오프라인 학생은 다시 온라인이 되면 예약 시각 이후 바로 실행됩니다.</span></label>
       <label id="seconds-field">표시 시간(초)<input id="command-seconds" type="number" min="1" max="3600" value="10"></label>
       <div class="dialog-actions"><button class="secondary" type="button" data-dialog-cancel>취소</button><button id="send-command-button" class="primary" type="submit" value="default">보내기</button></div>
       <p id="dialog-error" class="error" hidden></p>

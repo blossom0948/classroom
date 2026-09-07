@@ -6,7 +6,11 @@ const ROOT_TEACHER_ID = "e55aeebb-7f43-4d38-9c4f-6361570afd11";
 const ROOT_CLASS_ID = "42ab8f3a-0e8a-47bc-a543-7b7892fa1e00";
 const ROOT_LOGIN = "blossom0948";
 const ROOT_EMAIL = "blossom0948@gmail.com";
-const SESSION_LIFETIME_MS = 1000 * 60 * 60 * 12;
+// Teacher consoles are commonly left open for a full school day or longer.
+// Keep sessions persistent across routine browser restarts, while renewing an
+// active session before it reaches the final week of its lifetime.
+const SESSION_LIFETIME_MS = 1000 * 60 * 60 * 24 * 30;
+const SESSION_RENEW_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
 const SESSION_COOKIE_NAME = "__Host-classroom-session";
 const SESSION_COOKIE_MAX_AGE_SECONDS = Math.floor(SESSION_LIFETIME_MS / 1000);
 const ONLINE_WINDOW_MS = 75 * 1000;
@@ -20,6 +24,7 @@ const PRIVACY_VERSION = "2026-08-30";
 // never silently drops a frame that the student app successfully captured.
 const MAX_MESSAGE_BYTES = 128 * 1024;
 const MAX_COMMAND_TARGETS = 30;
+const MAX_SCHEDULE_DELAY_SECONDS = 7 * 24 * 60 * 60;
 const MAX_ROSTER_ROWS = 100;
 const REMOTE_ASSIST_MIN_DURATION_SECONDS = 60;
 const REMOTE_ASSIST_MAX_DURATION_SECONDS = 600;
@@ -249,7 +254,8 @@ export class ClassroomState {
       kind TEXT NOT NULL,
       payload_json TEXT NOT NULL,
       created_by_teacher_id TEXT NOT NULL,
-      created_at_utc TEXT NOT NULL
+      created_at_utc TEXT NOT NULL,
+      scheduled_for_utc TEXT
     )`);
     this.exec(`CREATE TABLE IF NOT EXISTS CommandTargets (
       request_id TEXT NOT NULL,
@@ -376,6 +382,7 @@ export class ClassroomState {
     this.ensureColumn("Devices", "class_number", "INTEGER");
     this.ensureColumn("Devices", "student_number", "INTEGER");
     this.ensureColumn("Devices", "needs_help", "INTEGER NOT NULL DEFAULT 0");
+    this.ensureColumn("Commands", "scheduled_for_utc", "TEXT");
     // Older releases created a new device row every time a persistent
     // student code was entered again. Reconcile those rows before adding the
     // invariant that one student has one active device per class.
@@ -1285,6 +1292,17 @@ export class ClassroomState {
       return responseError("INVALID_COMMAND", "집중 화면 표시 방식은 집중 모드에서만 사용할 수 있습니다.", 400, cors);
     }
 
+    const requestedScheduleDelay = body?.scheduleDelaySeconds;
+    const scheduleDelaySeconds = requestedScheduleDelay === undefined || requestedScheduleDelay === null
+      ? 0
+      : numberInRange(requestedScheduleDelay, 0, MAX_SCHEDULE_DELAY_SECONDS);
+    if (scheduleDelaySeconds === null) {
+      return responseError("INVALID_COMMAND", `예약 시간은 0초부터 ${MAX_SCHEDULE_DELAY_SECONDS}초 사이여야 합니다.`, 400, cors);
+    }
+    const scheduledForUtc = scheduleDelaySeconds > 0
+      ? new Date(Date.now() + scheduleDelaySeconds * 1000).toISOString()
+      : null;
+
     const payload = {
       requestId,
       sessionId: activeSession.session_id,
@@ -1305,13 +1323,16 @@ export class ClassroomState {
     if (kind === "screenShare" && payload.screenShareEnabled === null) return responseError("INVALID_COMMAND", "화면 공유 상태를 확인해 주세요.", 400, cors);
 
     const now = isoNow();
-    this.exec(`INSERT INTO Commands (request_id, school_id, class_id, session_id, kind, payload_json, created_by_teacher_id, created_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, requestId, activeSession.school_id, classId, activeSession.session_id, kind, JSON.stringify(payload), user.id, now);
+    this.exec(`INSERT INTO Commands (request_id, school_id, class_id, session_id, kind, payload_json, created_by_teacher_id, created_at_utc, scheduled_for_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, requestId, activeSession.school_id, classId, activeSession.session_id, kind, JSON.stringify(payload), user.id, now, scheduledForUtc);
     for (const deviceId of queued) this.exec("INSERT INTO CommandTargets (request_id, device_id, state) VALUES (?, ?, 'QUEUED')", requestId, deviceId);
-    if (kind === "focusMode") this.exec("UPDATE Devices SET policy_applied = ? WHERE device_id IN (" + placeholders(queued.length) + ")", payload.focusEnabled ? 1 : 0, ...queued);
-    if (kind === "clearHelp") this.exec("UPDATE Devices SET needs_help = 0 WHERE device_id IN (" + placeholders(queued.length) + ")", ...queued);
-    this.audit({ schoolId: activeSession.school_id, classId, sessionId: activeSession.session_id, teacherId: user.id, requestId, action: "COMMAND", result: "QUEUED", reason: kind });
+    // A future command must not make the roster look changed before the
+    // student device has actually received it. The next heartbeat reflects
+    // the applied state after delivery.
+    if (!scheduledForUtc && kind === "focusMode") this.exec("UPDATE Devices SET policy_applied = ? WHERE device_id IN (" + placeholders(queued.length) + ")", payload.focusEnabled ? 1 : 0, ...queued);
+    if (!scheduledForUtc && kind === "clearHelp") this.exec("UPDATE Devices SET needs_help = 0 WHERE device_id IN (" + placeholders(queued.length) + ")", ...queued);
+    this.audit({ schoolId: activeSession.school_id, classId, sessionId: activeSession.session_id, teacherId: user.id, requestId, action: "COMMAND", result: "QUEUED", reason: scheduledForUtc ? `${kind} · SCHEDULED` : kind });
     for (const deviceId of queued) this.deliverCommands(deviceId);
-    return responseJson({ requestId, requestedCount: targets.length, queuedCount: queued.length, queuedDeviceIds: queued, rejectedDeviceIds: targets.filter((id) => !queued.includes(id)) }, 200, cors);
+    return responseJson({ requestId, requestedCount: targets.length, queuedCount: queued.length, queuedDeviceIds: queued, rejectedDeviceIds: targets.filter((id) => !queued.includes(id)), scheduledForUtc }, 200, cors);
   }
 
   async getCommandStatus(request, classId, requestId, cors) {
@@ -1726,6 +1747,7 @@ export class ClassroomState {
         remoteAssistSessionId: heartbeatRemoteSessionId,
         remoteAssistActive: incoming.payload.remoteAssistActive === true
       });
+      this.deliverCommands(device.device_id);
       if (incoming.payload.sessionId !== (active?.session_id || EMPTY_SESSION_ID)) this.sendSessionAccepted(socket, device.device_id, active?.session_id || EMPTY_SESSION_ID);
       return;
     }
@@ -1952,7 +1974,8 @@ export class ClassroomState {
     const commands = this.all(`SELECT c.* FROM Commands c
       JOIN CommandTargets t ON t.request_id = c.request_id
       WHERE t.device_id = ? AND t.state = 'QUEUED'
-      ORDER BY c.created_at_utc ASC`, deviceId);
+        AND (c.scheduled_for_utc IS NULL OR c.scheduled_for_utc <= ?)
+      ORDER BY c.created_at_utc ASC`, deviceId, isoNow());
     for (const command of commands) {
       let payload;
       try { payload = JSON.parse(command.payload_json); } catch (_) { continue; }
@@ -1995,11 +2018,16 @@ export class ClassroomState {
     const token = sessionToken(request);
     if (!token) return null;
     const now = isoNow();
-    const row = this.one(`SELECT u.* FROM TeacherSessions s JOIN Users u ON u.id = s.teacher_id
-      WHERE s.token_hash = ? AND s.revoked_at_utc IS NULL AND s.expires_at_utc > ?`, await sha256Text(token), now);
-    if (row) return row;
-    const guest = this.one("SELECT token_hash, school_id FROM GuestSessions WHERE token_hash = ? AND revoked_at_utc IS NULL AND expires_at_utc > ?", await sha256Text(token), now);
+    const tokenHash = await sha256Text(token);
+    const row = this.one(`SELECT u.*, s.expires_at_utc AS session_expires_at_utc FROM TeacherSessions s JOIN Users u ON u.id = s.teacher_id
+      WHERE s.token_hash = ? AND s.revoked_at_utc IS NULL AND s.expires_at_utc > ?`, tokenHash, now);
+    if (row) {
+      this.renewTeacherSession(tokenHash, row.session_expires_at_utc);
+      return row;
+    }
+    const guest = this.one("SELECT token_hash, school_id, expires_at_utc FROM GuestSessions WHERE token_hash = ? AND revoked_at_utc IS NULL AND expires_at_utc > ?", tokenHash, now);
     if (!guest || !this.one("SELECT id FROM Schools WHERE id = ?", guest.school_id)) return null;
+    this.renewGuestSession(tokenHash, guest.expires_at_utc);
     return {
       id: `guest:${guest.token_hash}`,
       school_id: guest.school_id,
@@ -2014,6 +2042,16 @@ export class ClassroomState {
       legal_accepted_at_utc: isoNow(),
       is_guest: 1
     };
+  }
+
+  renewTeacherSession(tokenHash, expiresAtUtc) {
+    if (!expiresAtUtc || Date.parse(expiresAtUtc) - Date.now() > SESSION_RENEW_WINDOW_MS) return;
+    this.exec("UPDATE TeacherSessions SET expires_at_utc = ? WHERE token_hash = ? AND revoked_at_utc IS NULL", new Date(Date.now() + SESSION_LIFETIME_MS).toISOString(), tokenHash);
+  }
+
+  renewGuestSession(tokenHash, expiresAtUtc) {
+    if (!expiresAtUtc || Date.parse(expiresAtUtc) - Date.now() > SESSION_RENEW_WINDOW_MS) return;
+    this.exec("UPDATE GuestSessions SET expires_at_utc = ? WHERE token_hash = ? AND revoked_at_utc IS NULL", new Date(Date.now() + SESSION_LIFETIME_MS).toISOString(), tokenHash);
   }
 
   async createSessionPayload(user) {

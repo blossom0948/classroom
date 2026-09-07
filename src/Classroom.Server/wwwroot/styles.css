@@ -310,10 +310,34 @@ body { min-width: 320px; }
 .message-presets { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; margin-top: -5px; }
 .preset-button { background: var(--soft); border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font-size: 10px; padding: 6px 8px; }
 .preset-button:hover { background: var(--blue-soft); color: var(--blue); }
+.schedule-help { color: var(--muted); display: block; font-size: 11px; font-weight: 500; line-height: 1.45; margin-top: -2px; }
 .theme-options { display: flex; gap: 7px; margin-top: 15px; }
 .theme-options .secondary { font-size: 11px; padding: 7px 10px; }
 .theme-options .secondary.active { background: var(--blue-soft); border-color: #aabbf3; color: var(--blue); font-weight: 850; }
 .enrollment-dialog .dialog-actions { flex-wrap: wrap; }
+
+.easter-egg-layer { align-items: center; background: rgba(20, 31, 54, .32); display: grid; inset: 0; justify-items: center; overflow: hidden; position: fixed; z-index: 100; }
+.easter-egg-card { animation: easter-egg-pop .45s cubic-bezier(.2, .8, .2, 1) both; background: var(--soft); border: 1px solid rgba(255, 255, 255, .7); border-radius: 22px; box-shadow: 0 28px 90px rgba(11, 20, 38, .34); max-width: min(420px, calc(100vw - 32px)); padding: 30px; position: relative; text-align: center; z-index: 1; }
+.easter-egg-kicker { color: var(--blue); font-size: 10px; font-weight: 900; letter-spacing: .16em; }
+.easter-egg-card h2 { color: var(--ink); font-size: 26px; margin: 12px 0 9px; }
+.easter-egg-card p { color: var(--muted); font-size: 13px; line-height: 1.65; margin: 0 0 20px; }
+.easter-egg-close { background: var(--blue-soft); border-color: #b9c7f6; color: var(--blue); width: 100%; }
+.easter-egg-confetti { animation: easter-egg-confetti 1.25s cubic-bezier(.14, .72, .33, 1) var(--delay) both; background: var(--confetti-color); border-radius: 3px; height: 14px; left: 50%; position: absolute; top: calc(50% - 18px); width: 7px; }
+
+@keyframes easter-egg-pop {
+  from { opacity: 0; transform: translateY(16px) scale(.92); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes easter-egg-confetti {
+  0% { opacity: 0; transform: translate(-50%, -50%) rotate(0); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), var(--dy)) rotate(520deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .easter-egg-card, .easter-egg-confetti { animation: none; }
+  .easter-egg-confetti { display: none; }
+}
 
 /* Explicit dark palette keeps every authenticated view readable. */
 html[data-theme="dark"] body { background: #111827; }

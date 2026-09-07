@@ -67,6 +67,7 @@
     commandKind: "message",
     commandTargetIds: null,
     pollTimer: null,
+    initialSessionRetryTimer: null,
     toastTimer: null,
     enrollmentBundle: null,
     theme: localStorage.getItem("classroom.theme") || "light",
@@ -100,6 +101,11 @@
     auditEntries: [],
     lessonToolTimer: null,
     lessonTool: { goal: "", stage: "prepare", durationSeconds: 1200, remainingSeconds: 1200, endsAtUtc: null },
+    easterEggBuffer: "",
+    easterEggBufferTimer: null,
+    easterEggCloseTimer: null,
+    easterEggActive: false,
+    easterEggCleanup: null,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -117,8 +123,9 @@
   }
 
   async function api(path, options = {}) {
+    const requestToken = state.token;
     const headers = { Accept: "application/json", ...(options.headers || {}) };
-    if (!cookieSessionEnabled && state.token) headers.Authorization = `Bearer ${state.token}`;
+    if (!cookieSessionEnabled && requestToken) headers.Authorization = `Bearer ${requestToken}`;
     if (options.body && typeof options.body !== "string") {
       headers["Content-Type"] = "application/json";
       options.body = JSON.stringify(options.body);
@@ -137,19 +144,25 @@
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("json")) payload = await response.json();
     if (response.status === 401) {
-      if (cookieSessionEnabled) {
+      const requestWasAuthenticated = cookieSessionEnabled || Boolean(requestToken);
+      const responseBelongsToCurrentSession = cookieSessionEnabled || requestToken === state.token;
+      if (requestWasAuthenticated && responseBelongsToCurrentSession && cookieSessionEnabled) {
         fetch(apiUrl("/auth/logout"), {
           method: "POST",
           headers: { Accept: "application/json" },
           credentials: "include"
         }).catch(() => {});
       }
-      clearSession();
-      throw new Error("로그인이 만료되었습니다.");
+      const error = new Error(payload?.message || "로그인이 만료되었습니다.");
+      error.code = payload?.code || "UNAUTHORIZED";
+      error.status = response.status;
+      if (requestWasAuthenticated && responseBelongsToCurrentSession) clearSession();
+      throw error;
     }
     if (!response.ok) {
       const error = new Error(payload?.message || `요청에 실패했습니다. (${response.status})`);
       error.code = payload?.code;
+      error.status = response.status;
       throw error;
     }
     return payload;
@@ -174,6 +187,11 @@
     state.selectedDeviceIds.clear();
     state.weatherLoaded = false;
     state.passwordVerificationId = null;
+    if (state.initialSessionRetryTimer) clearTimeout(state.initialSessionRetryTimer);
+    state.initialSessionRetryTimer = null;
+    window.clearTimeout(state.easterEggBufferTimer);
+    state.easterEggBuffer = "";
+    closeEasterEgg();
     storageRemove("localStorage", TEACHER_TOKEN_KEY);
     storageRemove("sessionStorage", TEACHER_TOKEN_KEY);
     storageRemove("sessionStorage", "classroom.onboardingDismissed");
@@ -204,6 +222,8 @@
   }
 
   function applySessionToken(result, isGuest = false) {
+    if (state.initialSessionRetryTimer) clearTimeout(state.initialSessionRetryTimer);
+    state.initialSessionRetryTimer = null;
     state.token = cookieSessionEnabled ? null : (result?.accessToken || null);
     storeTeacherToken(result?.accessToken, isGuest);
   }
@@ -214,6 +234,62 @@
     toast.classList.add("show");
     clearTimeout(state.toastTimer);
     state.toastTimer = setTimeout(() => toast.classList.remove("show"), 2800);
+  }
+
+  function closeEasterEgg() {
+    state.easterEggCleanup?.();
+  }
+
+  function activateEasterEgg() {
+    if (state.easterEggActive || appView.hidden) return;
+    state.easterEggActive = true;
+    const layer = document.createElement("div");
+    layer.className = "easter-egg-layer";
+    layer.setAttribute("role", "dialog");
+    layer.setAttribute("aria-label", "Classroom 비밀 모드");
+    layer.innerHTML = `<div class="easter-egg-card"><div class="easter-egg-kicker">✦ CLASSROOM SECRET</div><h2>오늘 수업도 레벨 업!</h2><p>숨겨진 교실 축하 모드를 찾았어요.<br>선생님의 수업에 작은 별을 보냅니다.</p><button class="secondary easter-egg-close" type="button">수업으로 돌아가기</button></div>`;
+    const colors = ["#6d83ff", "#f4b35f", "#63c9a3", "#ef7d91", "#b38cff"];
+    for (let index = 0; index < 24; index += 1) {
+      const piece = document.createElement("span");
+      piece.className = "easter-egg-confetti";
+      piece.style.setProperty("--dx", `${Math.round(Math.random() * 560 - 280)}px`);
+      piece.style.setProperty("--dy", `${Math.round(Math.random() * 430 + 180)}px`);
+      piece.style.setProperty("--delay", `${(Math.random() * .32).toFixed(2)}s`);
+      piece.style.setProperty("--confetti-color", colors[index % colors.length]);
+      layer.append(piece);
+    }
+    const cleanup = () => {
+      if (!state.easterEggActive) return;
+      state.easterEggActive = false;
+      state.easterEggCleanup = null;
+      window.clearTimeout(state.easterEggCloseTimer);
+      state.easterEggCloseTimer = null;
+      layer.remove();
+    };
+    state.easterEggCleanup = cleanup;
+    layer.querySelector(".easter-egg-close")?.addEventListener("click", cleanup);
+    document.body.append(layer);
+    state.easterEggCloseTimer = window.setTimeout(cleanup, 6500);
+    showToast("비밀 모드가 열렸습니다 ✨");
+  }
+
+  function handleEasterEggKey(event) {
+    if (appView.hidden) return;
+    if (event.key === "Escape" && state.easterEggActive) {
+      closeEasterEgg();
+      return;
+    }
+    const target = event.target;
+    if (target instanceof HTMLElement && (target.matches("input, textarea, select, button") || target.isContentEditable)) return;
+    if (event.key.length !== 1) return;
+    const secret = "CLASSROOM";
+    state.easterEggBuffer = `${state.easterEggBuffer}${event.key.toUpperCase()}`.slice(-secret.length);
+    window.clearTimeout(state.easterEggBufferTimer);
+    state.easterEggBufferTimer = window.setTimeout(() => { state.easterEggBuffer = ""; }, 1800);
+    if (state.easterEggBuffer === secret) {
+      state.easterEggBuffer = "";
+      activateEasterEgg();
+    }
   }
 
   function askConfirmation(title, message, confirmLabel = "확인") {
@@ -2025,8 +2101,10 @@
     $("message-field").hidden = kind !== "message";
     $("seconds-field").hidden = kind !== "message";
     $("message-presets").hidden = kind !== "message";
+    $("schedule-field").hidden = false;
     $("command-message").value = "";
     $("command-url").value = "";
+    $("command-schedule").value = "0";
     $("dialog-error").hidden = true;
     commandDialog.showModal();
   }
@@ -2044,8 +2122,12 @@
       requiresAcknowledgement: true
     };
     const result = await api(`/api/classes/${state.classId}/commands`, { method: "POST", body: payload });
-    showToast(`${result.queuedCount}대 장치에 명령을 대기열로 보냈습니다.`);
-    monitorCommand(result.requestId).catch((error) => showToast(error.message));
+    if (result.scheduledForUtc) {
+      showToast(`${result.queuedCount}대 장치에 ${formatTime(result.scheduledForUtc)} 실행으로 예약했습니다.`);
+    } else {
+      showToast(`${result.queuedCount}대 장치에 명령을 대기열로 보냈습니다.`);
+      monitorCommand(result.requestId).catch((error) => showToast(error.message));
+    }
     return result;
   }
 
@@ -3034,6 +3116,7 @@
     if (!(event.target instanceof Element) || !event.target.closest(".custom-class-picker")) closeClassPicker();
   });
   document.addEventListener("keydown", (event) => {
+    handleEasterEggKey(event);
     if (event.key === "Escape") closeClassPicker();
   });
   $("start-session-button").addEventListener("click", () => {
@@ -3269,12 +3352,14 @@
     const errorTarget = $("dialog-error");
     errorTarget.hidden = true;
     try {
+      const scheduleDelaySeconds = Number($("command-schedule").value || 0);
+      const schedule = scheduleDelaySeconds > 0 ? { scheduleDelaySeconds } : {};
       if (state.commandKind === "url") {
-        await sendCommand("openUrl", state.commandTargetIds, { url: $("command-url").value });
+        await sendCommand("openUrl", state.commandTargetIds, { url: $("command-url").value, ...schedule });
       } else if (state.commandKind === "app") {
-        await sendCommand("launchApprovedApp", state.commandTargetIds, { approvedAppId: $("command-app").value });
+        await sendCommand("launchApprovedApp", state.commandTargetIds, { approvedAppId: $("command-app").value, ...schedule });
       } else {
-        await sendCommand("message", state.commandTargetIds, { message: $("command-message").value, displaySeconds: Number($("command-seconds").value) });
+        await sendCommand("message", state.commandTargetIds, { message: $("command-message").value, displaySeconds: Number($("command-seconds").value), ...schedule });
       }
       $("command-dialog").close();
     } catch (error) {
@@ -3470,7 +3555,9 @@
     // Firebase returns to this page with a short-lived redirect result.  It
     // must be exchanged before /auth/me is checked, otherwise cookie mode
     // would see no session yet and send a successful Google login to landing.
-    const hadStoredBearer = Boolean(state.token);
+    const hadStoredSession = Boolean(state.token) || cookieSessionEnabled;
+    const storedGuestSession = Boolean(storageGet("sessionStorage", TEACHER_TOKEN_KEY))
+      && !Boolean(storageGet("localStorage", TEACHER_TOKEN_KEY));
     const pendingMode = pendingFirebaseAuthMode();
     try {
       if (await consumePendingFirebaseRedirect()) return;
@@ -3483,19 +3570,43 @@
       return;
     }
 
-    if (!hadStoredBearer && !cookieSessionEnabled) {
+    if (!hadStoredSession) {
       if (pendingMode) showFirebaseRedirectRecovery(pendingMode);
       return;
     }
+
+    function isSessionAuthenticationFailure(error) {
+      return error?.status === 401 || error?.code === "UNAUTHORIZED";
+    }
+
+    function retryInitialSession() {
+      if (state.initialSessionRetryTimer) return;
+      state.initialSessionRetryTimer = window.setTimeout(() => {
+        state.initialSessionRetryTimer = null;
+        restoreInitialSession();
+      }, 5000);
+    }
+
     try {
       await loadTeacher();
     } catch (error) {
-      clearSession();
-      if (hadStoredBearer) {
-        showAuth("login");
-        loginError.textContent = error.message;
-        loginError.hidden = false;
+      if (hadStoredSession) {
+        if (!isSessionAuthenticationFailure(error)) {
+          showAuth(storedGuestSession ? "school" : "admin");
+          const errorTarget = storedGuestSession ? $("school-login-error") : loginError;
+          errorTarget.textContent = "서버 연결이 잠시 끊겼습니다. 저장된 로그인 상태는 유지하고 재연결 중입니다.";
+          errorTarget.hidden = false;
+          retryInitialSession();
+          return;
+        }
+        clearSession();
+        const authMode = storedGuestSession ? "school" : "admin";
+        showAuth(authMode);
+        const errorTarget = authMode === "school" ? $("school-login-error") : loginError;
+        errorTarget.textContent = error.message;
+        errorTarget.hidden = false;
       } else {
+        clearSession();
         // A visitor without a secure cookie stays on the normal landing page.
         // This avoids treating a first visit as an expired-login error.
         showLanding();
