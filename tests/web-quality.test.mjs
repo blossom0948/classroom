@@ -167,6 +167,7 @@ assert.match(script, /mobile-command-launcher"\)\?\.focus/, "Closing the mobile 
 assert.match(styles, /0\.6\.7 — mobile-first teacher console/, "The final mobile-first visual layer must remain documented and intentionally ordered.");
 assert.match(styles, /#app-view\.mobile-command-open #bulk-actions/, "Mobile student commands must use a deliberate bottom-sheet state.");
 assert.match(styles, /#app-view #bulk-actions \.command-group \.secondary\s*\{[\s\S]*?min-height: 44px;/, "Mobile command actions need comfortable touch targets.");
+assert.match(styles, /#app-view #bulk-actions \.focus-mode-setting select\s*\{[\s\S]*?min-height: 44px;/, "The mobile focus display selector needs the same comfortable touch target.");
 assert.match(styles, /#app-view \.toolbar-browse-row \.filters[\s\S]*overflow-x: auto/, "Phone filters must scroll horizontally instead of collapsing into a dense button wall.");
 assert.match(styles, /#app-view \.sidebar,[\s\S]*?#app-view \.section-view:not\(\[hidden\]\)[\s\S]*?transform: none !important;/, "Mobile fixed controls must not inherit a transformed shell coordinate system.");
 assert.match(styles, /backdrop-filter: none;/, "The sticky mobile app bar must not capture the fixed bottom navigation coordinate system.");

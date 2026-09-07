@@ -4886,7 +4886,7 @@ html[data-theme="dark"] .auth-tab.active { color: #dce7ff; }
     grid-template-columns: repeat(2, minmax(0, 1fr));
     left: 0;
     margin: 0;
-    max-height: min(690px, calc(100dvh - 62px));
+    max-height: min(690px, calc(100dvh - 48px));
     opacity: 0;
     overflow-x: hidden;
     overflow-y: auto;
@@ -4951,7 +4951,7 @@ html[data-theme="dark"] .auth-tab.active { color: #dce7ff; }
   #app-view #bulk-actions .command-group-focus .command-group-label,
   #app-view #bulk-actions .command-group-focus .focus-mode-setting { grid-column: 1 / -1; }
   #app-view #bulk-actions .focus-mode-setting { align-items: center; color: #5b4aa1; display: flex; font-size: 11px; font-weight: 800; justify-content: space-between; }
-  #app-view #bulk-actions .focus-mode-setting select { background: #fff; border: 1px solid #c7bae9; border-radius: 9px; color: #4f3e94; font-size: 11px; min-height: 42px; padding: 7px 9px; }
+  #app-view #bulk-actions .focus-mode-setting select { background: #fff; border: 1px solid #c7bae9; border-radius: 9px; color: #4f3e94; font-size: 11px; min-height: 44px; padding: 7px 9px; }
   #app-view #bulk-actions .command-group-message { background: #e9f8f2; border-color: #bce6d7; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #app-view #bulk-actions .command-group-message .command-group-label { grid-column: 1 / -1; }
   #app-view #bulk-actions .command-group-tools { background: #fff4e9; border-color: #eed5bb; grid-template-columns: repeat(2, minmax(0, 1fr)); }
