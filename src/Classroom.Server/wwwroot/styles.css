@@ -4543,7 +4543,9 @@ html[data-theme="dark"] .auth-tab.active { color: #dce7ff; }
   /* The old rail becomes a compact, reliable app bar on a phone. */
   #app-view .sidebar {
     align-items: center;
-    backdrop-filter: blur(18px);
+    /* backdrop-filter would make this sticky parent a containing block for
+       the fixed bottom navigation in Chromium and Safari. */
+    backdrop-filter: none;
     background: rgba(255, 255, 255, .93);
     border: 0;
     border-bottom: 1px solid rgba(204, 216, 234, .88);
