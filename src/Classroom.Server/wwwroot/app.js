@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.6.0";
+  const APP_VERSION = "0.6.1";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -2029,6 +2029,13 @@
     }
     state.commandKind = kind;
     state.commandTargetIds = Array.isArray(targetIds) ? [...targetIds] : null;
+    const commandDialog = $("command-dialog");
+    commandDialog.dataset.commandKind = kind;
+    $("dialog-kicker").textContent = kind === "url"
+      ? "STUDENT WEB"
+      : kind === "app"
+        ? "APP CONTROL"
+        : "STUDENT MESSAGE";
     const directStudent = kind === "message" && state.commandTargetIds?.length === 1
       ? state.students.find((student) => student.deviceId === state.commandTargetIds[0])
       : null;
@@ -2053,7 +2060,7 @@
     $("command-message").value = "";
     $("command-url").value = "";
     $("dialog-error").hidden = true;
-    $("command-dialog").showModal();
+    commandDialog.showModal();
   }
 
   async function sendCommand(kind, targetIds, extra = {}) {

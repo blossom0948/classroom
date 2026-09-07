@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-    <link rel="stylesheet" href="/styles.css?v=0.6.0">
+    <link rel="stylesheet" href="/styles.css?v=0.6.1">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -159,12 +159,23 @@
         </div>
         <div class="class-metrics" aria-label="수업 요약"><article class="metric-card"><span class="metric-label">등록 학생</span><strong id="total-count">0</strong><small>학급 장치</small></article><article class="metric-card metric-online"><span class="metric-label">온라인</span><strong id="metric-online-count">0</strong><small>현재 연결</small></article><article class="metric-card metric-offline"><span class="metric-label">오프라인</span><strong id="offline-count">0</strong><small>연결 끊김</small></article><article class="metric-card metric-attention"><span class="metric-label">확인 필요</span><strong id="needs-attention-count">0</strong><small>상태 점검</small></article></div>
         <div class="toolbar">
-          <div class="filters" role="tablist"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="online">온라인</button><button class="filter" data-filter="help">도움 요청</button><button class="filter" data-filter="offline">오프라인</button><button class="filter" data-filter="attention">확인 필요</button></div>
-          <label class="student-search"><span class="sr-only">학생 이름 검색</span><input id="student-search" type="search" placeholder="학생 이름 검색"></label>
-          <div class="student-view-controls" aria-label="학생 목록 보기 설정">
-            <label class="student-sort-control"><span class="sr-only">정렬 기준</span><select id="student-sort" aria-label="학생 정렬 기준"><option value="number">번호순</option><option value="name">이름순</option><option value="status">상태 우선</option></select></label>
+          <div class="toolbar-row toolbar-browse-row">
+            <div class="toolbar-section-heading"><span class="toolbar-kicker">STUDENT LIST</span><strong>학생 상태 보기</strong><small>필터와 검색으로 확인할 학생을 좁혀 보세요.</small></div>
+            <div class="filters" role="tablist" aria-label="학생 상태 필터"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="online">온라인</button><button class="filter" data-filter="help">도움 요청</button><button class="filter" data-filter="offline">오프라인</button><button class="filter" data-filter="attention">확인 필요</button></div>
+            <label class="student-search"><span class="sr-only">학생 이름 검색</span><input id="student-search" type="search" placeholder="학생 이름 검색"></label>
+            <div class="student-view-controls" aria-label="학생 목록 보기 설정">
+              <label class="student-sort-control"><span class="sr-only">정렬 기준</span><select id="student-sort" aria-label="학생 정렬 기준"><option value="number">번호순</option><option value="name">이름순</option><option value="status">상태 우선</option></select></label>
+            </div>
           </div>
-          <div id="bulk-actions" class="bulk-actions"><div class="command-scope"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button></div><div class="command-group command-group-monitor"><span class="command-group-label">보기</span><button id="screen-wall-button" class="secondary screen-wall-open">화면 보기</button></div><div class="command-group command-group-focus"><span class="command-group-label">집중</span><label class="focus-mode-setting" for="focus-display-mode"><span>표시</span><select id="focus-display-mode" aria-label="집중 모드 표시 방식"><option value="message">안내문</option><option value="blackScreen">검은 화면</option></select></label><button id="focus-on-button" class="secondary">집중</button><button id="focus-off-button" class="secondary">해제</button></div><div class="command-group command-group-message"><span class="command-group-label">안내</span><button id="message-button" class="secondary">메시지</button><button id="url-button" class="secondary">URL</button><button id="app-button" class="secondary">앱</button></div><div class="command-group command-group-tools"><span class="command-group-label">도구</span><button id="tools-dialog-button" class="secondary" type="button">수업 도구</button><button id="preset-dialog-button" class="secondary" type="button">프리셋</button><button id="groups-dialog-button" class="secondary" type="button">학생 그룹</button><button id="report-dialog-button" class="secondary" type="button">기록</button></div></div>
+          <div class="toolbar-rule" aria-hidden="true"></div>
+          <div id="bulk-actions" class="bulk-actions command-deck">
+            <div class="bulk-heading"><span class="toolbar-kicker">SELECTED STUDENTS</span><strong>선택 학생 제어</strong><small>학생 카드를 선택하면 아래 명령이 활성화됩니다.</small></div>
+            <div class="command-scope"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button></div>
+            <div class="command-group command-group-monitor"><span class="command-group-label">화면 확인</span><button id="screen-wall-button" class="secondary screen-wall-open" title="선택한 학생들의 화면 보기">화면 보기</button></div>
+            <div class="command-group command-group-focus"><span class="command-group-label">집중 상태</span><label class="focus-mode-setting" for="focus-display-mode"><span>표시</span><select id="focus-display-mode" aria-label="집중 모드 표시 방식"><option value="message">안내문</option><option value="blackScreen">검은 화면</option></select></label><button id="focus-on-button" class="secondary" title="선택한 학생의 집중 모드 켜기">집중 켜기</button><button id="focus-off-button" class="secondary" title="선택한 학생의 집중 모드 끄기">집중 끄기</button></div>
+            <div class="command-group command-group-message"><span class="command-group-label">학생 안내</span><button id="message-button" class="secondary" title="학생에게 메시지 보내기">메시지 보내기</button><button id="url-button" class="secondary" title="학생 PC에서 HTTPS 주소 열기">URL 열기</button><button id="app-button" class="secondary" title="학생 PC에서 승인 앱 실행">앱 실행</button></div>
+            <div class="command-group command-group-tools"><span class="command-group-label">수업 도구</span><button id="tools-dialog-button" class="secondary" type="button" title="목표와 수업 타이머 열기">수업 도구</button><button id="preset-dialog-button" class="secondary" type="button" title="저장한 명령 조합 열기">프리셋</button><button id="groups-dialog-button" class="secondary" type="button" title="학생 그룹 관리">학생 그룹</button><button id="report-dialog-button" class="secondary" type="button" title="수업 기록과 CSV 열기">기록</button></div>
+          </div>
         </div>
         <div id="class-sync-status" class="class-sync-status" role="status" aria-live="polite" hidden><span class="class-sync-icon" aria-hidden="true">↻</span><span id="class-sync-message"></span><button id="class-sync-retry" class="ghost-button" type="button">다시 시도</button></div>
         <div id="monitor-session-bar" class="monitor-session-bar" role="status" aria-live="polite" hidden><div><span class="monitor-session-dot" aria-hidden="true"></span><strong id="monitor-session-status">학생 화면을 준비하는 중입니다.</strong><small id="monitor-session-updated">최대 720p 자동 화질로 갱신됩니다.</small></div><div class="monitor-session-actions"><button id="screen-wall-fullscreen" class="secondary" type="button">전체 화면</button><button id="screen-wall-stop" class="danger-outline" type="button">화면 보기 닫기</button></div></div>
@@ -250,7 +261,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.6.0</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.6.1</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -270,7 +281,7 @@
   </aside>
   </div>
 
-  <dialog id="tools-dialog" class="workspace-dialog">
+  <dialog id="tools-dialog" class="workspace-dialog workspace-dialog-tools">
     <form method="dialog" class="stack" id="tools-form">
       <div class="dialog-heading"><span class="eyebrow">CLASS TOOLS</span><h2>수업 도구</h2><p class="muted dialog-copy">필요할 때만 열어 쓰는 교사용 메모와 타이머입니다. 학생 화면에는 자동으로 노출되지 않습니다.</p></div>
       <div class="tool-grid">
@@ -281,7 +292,7 @@
     </form>
   </dialog>
 
-  <dialog id="preset-dialog" class="workspace-dialog preset-dialog">
+  <dialog id="preset-dialog" class="workspace-dialog workspace-dialog-presets preset-dialog">
     <form method="dialog" class="stack" id="preset-form">
       <div class="dialog-heading"><span class="eyebrow">CLASS PRESETS</span><h2>수업 프리셋</h2><p class="muted dialog-copy">자주 쓰는 집중·안내·URL·승인 앱 조합을 한 번에 실행합니다.</p></div>
       <div id="preset-list" class="workspace-list"></div>
@@ -289,7 +300,7 @@
     </form>
   </dialog>
 
-  <dialog id="groups-dialog" class="workspace-dialog groups-dialog">
+  <dialog id="groups-dialog" class="workspace-dialog workspace-dialog-groups groups-dialog">
     <form method="dialog" class="stack" id="groups-form">
       <div class="dialog-heading"><span class="eyebrow">STUDENT GROUPS</span><h2>학생 그룹</h2><p class="muted dialog-copy">학생 카드를 선택한 뒤 그룹을 만들거나, 그룹을 눌러 해당 학생만 빠르게 선택하세요.</p></div>
       <div id="group-list" class="workspace-list"></div>
@@ -297,7 +308,7 @@
     </form>
   </dialog>
 
-  <dialog id="report-dialog" class="workspace-dialog report-dialog">
+  <dialog id="report-dialog" class="workspace-dialog workspace-dialog-report report-dialog">
     <form method="dialog" class="stack">
       <div class="dialog-heading"><span class="eyebrow">CLASS RECORD</span><h2>수업 기록</h2><p id="report-subtitle" class="muted dialog-copy">명령 결과와 원격 지원·상태 변경 기록을 확인합니다.</p></div>
       <div id="report-summary" class="report-summary"></div>
@@ -433,6 +444,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.6.0" defer></script>
+  <script src="/app.js?v=0.6.1" defer></script>
 </body>
 </html>

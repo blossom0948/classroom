@@ -3899,3 +3899,234 @@ html[data-theme="dark"] .alert-item-copy span { color: #e4c2b4; }
   .report-stat strong { font-size: 21px; }
   .alert-drawer { padding: 22px 15px; }
 }
+
+/* 0.6.1 — clarity pass: separate browsing, selected-student commands, and
+   secondary workspaces so the console stays readable as features grow. */
+#app-view .toolbar {
+  align-items: stretch;
+  background: var(--surface);
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+#app-view .toolbar-row {
+  align-items: center;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(155px, .7fr) minmax(300px, 1.35fr) minmax(170px, .62fr) auto;
+  padding: 14px 16px;
+}
+.toolbar-section-heading,
+.bulk-heading {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.toolbar-section-heading strong,
+.bulk-heading strong {
+  color: #20385f;
+  font-size: 13px;
+  font-weight: 850;
+  letter-spacing: -.02em;
+}
+.toolbar-section-heading small,
+.bulk-heading small {
+  color: #8491a7;
+  font-size: 10px;
+  line-height: 1.35;
+}
+.toolbar-kicker {
+  color: #6280c9;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  line-height: 1;
+}
+#app-view .toolbar-browse-row .filters {
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  width: 100%;
+}
+#app-view .toolbar-browse-row .student-search {
+  margin: 0;
+  min-width: 0;
+  width: 100%;
+}
+#app-view .toolbar-browse-row .student-search input {
+  min-width: 0;
+  width: 100%;
+}
+#app-view .toolbar-browse-row .student-view-controls { margin: 0; }
+#app-view .toolbar-browse-row .student-sort-control,
+#app-view .toolbar-browse-row .student-sort-control select { min-width: 0; width: 100%; }
+.toolbar-rule {
+  background: #e6ebf3;
+  height: 1px;
+  margin: 0 16px;
+}
+#app-view .command-deck {
+  align-items: center;
+  background: linear-gradient(105deg, #f6f9ff, #fbfcfe 58%, #f8f6ff);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-start;
+  margin: 0;
+  padding: 13px 16px 15px;
+}
+#app-view .command-deck .bulk-heading {
+  flex: 1 1 165px;
+  max-width: 215px;
+  padding: 0 7px 0 1px;
+}
+#app-view .command-deck .command-scope {
+  align-items: center;
+  background: #edf2fb;
+  border: 1px dashed #bdcbe3;
+  border-radius: 11px;
+  flex: 0 1 auto;
+  min-height: 38px;
+  padding: 4px 8px 4px 11px;
+}
+#app-view .command-deck .command-group {
+  align-items: center;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(38, 64, 113, .05);
+  flex: 0 1 auto;
+  min-height: 42px;
+  padding: 4px 5px;
+}
+#app-view .command-deck .command-group-label {
+  font-size: 9px;
+  letter-spacing: .02em;
+  padding-left: 5px;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+#app-view .command-deck .command-group .secondary {
+  font-size: 11px;
+  min-height: 33px;
+  padding: 7px 9px;
+}
+#app-view .command-deck .command-group-focus .focus-mode-setting { font-size: 10px; }
+#app-view .command-deck .command-group-focus .focus-mode-setting select { font-size: 10px; min-width: 70px; }
+.command-group-monitor { background: #edf5ff; border-color: #c8dcf3; }
+.command-group-monitor .command-group-label { color: #4e79b9; }
+.command-group-focus { background: #f3efff; border-color: #dbd0f7; }
+.command-group-focus .command-group-label { color: #7259bd; }
+.command-group-message { background: #ecfaf5; border-color: #c4e8db; }
+.command-group-message .command-group-label { color: #25866e; }
+.command-group-tools { background: #fff6ec; border-color: #efd7bf; }
+.command-group-tools .command-group-label { color: #ae6d36; }
+html[data-theme="dark"] .toolbar-section-heading strong,
+html[data-theme="dark"] .bulk-heading strong { color: #e7efff; }
+html[data-theme="dark"] .toolbar-section-heading small,
+html[data-theme="dark"] .bulk-heading small { color: #a5b5cf; }
+html[data-theme="dark"] .toolbar-rule { background: #30435f; }
+html[data-theme="dark"] #app-view .command-deck { background: linear-gradient(105deg, #172842, #1a2a45 58%, #24223f); }
+html[data-theme="dark"] #app-view .command-deck .command-scope { background: #223654; border-color: #526c94; }
+
+/* Every temporary window gets a distinct accent and a small visual identity.
+   The content remains shared, but teachers can tell at a glance whether a
+   window is for live commands, planning, groups, records, or setup. */
+.workspace-dialog,
+.command-dialog {
+  --dialog-accent: #4169df;
+  border-top: 5px solid var(--dialog-accent);
+}
+.workspace-dialog .dialog-heading,
+.command-dialog .dialog-heading { position: relative; }
+.workspace-dialog .dialog-heading::before,
+.command-dialog .dialog-heading::before {
+  align-items: center;
+  background: color-mix(in srgb, var(--dialog-accent) 13%, white);
+  border: 1px solid color-mix(in srgb, var(--dialog-accent) 22%, white);
+  border-radius: 11px;
+  color: var(--dialog-accent);
+  content: "✦";
+  display: inline-flex;
+  font-size: 16px;
+  height: 35px;
+  justify-content: center;
+  position: absolute;
+  right: 0;
+  top: -3px;
+  width: 35px;
+}
+.workspace-dialog .dialog-heading h2,
+.command-dialog .dialog-heading h2 { padding-right: 47px; }
+.workspace-dialog .dialog-heading .eyebrow,
+.command-dialog .dialog-heading .eyebrow { color: var(--dialog-accent); }
+.workspace-dialog .primary,
+.command-dialog .primary { background: var(--dialog-accent); }
+.workspace-dialog .primary:hover,
+.command-dialog .primary:hover { filter: brightness(.94); }
+.workspace-dialog-tools { --dialog-accent: #5072e4; }
+.workspace-dialog-tools .dialog-heading::before { content: "✦"; }
+.workspace-dialog-presets { --dialog-accent: #bd7239; }
+.workspace-dialog-presets .dialog-heading::before { content: "◆"; }
+.workspace-dialog-groups { --dialog-accent: #238b70; }
+.workspace-dialog-groups .dialog-heading::before { content: "●"; }
+.workspace-dialog-report { --dialog-accent: #8257c6; }
+.workspace-dialog-report .dialog-heading::before { content: "▤"; }
+#command-dialog { --dialog-accent: #3868d9; }
+#command-dialog[data-command-kind="url"] { --dialog-accent: #218b70; }
+#command-dialog[data-command-kind="app"] { --dialog-accent: #825bc2; }
+#guest-login-dialog { --dialog-accent: #258b72; }
+#guest-login-dialog .dialog-heading::before { content: "⌂"; }
+#enrollment-dialog { --dialog-accent: #c8783b; }
+#enrollment-dialog .dialog-heading::before { content: "＋"; }
+#student-roster-dialog { --dialog-accent: #347ebf; }
+#student-roster-dialog .dialog-heading::before { content: "☷"; }
+#onboarding-dialog { --dialog-accent: #4f70dd; }
+#onboarding-dialog .dialog-heading::before { content: "→"; }
+#legal-dialog { --dialog-accent: #71809a; }
+#legal-dialog .dialog-heading::before { content: "§"; }
+#password-dialog { --dialog-accent: #7858c3; }
+#password-dialog .dialog-heading::before { content: "⌘"; }
+#account-lookup-dialog { --dialog-accent: #a46d39; }
+#account-lookup-dialog .dialog-heading::before { content: "⌕"; }
+#confirm-dialog { --dialog-accent: #bd7b36; }
+#confirm-dialog .dialog-heading::before { content: "?"; }
+#console-close-dialog { --dialog-accent: #be5960; }
+#console-close-dialog .dialog-heading::before { content: "×"; }
+html[data-theme="dark"] .workspace-dialog .dialog-heading::before,
+html[data-theme="dark"] .command-dialog .dialog-heading::before {
+  background: color-mix(in srgb, var(--dialog-accent) 26%, #182235);
+  border-color: color-mix(in srgb, var(--dialog-accent) 50%, #344765);
+}
+
+@media (max-width: 1180px) and (min-width: 821px) {
+  #app-view .toolbar-row { grid-template-columns: minmax(145px, .62fr) minmax(250px, 1fr) minmax(150px, .55fr); }
+  #app-view .toolbar-row .student-view-controls { grid-column: 3; }
+  #app-view .toolbar-row .student-search { grid-column: 2 / 4; grid-row: 2; }
+  #app-view .toolbar-row .filters { grid-column: 1 / 2; grid-row: 2; }
+  #app-view .command-deck .bulk-heading { flex-basis: 100%; max-width: none; }
+}
+@media (max-width: 820px) {
+  #app-view .toolbar-row { grid-template-columns: 1fr; padding: 13px 12px; }
+  #app-view .toolbar-row .filters,
+  #app-view .toolbar-row .student-search,
+  #app-view .toolbar-row .student-view-controls { grid-column: auto; grid-row: auto; }
+  #app-view .toolbar-browse-row .filters { width: 100%; }
+  #app-view .toolbar-browse-row .filter { flex: 1 1 calc(50% - 4px); }
+  #app-view .toolbar-browse-row .student-view-controls,
+  #app-view .toolbar-browse-row .student-sort-control,
+  #app-view .toolbar-browse-row .student-sort-control select { width: 100%; }
+  #app-view .command-deck { align-items: stretch; padding: 12px; }
+  #app-view .command-deck .bulk-heading { flex-basis: 100%; max-width: none; padding: 0 2px 4px; }
+  #app-view .command-deck .command-scope { flex: 1 1 100%; }
+  #app-view .command-deck .command-group { flex: 1 1 100%; }
+  #app-view .command-deck .command-group-label { flex: 0 0 auto; }
+  #app-view .command-deck .command-group .secondary { flex: 1 1 auto; }
+}
+@media (max-width: 560px) {
+  #app-view .toolbar-browse-row .filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #app-view .toolbar-browse-row .filter { width: 100%; }
+  #app-view .command-deck .command-group { align-items: stretch; }
+  #app-view .command-deck .command-group-label { flex-basis: 100%; padding: 3px 4px 1px; }
+  .workspace-dialog .dialog-heading::before,
+  .command-dialog .dialog-heading::before { height: 31px; width: 31px; }
+}

@@ -108,6 +108,14 @@ assert.match(styles, /#admin-auth-panel \.auth-tabs\s*\{[\s\S]*grid-template-col
 assert.match(styles, /#app-view \.filters,[\s\S]*#app-view \.admin-grant-tabs\s*\{[\s\S]*background:/, "Classroom filters and administrator target tabs must expose a filled switcher surface.");
 assert.match(styles, /#app-view \.settings-card\s*\{[\s\S]*border-top: 4px solid var\(--panel-accent\)/, "Management cards must use a category color rail for faster scanning.");
 assert.match(styles, /\.command-group\s*\{[\s\S]*background:/, "Classroom actions must be grouped by intent with their own surface.");
+assert.match(html, /class="toolbar-row toolbar-browse-row"/, "The roster filters and search need a dedicated browse row.");
+assert.match(html, /class="bulk-actions command-deck"/, "Selected-student commands need a dedicated command deck.");
+assert.match(html, /class="workspace-dialog workspace-dialog-tools"/, "Lesson tools need a distinct dialog identity.");
+assert.match(html, /class="workspace-dialog workspace-dialog-presets/, "Presets need a distinct dialog identity.");
+assert.match(html, /class="workspace-dialog workspace-dialog-groups/, "Groups need a distinct dialog identity.");
+assert.match(html, /class="workspace-dialog workspace-dialog-report/, "Reports need a distinct dialog identity.");
+assert.match(script, /commandDialog\.dataset\.commandKind = kind/, "Command dialogs must expose their current action kind for visual differentiation.");
+assert.match(styles, /\.workspace-dialog-tools\s*\{\s*--dialog-accent:/, "Workspace dialogs must use a distinct accent system.");
 assert.match(script, /\$\("school-login-button"\)\.addEventListener\("click", openGuestLoginDialog\)/, "School login must open the school guest access flow.");
 assert.doesNotMatch(html, /id="login-guest-button"/, "The duplicate school guest button should not be visible beside school login.");
 assert.match(html, /id="guest-login-dialog"[^>]*class="command-dialog guest-login-dialog"/, "School login must retain the branded school access dialog.");
