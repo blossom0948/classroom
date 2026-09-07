@@ -902,7 +902,6 @@ export class ClassroomState {
   async startSession(request, classId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 수업을 시작할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const body = await readJson(request);
     const subject = text(body?.subject, 128) || this.one("SELECT default_subject FROM Classes WHERE id = ?", classId)?.default_subject || "수업";
@@ -921,7 +920,6 @@ export class ClassroomState {
   async endSession(request, classId, sessionId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 수업을 종료할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const session = this.one("SELECT * FROM ClassSessions WHERE session_id = ? AND class_id = ? AND ended_at_utc IS NULL", sessionId, classId);
     if (!session) return responseError("SESSION_NOT_FOUND", "진행 중인 수업을 찾지 못했습니다.", 404, cors);
@@ -953,7 +951,6 @@ export class ClassroomState {
   async getScreens(request, classId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 화면 공유를 사용할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const now = Date.now();
     const devices = new Map(this.all("SELECT device_id, student_display_name FROM Devices WHERE class_id = ? AND revoked_at_utc IS NULL", classId)
@@ -980,7 +977,6 @@ export class ClassroomState {
   async requestRemoteAssist(request, classId, deviceId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 원격 지원을 사용할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     if (!validId(deviceId)) return responseError("DEVICE_NOT_FOUND", "학생 장치를 찾지 못했습니다.", 404, cors);
 
@@ -1043,7 +1039,6 @@ export class ClassroomState {
   async queueRemoteAssistInput(request, classId, remoteAssistSessionId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 원격 지원을 사용할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     if (!validId(remoteAssistSessionId)) return responseError("REMOTE_ASSIST_NOT_FOUND", "원격 지원 세션을 찾지 못했습니다.", 404, cors);
     this.expireRemoteAssistSessions();
@@ -1083,7 +1078,6 @@ export class ClassroomState {
   async endRemoteAssist(request, classId, remoteAssistSessionId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 원격 지원을 사용할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     this.expireRemoteAssistSessions();
     const session = this.one("SELECT * FROM RemoteAssistSessions WHERE remote_assist_session_id = ? AND class_id = ? AND teacher_id = ?", remoteAssistSessionId, classId, user.id);
@@ -1261,7 +1255,6 @@ export class ClassroomState {
   async queueCommand(request, classId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 학생 장치에 명령을 보낼 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const body = await readJson(request);
     const activeSession = this.one("SELECT * FROM ClassSessions WHERE class_id = ? AND ended_at_utc IS NULL ORDER BY started_at_utc DESC LIMIT 1", classId);
@@ -1310,7 +1303,6 @@ export class ClassroomState {
   async getCommandStatus(request, classId, requestId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 명령 기록을 확인할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const command = this.one("SELECT * FROM Commands WHERE request_id = ? AND class_id = ?", requestId, classId);
     if (!command) return responseError("COMMAND_NOT_FOUND", "명령 기록을 찾지 못했습니다.", 404, cors);
@@ -1323,7 +1315,6 @@ export class ClassroomState {
   async getAudit(request, classId, url, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 감사 기록을 확인할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit")) || 100, 200));
     const entries = this.all(`SELECT * FROM AuditEvents WHERE class_id = ? ORDER BY timestamp_utc DESC LIMIT ?`, classId, limit);
@@ -1354,7 +1345,6 @@ export class ClassroomState {
   async createGroup(request, classId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 그룹을 만들 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
     if (!classItem) return responseError("CLASS_NOT_FOUND", "학급을 찾지 못했습니다.", 404, cors);
@@ -1384,7 +1374,6 @@ export class ClassroomState {
   async updateGroup(request, classId, groupId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 그룹을 수정할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId) || !validId(groupId)) return responseError("FORBIDDEN", "이 그룹에 접근할 수 없습니다.", 403, cors);
     const group = this.one("SELECT * FROM ClassGroups WHERE group_id = ? AND class_id = ?", groupId, classId);
     if (!group) return responseError("GROUP_NOT_FOUND", "그룹을 찾지 못했습니다.", 404, cors);
@@ -1403,7 +1392,6 @@ export class ClassroomState {
   async deleteGroup(request, classId, groupId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 그룹을 삭제할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId) || !validId(groupId)) return responseError("FORBIDDEN", "이 그룹에 접근할 수 없습니다.", 403, cors);
     const group = this.one("SELECT * FROM ClassGroups WHERE group_id = ? AND class_id = ?", groupId, classId);
     if (!group) return responseError("GROUP_NOT_FOUND", "그룹을 찾지 못했습니다.", 404, cors);
@@ -1424,7 +1412,6 @@ export class ClassroomState {
   async createPreset(request, classId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 프리셋을 만들 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
     const body = await readJson(request);
@@ -1451,7 +1438,6 @@ export class ClassroomState {
   async deletePreset(request, classId, presetId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest) return responseError("GUEST_READ_ONLY", "게스트 로그인에서는 프리셋을 삭제할 수 없습니다.", 403, cors);
     if (!this.canAccessClass(user, classId) || !validId(presetId)) return responseError("FORBIDDEN", "이 프리셋에 접근할 수 없습니다.", 403, cors);
     const preset = this.one("SELECT * FROM ClassPresets WHERE preset_id = ? AND class_id = ?", presetId, classId);
     if (!preset) return responseError("PRESET_NOT_FOUND", "프리셋을 찾지 못했습니다.", 404, cors);

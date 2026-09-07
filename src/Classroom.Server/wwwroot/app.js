@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.6.1";
+  const APP_VERSION = "0.6.2";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -362,7 +362,7 @@
       : state.classes[0]?.id || null;
     $("teacher-name").textContent = session.displayName || (isGuest ? "게스트" : "교사");
     $("teacher-account").textContent = isGuest
-      ? `${session.school?.name || "학교"} · 읽기 전용`
+      ? `${session.school?.name || "학교"} · 수업 운영`
       : session.email || session.loginName || "Teacher";
     $("teacher-role").textContent = isGuest ? "게스트" : "관리자";
     $("teacher-role").classList.toggle("guest-badge", isGuest);
@@ -380,20 +380,10 @@
     $("admin-enroll-button").hidden = isGuest;
     $("admin-enroll-button").title = state.classes.length ? "학생 코드 발급" : "먼저 관리자 메뉴에서 학급을 만들어 주세요";
     $("student-code-permission").textContent = isGuest
-      ? "게스트 · 수업 현황, 학생 활동과 학생 코드를 읽을 수 있습니다"
+      ? "게스트 · 수업 운영 가능 · 학생 코드 발급과 보안 설정은 관리자만"
       : session.isAdmin
       ? "관리자: 코드 발급 및 재발급 가능"
       : "조회 전용 · 코드는 관리자에게 요청하세요";
-    ["start-session-button", "announcement-button", "end-session-button", "screen-wall-button", "focus-on-button", "focus-off-button", "message-button", "url-button", "app-button", "tools-dialog-button", "preset-dialog-button", "groups-dialog-button", "report-dialog-button", "alert-drawer-button"].forEach((id) => {
-      const button = $(id);
-      if (button) button.hidden = isGuest;
-    });
-    $("bulk-actions").hidden = isGuest;
-    if (isGuest) {
-      state.activeSection = "class";
-      document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.section === "class"));
-      document.querySelectorAll(".section-view").forEach((section) => { section.hidden = section.id !== "class-section"; });
-    }
     renderClassPicker();
     $("teacher-greeting").textContent = isGuest ? "게스트로 접속했습니다." : `${session.displayName || "선생님"}선생님 안녕하세요.`;
     $("school-name").textContent = session.school?.name || "학교를 설정해 주세요";
@@ -514,8 +504,8 @@
     $("offline-count").textContent = String(offline);
     $("needs-attention-count").textContent = String(needsAttention);
     $("session-caption").textContent = formatSessionCaption(state.session);
-    $("start-session-button").hidden = Boolean(state.teacher?.isGuest) || Boolean(state.session) || !state.classId;
-    $("end-session-button").hidden = Boolean(state.teacher?.isGuest) || !state.session;
+    $("start-session-button").hidden = Boolean(state.session) || !state.classId;
+    $("end-session-button").hidden = !state.session;
     const screenWallButton = $("screen-wall-button");
     if (screenWallButton) {
       screenWallButton.textContent = state.screenWallOpen ? "화면 보기 닫기" : "화면 보기";
@@ -524,7 +514,7 @@
     const monitorBar = $("monitor-session-bar");
     const monitorFab = $("monitor-fullscreen-fab");
     const onlineStudents = state.students.filter((student) => student.online);
-    const canMonitor = !state.teacher?.isGuest && Boolean(state.session) && onlineStudents.length > 0;
+    const canMonitor = Boolean(state.session) && onlineStudents.length > 0;
     if (monitorFab) {
       monitorFab.hidden = !canMonitor;
       monitorFab.disabled = !canMonitor;
@@ -849,10 +839,6 @@
   }
 
   function openGroupsDialog() {
-    if (state.teacher?.isGuest) {
-      showToast("게스트 계정은 학생 그룹을 수정할 수 없습니다.");
-      return;
-    }
     renderGroupsDialog();
     $("groups-dialog")?.showModal();
   }
@@ -916,10 +902,6 @@
   }
 
   function openPresetsDialog() {
-    if (state.teacher?.isGuest) {
-      showToast("게스트 계정은 프리셋을 실행할 수 없습니다.");
-      return;
-    }
     renderPresets();
     $("preset-dialog")?.showModal();
   }
@@ -983,10 +965,6 @@
   }
 
   async function openReportDialog() {
-    if (state.teacher?.isGuest) {
-      showToast("게스트 계정은 수업 기록을 볼 수 없습니다.");
-      return;
-    }
     const dialog = $("report-dialog");
     if (!dialog) return;
     $("report-list").innerHTML = '<div class="empty-state">기록을 불러오는 중입니다…</div>';
@@ -1136,9 +1114,7 @@
       const riskNotice = attention
         ? `<div class="activity-risk ${escapeHtml(attention.kind)}"><span aria-hidden="true">!</span><span>${escapeHtml(attention.detail)}</span></div>`
         : "";
-      const quickMessage = state.teacher?.isGuest
-        ? ""
-        : `<button class="student-card-message" type="button" data-student-message="${escapeHtml(student.deviceId)}" aria-label="${escapeHtml(student.studentDisplayName)} 학생에게 개인 메시지 보내기" title="${escapeHtml(student.studentDisplayName)} 학생에게 개인 메시지">메시지</button>`;
+      const quickMessage = `<button class="student-card-message" type="button" data-student-message="${escapeHtml(student.deviceId)}" aria-label="${escapeHtml(student.studentDisplayName)} 학생에게 개인 메시지 보내기" title="${escapeHtml(student.studentDisplayName)} 학생에게 개인 메시지">메시지</button>`;
       return `<article class="student-card${selected ? " selected" : ""}" data-device-id="${escapeHtml(student.deviceId)}">
         ${selector}
         <div class="student-head"><div><div class="student-name">${escapeHtml(student.studentDisplayName)}</div><div class="student-device">${escapeHtml(student.computerName)}</div></div><span class="status-dot ${statusClass}">${statusText}</span></div>
@@ -1159,9 +1135,7 @@
   }
 
   function studentSelectorMarkup(student, selected) {
-    return state.teacher?.isGuest
-      ? ""
-      : `<label class="student-selector" title="명령 대상 선택"><input type="checkbox" aria-label="${escapeHtml(student.studentDisplayName)} 선택" ${selected ? "checked" : ""}></label>`;
+    return `<label class="student-selector" title="명령 대상 선택"><input type="checkbox" aria-label="${escapeHtml(student.studentDisplayName)} 선택" ${selected ? "checked" : ""}></label>`;
   }
 
   function bindStudentSelection(grid) {
@@ -1259,9 +1233,7 @@
         ? `<span class="screen-risk-label ${escapeHtml(attention.kind)}">${escapeHtml(attention.label)}</span>`
         : "";
       const number = student.studentNumber ? `${student.studentNumber}번` : "번호 —";
-      const quickMessage = state.teacher?.isGuest
-        ? ""
-        : `<button class="student-monitor-message" type="button" data-student-message="${escapeHtml(student.deviceId)}" aria-label="${escapeHtml(student.studentDisplayName)} 학생에게 개인 메시지 보내기" title="${escapeHtml(student.studentDisplayName)} 학생에게 개인 메시지">메시지</button>`;
+      const quickMessage = `<button class="student-monitor-message" type="button" data-student-message="${escapeHtml(student.deviceId)}" aria-label="${escapeHtml(student.studentDisplayName)} 학생에게 개인 메시지 보내기" title="${escapeHtml(student.studentDisplayName)} 학생에게 개인 메시지">메시지</button>`;
       return `<article class="student-monitor-card${selected ? " selected" : ""}" data-device-id="${escapeHtml(student.deviceId)}">
         ${studentSelectorMarkup(student, selected)}
         <button class="student-monitor-preview" type="button" data-monitor-open="${escapeHtml(student.deviceId)}" aria-label="${escapeHtml(student.studentDisplayName)} 학생 화면 크게 보기">
@@ -1344,7 +1316,7 @@
       ? `<div class="remote-assist-callout ${remote.state === "ACTIVE" ? "active" : "pending"}"><div><strong>${remote.state === "ACTIVE" ? "원격 지원 연결됨" : "학생 동의 대기 중"}</strong><span>${escapeHtml(remote.teacherDisplayName)} · ${remote.state === "ACTIVE" ? `${formatTime(remote.expiresAtUtc)}까지` : "학생 PC에 허용 창이 표시되었습니다."}</span></div><span class="remote-assist-chip">${remote.state === "ACTIVE" ? "허용됨" : "대기"}</span></div>`
       : "";
 
-    const remoteActions = state.teacher?.isGuest || !student.online
+    const remoteActions = !student.online
       ? ""
       : remote?.state === "ACTIVE"
         ? `<button id="detail-remote-toggle" class="remote-control-button${state.remoteControl?.enabled && state.remoteControl.deviceId === student.deviceId ? " active" : ""}" type="button">${state.remoteControl?.enabled && state.remoteControl.deviceId === student.deviceId ? "원격 제어 중지" : "원격 제어 시작"}</button><button id="detail-remote-end" class="remote-end-button" type="button">원격 지원 종료</button>`
@@ -1366,14 +1338,14 @@
       return;
     }
 
-    const detailActions = state.teacher?.isGuest
-      ? '<div class="detail-section"><div class="privacy-note guest-readonly-note">게스트 계정은 수업 현황과 학생 활동을 읽기 전용으로 확인합니다.</div></div>'
-      : `<div class="detail-section stack">${remoteCallout}${remoteActions}<button class="primary wide" id="detail-screen-button">이 학생 화면 보기</button><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button><button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button></div>`;
+    const revokeAction = state.teacher?.isAdmin
+      ? '<button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button>'
+      : "";
+    const detailActions = `<div class="detail-section stack">${remoteCallout}${remoteActions}<button class="primary wide" id="detail-screen-button">이 학생 화면 보기</button><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button>${revokeAction}</div>`;
     $("detail-content").innerHTML = `${header}${riskMarkup}${remoteCallout}${statusRows}${deviceRows}${detailActions}`;
-    if (state.teacher?.isGuest) return;
-    $("detail-screen-button").addEventListener("click", () => openStudentScreen(student.deviceId).catch((error) => showToast(error.message)));
-    $("detail-message-button").addEventListener("click", () => openCommandDialog("message", [student.deviceId]));
-    $("detail-revoke-button").addEventListener("click", () => revokeDevice(student).catch((error) => showToast(error.message)));
+    $("detail-screen-button")?.addEventListener("click", () => openStudentScreen(student.deviceId).catch((error) => showToast(error.message)));
+    $("detail-message-button")?.addEventListener("click", () => openCommandDialog("message", [student.deviceId]));
+    $("detail-revoke-button")?.addEventListener("click", () => revokeDevice(student).catch((error) => showToast(error.message)));
     bindRemoteDetailActions(student);
   }
 
@@ -1465,7 +1437,7 @@
   }
 
   function bindRemoteSurface(surface, student) {
-    if (!surface || state.teacher?.isGuest || student.remoteAssist?.state !== "ACTIVE") return;
+    if (!surface || student.remoteAssist?.state !== "ACTIVE") return;
     surface.addEventListener("pointermove", (event) => {
       const control = state.remoteControl;
       if (!control?.enabled || control.deviceId !== student.deviceId) return;
@@ -2019,10 +1991,6 @@
   }
 
   function openCommandDialog(kind, targetIds = null) {
-    if (state.teacher?.isGuest) {
-      showToast("게스트 계정은 읽기 전용입니다.");
-      return;
-    }
     if (!state.session) {
       showToast("먼저 수업을 시작하세요.");
       return;
@@ -2064,7 +2032,6 @@
   }
 
   async function sendCommand(kind, targetIds, extra = {}) {
-    if (state.teacher?.isGuest) throw new Error("게스트 계정은 학생 장치에 명령을 보낼 수 없습니다.");
     const targets = targetIds || state.students.map((student) => student.deviceId);
     if (!targets.length) throw new Error("대상 학생 장치가 없습니다.");
     if (!state.session) throw new Error("활성 수업이 없습니다.");
@@ -2098,10 +2065,6 @@
   }
 
   async function openStudentScreen(deviceId = null) {
-    if (state.teacher?.isGuest) {
-      showToast("게스트 계정에서는 화면 공유를 사용할 수 없습니다.");
-      return;
-    }
     if (!state.session) {
       showToast("먼저 수업을 시작하세요.");
       return;

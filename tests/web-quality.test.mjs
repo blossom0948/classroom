@@ -116,6 +116,16 @@ assert.match(html, /class="workspace-dialog workspace-dialog-groups/, "Groups ne
 assert.match(html, /class="workspace-dialog workspace-dialog-report/, "Reports need a distinct dialog identity.");
 assert.match(script, /commandDialog\.dataset\.commandKind = kind/, "Command dialogs must expose their current action kind for visual differentiation.");
 assert.match(styles, /\.workspace-dialog-tools\s*\{\s*--dialog-accent:/, "Workspace dialogs must use a distinct accent system.");
+assert.match(script, /teacher-account[\s\S]*?수업 운영/, "School guests must be presented as classroom operators rather than read-only viewers.");
+assert.doesNotMatch(script, /\$\("bulk-actions"\)\.hidden = isGuest/, "School guests must keep the selected-student command deck visible.");
+assert.doesNotMatch(script, /start-session-button"\)\.hidden = Boolean\(state\.teacher\?\.isGuest\)/, "School guests must be able to start a class session.");
+assert.match(script, /const revokeAction = state\.teacher\?\.isAdmin/, "Device disconnection must remain an administrator-only action.");
+assert.doesNotMatch(cloudflareWorker, /async startSession\(request, classId, cors\)[\s\S]{0,320}user\.is_guest/, "School guests must be able to start a class session through the API.");
+assert.doesNotMatch(cloudflareWorker, /async queueCommand\(request, classId, cors\)[\s\S]{0,320}user\.is_guest/, "School guests must be able to send classroom commands through the API.");
+assert.match(styles, /0\.6\.2 — dark mode contrast pass/, "The dark mode contrast pass must be present after the final light-surface rules.");
+assert.match(styles, /html\[data-theme="dark"\] #app-view \.student-card/, "Student cards need an explicit dark surface and readable text.");
+assert.match(styles, /html\[data-theme="dark"\] #detail-pane\.screen-mode/, "Student screen detail needs an explicit dark surface.");
+assert.match(styles, /html\[data-theme="dark"\] \.workspace-dialog[\s\S]*background: #151f31/, "Workspace dialogs need an opaque dark surface.");
 assert.match(script, /\$\("school-login-button"\)\.addEventListener\("click", openGuestLoginDialog\)/, "School login must open the school guest access flow.");
 assert.doesNotMatch(html, /id="login-guest-button"/, "The duplicate school guest button should not be visible beside school login.");
 assert.match(html, /id="guest-login-dialog"[^>]*class="command-dialog guest-login-dialog"/, "School login must retain the branded school access dialog.");

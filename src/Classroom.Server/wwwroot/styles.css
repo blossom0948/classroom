@@ -4130,3 +4130,326 @@ html[data-theme="dark"] .command-dialog .dialog-heading::before {
   .workspace-dialog .dialog-heading::before,
   .command-dialog .dialog-heading::before { height: 31px; width: 31px; }
 }
+
+/* 0.6.2 — dark mode contrast pass.  The liquid/glass redesign adds a few
+   intentionally light surfaces after the original theme rules.  Keep every
+   authenticated surface on one dark palette so text, borders, controls and
+   temporary windows remain readable together. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --workspace: #0b1220;
+  --surface: #151f31;
+  --soft: #101927;
+  --ink: #edf3ff;
+  --muted: #aebbd0;
+  --line: #2d3d58;
+  --blue-soft: #20366f;
+  --liquid-ink: #edf3ff;
+  --liquid-muted: #a7b8d2;
+  --liquid-blue: #9db3ff;
+  --liquid-blue-strong: #b6c6ff;
+  --liquid-violet: #b09bff;
+  --liquid-line: rgba(126, 153, 207, .46);
+  --liquid-glass: rgba(18, 29, 48, .9);
+  --liquid-content: #151f31;
+  --liquid-shadow: 0 18px 48px rgba(0, 0, 0, .3);
+}
+
+html[data-theme="dark"] body,
+html[data-theme="dark"] #app-view,
+html[data-theme="dark"] #app-view .main-content {
+  background: var(--workspace);
+  color: var(--ink);
+}
+html[data-theme="dark"] #app-view .app-shell {
+  background:
+    radial-gradient(circle at 86% -8%, rgba(86, 111, 220, .22), transparent 34rem),
+    radial-gradient(circle at 3% 100%, rgba(35, 151, 139, .12), transparent 29rem),
+    linear-gradient(142deg, #0e1728 0%, #101a2b 48%, #0b1423 100%);
+}
+html[data-theme="dark"] #app-view .school-name,
+html[data-theme="dark"] #app-view .class-subject { color: #a8bcff; }
+html[data-theme="dark"] #app-view .teacher-greeting,
+html[data-theme="dark"] #app-view .today-info strong,
+html[data-theme="dark"] #app-view .weather-description { color: var(--liquid-ink); }
+html[data-theme="dark"] #app-view .weather-temperature,
+html[data-theme="dark"] #app-view .select-chevron { color: var(--liquid-muted); }
+html[data-theme="dark"] #app-view .class-select-button {
+  background: #17253a;
+  border-color: #405576;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 7px 20px rgba(0,0,0,.2);
+  color: #edf3ff;
+}
+html[data-theme="dark"] #app-view .class-select-button:hover:not(:disabled),
+html[data-theme="dark"] #app-view .class-select-button[aria-expanded="true"] { background: #1c2e4b; border-color: #6c8bd3; }
+html[data-theme="dark"] #app-view .class-select-menu { background: #151f31; border-color: #3c5273; box-shadow: 0 20px 45px rgba(0,0,0,.38); }
+html[data-theme="dark"] #app-view .class-select-option { color: #dce7fa; }
+html[data-theme="dark"] #app-view .class-select-option:hover,
+html[data-theme="dark"] #app-view .class-select-option.active { background: #223a68; color: #f5f8ff; }
+html[data-theme="dark"] #app-view .icon-button {
+  background: #17253a;
+  border-color: #405576;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 7px 18px rgba(0,0,0,.2);
+  color: #dce8ff;
+}
+
+html[data-theme="dark"] #class-section > .class-command-strip {
+  background: linear-gradient(135deg, #162b4b, #17243a 58%, #1f2749);
+  border-color: #466fad;
+  box-shadow: 0 16px 36px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.06);
+}
+html[data-theme="dark"] #class-section > .class-metrics .metric-card {
+  background: linear-gradient(150deg, #17263d, #131f32);
+  border-color: #344b6d;
+  box-shadow: 0 12px 30px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.05);
+}
+html[data-theme="dark"] #class-section > .class-metrics .metric-card strong { color: #f0f5ff; }
+html[data-theme="dark"] #class-section > .class-metrics .metric-card small,
+html[data-theme="dark"] #class-section > .class-metrics .metric-label { color: #aebbd0; }
+html[data-theme="dark"] #app-view .toolbar,
+html[data-theme="dark"] #app-view .monitor-session-bar {
+  background: #151f31;
+  border-color: #344967;
+  box-shadow: 0 12px 30px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.04);
+}
+html[data-theme="dark"] #app-view .student-search input,
+html[data-theme="dark"] #app-view .student-sort-control select,
+html[data-theme="dark"] #app-view .toolbar input,
+html[data-theme="dark"] #app-view .toolbar select {
+  background: #0f192a;
+  border-color: #3b5275;
+  color: #edf3ff;
+}
+html[data-theme="dark"] #app-view .student-search input::placeholder { color: #8092ae; }
+html[data-theme="dark"] #app-view .filter,
+html[data-theme="dark"] #app-view .student-view-controls .secondary {
+  background: #17263d;
+  border-color: #3e5679;
+  color: #cbd8ee;
+}
+html[data-theme="dark"] #app-view .filter.active,
+html[data-theme="dark"] #app-view .student-view-controls .secondary.active { background: #263f78; border-color: #718ee0; color: #f2f6ff; }
+html[data-theme="dark"] #app-view .command-deck { background: linear-gradient(105deg, #172842, #182a46 58%, #242442); border-color: #334b6e; }
+html[data-theme="dark"] #app-view .command-deck .command-scope { background: #223654; border-color: #526c94; color: #dce8fa; }
+html[data-theme="dark"] #app-view .command-deck .command-group { box-shadow: 0 5px 16px rgba(0,0,0,.2); }
+html[data-theme="dark"] #app-view .command-deck .command-group .secondary,
+html[data-theme="dark"] .command-group .secondary {
+  background: #1b2d49;
+  border-color: #4a638c;
+  color: #dce8ff;
+}
+html[data-theme="dark"] .command-group-monitor { background: #1a3151; border-color: #41668f; }
+html[data-theme="dark"] .command-group-focus { background: #302858; border-color: #665a9b; }
+html[data-theme="dark"] .command-group-message { background: #183c3a; border-color: #3e806f; }
+html[data-theme="dark"] .command-group-tools { background: #3e2e29; border-color: #725445; }
+html[data-theme="dark"] .command-group-monitor .command-group-label { color: #a9caff; }
+html[data-theme="dark"] .command-group-focus .command-group-label { color: #d0c5ff; }
+html[data-theme="dark"] .command-group-message .command-group-label { color: #9ee4cf; }
+html[data-theme="dark"] .command-group-tools .command-group-label { color: #ffd2aa; }
+html[data-theme="dark"] .command-group .focus-mode-setting,
+html[data-theme="dark"] .command-group .focus-mode-setting select { color: #d1c8ff; }
+html[data-theme="dark"] .command-group .focus-mode-setting select { background: #263d63; border-color: #607eae; }
+
+html[data-theme="dark"] #app-view .student-card,
+html[data-theme="dark"] #app-view .student-monitor-card,
+html[data-theme="dark"] #app-view .student-activity,
+html[data-theme="dark"] #app-view .empty-state,
+html[data-theme="dark"] #app-view .quick-panel,
+html[data-theme="dark"] #app-view .lesson-note-card,
+html[data-theme="dark"] #app-view .table-card,
+html[data-theme="dark"] #app-view .audit-list {
+  background: #151f31;
+  border-color: #344967;
+  color: #edf3ff;
+}
+html[data-theme="dark"] #app-view .student-card:hover { box-shadow: 0 14px 32px rgba(0,0,0,.3); }
+html[data-theme="dark"] #app-view .student-card.selected { border-color: #708ee6; box-shadow: 0 0 0 2px rgba(112,142,230,.25); }
+html[data-theme="dark"] #app-view .student-name,
+html[data-theme="dark"] #app-view .activity-app,
+html[data-theme="dark"] #app-view .quick-panel h3,
+html[data-theme="dark"] #app-view .lesson-note-card h3 { color: #edf3ff; }
+html[data-theme="dark"] #app-view .student-device,
+html[data-theme="dark"] #app-view .activity-label,
+html[data-theme="dark"] #app-view .activity-domain,
+html[data-theme="dark"] #app-view .student-meta,
+html[data-theme="dark"] #app-view .quick-panel p { color: #aebbd0; }
+html[data-theme="dark"] #app-view .student-card-footer { border-top-color: #30435f; }
+html[data-theme="dark"] #app-view .student-monitor-hinge { background: linear-gradient(135deg, #1b2c49, #172235); border-color: #4b6694; color: #e9f0ff; }
+html[data-theme="dark"] #app-view .student-monitor-hinge strong { color: #edf3ff; }
+html[data-theme="dark"] #app-view .student-card-message,
+html[data-theme="dark"] #app-view .student-monitor-message { background: #20386a; border-color: #607fc5; color: #dbe7ff; box-shadow: 0 8px 17px rgba(0,0,0,.25); }
+html[data-theme="dark"] #app-view .app-icon { background: #253754; color: #b9c9e5; }
+html[data-theme="dark"] #app-view .empty-state { color: #aebbd0; }
+html[data-theme="dark"] #app-view .empty-state strong { color: #edf3ff; }
+html[data-theme="dark"] #app-view .student-monitor-preview { border-color: #496894; box-shadow: 0 15px 30px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.08); }
+html[data-theme="dark"] #app-view .student-monitor-card .student-selector { background: #172942; border: 1px solid #4b6694; box-shadow: 0 3px 9px rgba(0,0,0,.32); }
+
+html[data-theme="dark"] #detail-pane {
+  background: #151f31;
+  border-left-color: #344967;
+  box-shadow: -16px 0 34px rgba(0,0,0,.32);
+  color: #edf3ff;
+}
+html[data-theme="dark"] #detail-pane .close-button { color: #b7c4d9; }
+html[data-theme="dark"] #detail-pane .detail-section { border-top-color: #30435f; }
+html[data-theme="dark"] #detail-pane .detail-title,
+html[data-theme="dark"] #detail-pane .detail-section h3,
+html[data-theme="dark"] #detail-pane .detail-row strong { color: #edf3ff; }
+html[data-theme="dark"] #detail-pane .detail-row span:first-child,
+html[data-theme="dark"] #detail-pane .privacy-note,
+html[data-theme="dark"] #detail-pane .muted { color: #aebbd0; }
+html[data-theme="dark"] #detail-pane.screen-mode {
+  background: linear-gradient(135deg, #0e192b, #111e32 58%, #17223d);
+}
+html[data-theme="dark"] #detail-pane.screen-mode .close-button { background: #172942; border-color: #49658e; color: #ecf3ff; }
+html[data-theme="dark"] #detail-pane.screen-mode .detail-screen-inspector { background: #151f31; border-left-color: #3a5275; }
+html[data-theme="dark"] #detail-pane.screen-mode .detail-screen-caption strong { color: #eef4ff; }
+html[data-theme="dark"] #detail-pane.screen-mode .detail-screen-stage { border-color: #496a9d; box-shadow: 0 16px 34px rgba(0,0,0,.35); }
+html[data-theme="dark"] .monitor-stage:fullscreen,
+html[data-theme="dark"] .detail-screen-stage:fullscreen,
+html[data-theme="dark"] .detail-screen-stage.fullscreen-mode { background: #080f1d; }
+
+html[data-theme="dark"] .workspace-dialog,
+html[data-theme="dark"] .command-dialog,
+html[data-theme="dark"] .alert-drawer {
+  background: #151f31;
+  border-color: #3c5274;
+  color: #edf3ff;
+  box-shadow: 0 28px 100px rgba(0,0,0,.52);
+}
+html[data-theme="dark"] .workspace-dialog::backdrop,
+html[data-theme="dark"] .command-dialog::backdrop { background: rgba(2, 8, 18, .72); }
+html[data-theme="dark"] .workspace-dialog h2,
+html[data-theme="dark"] .command-dialog h2,
+html[data-theme="dark"] .workspace-drawer-heading h2,
+html[data-theme="dark"] .workspace-dialog label,
+html[data-theme="dark"] .command-dialog label { color: #edf3ff; }
+html[data-theme="dark"] .workspace-dialog .dialog-copy,
+html[data-theme="dark"] .command-dialog .dialog-copy,
+html[data-theme="dark"] .workspace-dialog .muted,
+html[data-theme="dark"] .command-dialog .muted { color: #aebbd0; }
+html[data-theme="dark"] .workspace-dialog input,
+html[data-theme="dark"] .workspace-dialog textarea,
+html[data-theme="dark"] .workspace-dialog select,
+html[data-theme="dark"] .command-dialog input,
+html[data-theme="dark"] .command-dialog textarea,
+html[data-theme="dark"] .command-dialog select {
+  background: #0f192a;
+  border-color: #3d5579;
+  color: #edf3ff;
+}
+html[data-theme="dark"] .workspace-dialog input::placeholder,
+html[data-theme="dark"] .command-dialog input::placeholder,
+html[data-theme="dark"] .command-dialog textarea::placeholder { color: #8293ae; }
+html[data-theme="dark"] .secondary,
+html[data-theme="dark"] .danger-outline,
+html[data-theme="dark"] .google-button {
+  background: #1a2a42;
+  border-color: #405778;
+  color: #e5edfc;
+}
+html[data-theme="dark"] .secondary:hover { background: #243b65; border-color: #6987d0; color: #f5f8ff; }
+html[data-theme="dark"] .ghost-button { color: #aebee0; }
+html[data-theme="dark"] .tool-panel { background: linear-gradient(135deg, #1a2b48, #151f31); border-color: #3c5274; }
+html[data-theme="dark"] .tool-panel-heading strong { color: #edf3ff; }
+html[data-theme="dark"] .tool-panel-heading small { color: #aebbd0; }
+html[data-theme="dark"] .tool-panel-icon { background: #263e70; color: #b4c6ff; }
+html[data-theme="dark"] .tool-panel-icon.timer { background: #4b3425; color: #ffd09b; }
+html[data-theme="dark"] .tool-timer-panel { background: linear-gradient(135deg, #3c2e25, #182237); border-color: #77573e; }
+html[data-theme="dark"] .tool-timer-display { color: #d6e0ff; }
+html[data-theme="dark"] .tool-footer { border-top-color: #30435f; }
+html[data-theme="dark"] .workspace-list-item,
+html[data-theme="dark"] .workspace-empty { background: #18263d; border-color: #3b5274; }
+html[data-theme="dark"] .workspace-list-item strong,
+html[data-theme="dark"] .workspace-empty strong { color: #edf3ff; }
+html[data-theme="dark"] .workspace-list-item small,
+html[data-theme="dark"] .workspace-empty span { color: #aebbd0; }
+html[data-theme="dark"] .workspace-create-section { border-color: #3b5274; }
+html[data-theme="dark"] .workspace-create-section summary { color: #c6d5f1; }
+html[data-theme="dark"] .report-stat { background: #1a2a45; border-color: #3b5274; }
+html[data-theme="dark"] .report-stat span,
+html[data-theme="dark"] .report-stat small { color: #aebbd0; }
+html[data-theme="dark"] .report-stat strong { color: #cfdcff; }
+html[data-theme="dark"] .report-table-wrap { border-color: #3b5274; }
+html[data-theme="dark"] .report-table th { background: #202f4b; color: #b9c8df; }
+html[data-theme="dark"] .report-table td { border-color: #30435f; color: #cbd7eb; }
+html[data-theme="dark"] .alert-item { background: #3a2b29; border-color: #6d4a40; }
+html[data-theme="dark"] .alert-item.help { background: #452b32; border-color: #7a4c58; }
+html[data-theme="dark"] .alert-item.risk { background: #403323; border-color: #765d36; }
+html[data-theme="dark"] .alert-item.battery { background: #3e351f; border-color: #756434; }
+html[data-theme="dark"] .alert-item-copy strong { color: #ffe7db; }
+html[data-theme="dark"] .alert-item-copy span { color: #e4c2b4; }
+html[data-theme="dark"] .alert-item-copy small { color: #c4a698; }
+html[data-theme="dark"] .alert-empty { background: #173227; border-color: #3b8061; color: #b9d9c9; }
+html[data-theme="dark"] .alert-empty strong { color: #d8f5e4; }
+html[data-theme="dark"] .console-footer { border-top-color: #30435f; color: #aebbd0; }
+html[data-theme="dark"] .console-footer button { color: #b9c8e2; }
+
+html[data-theme="dark"] .enrollment-result,
+html[data-theme="dark"] .enrollment-code-box,
+html[data-theme="dark"] .school-results,
+html[data-theme="dark"] .student-code-group,
+html[data-theme="dark"] .student-code-card,
+html[data-theme="dark"] .admin-grant-form,
+html[data-theme="dark"] .admin-list,
+html[data-theme="dark"] .settings-card,
+html[data-theme="dark"] .grade-roster-group,
+html[data-theme="dark"] .roster-class-card,
+html[data-theme="dark"] .student-roster-table-wrap {
+  background: #18263d;
+  border-color: #3b5274;
+  color: #edf3ff;
+}
+html[data-theme="dark"] .enrollment-code-box span,
+html[data-theme="dark"] .school-result small,
+html[data-theme="dark"] .student-code-card small,
+html[data-theme="dark"] .settings-card p { color: #aebbd0; }
+html[data-theme="dark"] .student-code-value,
+html[data-theme="dark"] .admin-list-heading,
+html[data-theme="dark"] .grade-roster-heading,
+html[data-theme="dark"] .student-roster-table th { background: #111c2e; border-color: #344967; color: #dce7fa; }
+html[data-theme="dark"] .student-roster-table td { border-color: #30435f; color: #d7e2f2; }
+html[data-theme="dark"] .admin-row,
+html[data-theme="dark"] .pending-heading { border-color: #30435f; }
+html[data-theme="dark"] .admin-row.pending { background: #302719; }
+html[data-theme="dark"] .school-result:hover,
+html[data-theme="dark"] .roster-class-card:hover { background: #223a68; border-color: #6687d5; }
+
+html[data-theme="dark"] #login-view .auth-card,
+html[data-theme="dark"] .auth-card {
+  background: linear-gradient(145deg, #17263d, #121e30);
+  border-color: #405777;
+  box-shadow: 0 28px 72px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.06);
+  color: #edf3ff;
+}
+html[data-theme="dark"] .auth-card-heading h2,
+html[data-theme="dark"] .school-login-copy h3,
+html[data-theme="dark"] .auth-mode-header strong { color: #edf3ff; }
+html[data-theme="dark"] .school-login-copy,
+html[data-theme="dark"] .auth-mode-header,
+html[data-theme="dark"] #admin-auth-panel .auth-tabs { background: #1b2c48; border-color: #405777; }
+html[data-theme="dark"] .school-login-copy p,
+html[data-theme="dark"] .auth-mode-help { color: #b4c3d9; }
+html[data-theme="dark"] .auth-card input,
+html[data-theme="dark"] .auth-card select,
+html[data-theme="dark"] .auth-card textarea { background: #0f192a; border-color: #405777; color: #edf3ff; }
+html[data-theme="dark"] .auth-card label { color: #dce7f8; }
+html[data-theme="dark"] .auth-mode-header .inline-link { background: #203663; border-color: #5f7fca; color: #dce7ff; }
+html[data-theme="dark"] .auth-tab { color: #adbad0; }
+html[data-theme="dark"] .auth-tab.active { color: #dce7ff; }
+
+@media (prefers-contrast: more) {
+  html[data-theme="dark"] #app-view .app-shell,
+  html[data-theme="dark"] #app-view .main-content,
+  html[data-theme="dark"] .workspace-dialog,
+  html[data-theme="dark"] .command-dialog,
+  html[data-theme="dark"] .alert-drawer,
+  html[data-theme="dark"] #detail-pane {
+    background: #0f1828 !important;
+    border-color: #8095ba !important;
+    color: #f6f8ff !important;
+  }
+  html[data-theme="dark"] input,
+  html[data-theme="dark"] textarea,
+  html[data-theme="dark"] select { background: #0b1321 !important; border-color: #8095ba !important; color: #f6f8ff !important; }
+}
