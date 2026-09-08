@@ -9,7 +9,21 @@ public enum ClassroomCommandKind
     ScreenShare,
     ClearHelp,
     RemoteAssistRequest,
-    RemoteAssistEnd
+    RemoteAssistEnd,
+    PowerControl
+}
+
+/// <summary>
+/// A narrowly scoped device power action. Wake is intentionally represented
+/// separately from the live WebSocket command path: a powered-off computer
+/// cannot receive a Classroom command and needs a school-LAN WOL relay.
+/// </summary>
+public enum PowerAction
+{
+    Lock,
+    Shutdown,
+    Restart,
+    Wake
 }
 
 /// <summary>
@@ -38,7 +52,8 @@ public sealed record CommandRequest(
     FocusDisplayMode? FocusDisplayMode = null,
     Guid? RemoteAssistSessionId = null,
     int? RemoteAssistDurationSeconds = null,
-    string? RemoteAssistTeacherDisplayName = null);
+    string? RemoteAssistTeacherDisplayName = null,
+    PowerAction? PowerAction = null);
 
 public sealed record CommandAck(
     Guid RequestId,

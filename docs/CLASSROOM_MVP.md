@@ -16,7 +16,8 @@ Unlock의 Credential Provider/Windows 암호 저장 경로는 이 제품에서 �
   device enrollment, heartbeat 상태, bounded command queue, audit API,
   HTTP/WebSocket TLS 보호, 정적 Teacher Console
 - `Classroom.Student.Service`: Windows Service 경계, device bearer 인증,
-  WebSocket 재연결, Desktop IPC, hello/heartbeat, 명령 ACK/result
+  WebSocket 재연결, Desktop IPC, hello/heartbeat, 명령 ACK/result,
+  온라인 장치의 잠금·종료·재시작 제어
 - `Classroom.Student.Desktop`: 학생에게 보이는 WinForms UI, foreground 앱·배터리·
   네트워크 상태 제공, 메시지/URL/집중 overlay/승인 앱 실행
 - `tests/*`: Core, Protocol, Server SQLite, Student Service/Desktop IPC self-test
@@ -82,14 +83,18 @@ Teacher Console에서 할 수 있는 일:
 2. 수업 시작/종료
 3. 학생 장치 온라인/오프라인, 현재 앱, 배터리, 네트워크, Agent 버전 확인
 4. 선택 학생 또는 전체 학급에 메시지, HTTPS URL, 집중 모드, 승인 앱 전송
-5. 각 명령의 장치별 ACK/result와 감사 기록 확인
-6. 학생 이름으로 8자리 일회용 학생 코드 생성
-7. 등록 장치 연결 해제(revoke)
+5. 온라인 학생 PC에 Windows 잠금(Windows+L), 종료, 재시작 전송
+6. 각 명령의 장치별 ACK/result와 감사 기록 확인
+7. 학생 이름으로 8자리 일회용 학생 코드 생성
+8. 등록 장치 연결 해제(revoke)
 
 학생 Desktop이 연결된 경우 명령 결과가 `APPLIED`가 되고, 연결되지 않은
 경우 성공으로 위장하지 않고 `STUDENT_DESKTOP_OFFLINE`으로 기록된다. 학생 서비스는
 검증된 패키지를 별도 업데이트 도우미에서 교체하므로 학생 앱의 수동 업데이트와
 자동 업데이트 모두 Windows 재부팅 없이 서비스와 화면을 순서대로 다시 시작한다.
+
+전원·잠금 명령은 온라인 장치에만 전달한다. 꺼진 PC를 켜는 WOL은 WebSocket 명령과
+별도이며, 학교 LAN의 인증된 WOL 중계기와 BIOS/UEFI 설정이 준비된 경우에만 연결한다.
 
 ## 실제 파일럿 순서
 

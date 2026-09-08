@@ -43,7 +43,7 @@ public sealed class StudentDesktopForm : Form
         BorderColor = Color.FromArgb(235, 137, 52),
         Enabled = false
     };
-    private readonly Label updateLabel = CreateLabel("자동 업데이트 · 시작 후와 15분마다 확인", 9, Color.FromArgb(74, 91, 117));
+    private readonly Label updateLabel = CreateLabel("자동 업데이트 · 시작 후와 10분마다 확인", 9, Color.FromArgb(74, 91, 117));
     private readonly Label helpStatusLabel = CreateLabel("수업이 시작되면 도움을 요청할 수 있습니다.", 9, Color.FromArgb(88, 106, 137));
     private readonly Label deviceLabel;
     private readonly NotifyIcon trayIcon = new();

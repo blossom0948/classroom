@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-    <link rel="stylesheet" href="/styles.css?v=0.9.0">
+    <link rel="stylesheet" href="/styles.css?v=0.9.1">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -262,7 +262,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.9.0</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.9.1</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -328,7 +328,24 @@
         <button id="groups-dialog-button" class="more-tool-card" type="button"><span class="more-tool-icon">◎</span><strong>학생 그룹</strong><small>선택 묶음 관리</small></button>
         <button id="report-dialog-button" class="more-tool-card" type="button"><span class="more-tool-icon">▤</span><strong>수업 기록</strong><small>감사 기록과 CSV</small></button>
         <button id="app-button" class="more-tool-card" type="button"><span class="more-tool-icon">▣</span><strong>앱 실행</strong><small>승인된 앱만 실행</small></button>
+        <button id="power-dialog-button" class="more-tool-card power-tool-card" type="button"><span class="more-tool-icon">⏻</span><strong>전원·잠금</strong><small>온라인 PC 잠금·종료·재시작</small></button>
       </div>
+      <div class="dialog-actions"><button class="primary" type="submit">닫기</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="power-dialog" class="workspace-dialog workspace-dialog-power power-dialog">
+    <form method="dialog" class="stack">
+      <div class="dialog-heading"><span class="eyebrow">DEVICE POWER</span><h2>전원·잠금</h2><p class="muted dialog-copy">선택한 학생 PC에 Windows 잠금, 종료 또는 재시작을 보냅니다. 안전을 위해 온라인 장치에만 즉시 실행됩니다.</p></div>
+      <p id="power-audience" class="dialog-audience"></p>
+      <div class="power-action-grid">
+        <button type="button" class="power-action-card power-action-lock" data-power-action="lock"><span class="power-action-icon">⌘</span><strong>잠금</strong><small>Windows + L과 같은 동작</small></button>
+        <button type="button" class="power-action-card power-action-restart" data-power-action="restart"><span class="power-action-icon">↻</span><strong>재시작</strong><small>학생 PC를 다시 시작</small></button>
+        <button type="button" class="power-action-card power-action-shutdown" data-power-action="shutdown"><span class="power-action-icon">⏻</span><strong>종료</strong><small>학생 PC를 안전하게 끄기</small></button>
+        <button type="button" class="power-action-card power-action-wake" data-power-action="wake" disabled><span class="power-action-icon">⤴</span><strong>켜기</strong><small>학교망 WOL 중계기 설정 필요</small></button>
+      </div>
+      <div class="power-safety-note"><strong>알아두세요</strong><span>잠금·종료·재시작은 되돌릴 수 없습니다. 완전히 꺼진 PC는 서버 명령을 받을 수 없으므로, 켜기는 BIOS/UEFI WOL과 학교망 중계기를 연결한 뒤 활성화할 수 있습니다.</span></div>
+      <p id="power-error" class="error" hidden></p>
       <div class="dialog-actions"><button class="primary" type="submit">닫기</button></div>
     </form>
   </dialog>
@@ -507,6 +524,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.9.0" defer></script>
+  <script src="/app.js?v=0.9.1" defer></script>
 </body>
 </html>

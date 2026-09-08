@@ -17,6 +17,7 @@ var tests = new (string Name, Action Run)[]
     ("approved app command has no shell field", ApprovedAppIsConstrained),
     ("screen sharing command requires an explicit state", ScreenShareCommandWorks),
     ("help acknowledgement command is minimal and round-trips", ClearHelpCommandWorks),
+    ("power control commands are explicit and bounded", PowerControlCommandWorks),
     ("remote assistance commands and input stay bounded", RemoteAssistProtocolWorks),
     ("commands reject duplicate or oversized targets", TargetLimitsAreEnforced),
     ("student exit PIN verification messages are strictly validated", StudentExitPinVerificationWorks),
@@ -267,6 +268,41 @@ static void ClearHelpCommandWorks()
     Assert(json.Contains("\"kind\":\"clearHelp\""), "Help acknowledgement kind was not serialized using camelCase.");
     var parsed = ProtocolCodec.Deserialize<CommandRequest>(json);
     Assert(parsed.Payload.Kind == ClassroomCommandKind.ClearHelp, "Help acknowledgement command did not round-trip.");
+}
+
+static void PowerControlCommandWorks()
+{
+    var command = new CommandRequest(
+        Guid.NewGuid(),
+        Guid.NewGuid(),
+        new[] { Guid.NewGuid() },
+        ClassroomCommandKind.PowerControl,
+        PowerAction: PowerAction.Lock);
+    ProtocolValidation.ValidateCommand(command);
+    var canonical = CanonicalCommandPayload.Create(command);
+    Assert(canonical.Contains("kind=POWERCONTROL"), "Power-control kind was not canonicalized.");
+    Assert(canonical.Contains("powerAction=LOCK"), "Power action was not canonicalized.");
+
+    var json = ProtocolCodec.Serialize(ProtocolEnvelope<CommandRequest>.Create(ProtocolConstants.CommandRequest, command));
+    Assert(json.Contains("\"kind\":\"powerControl\""), "Power-control kind was not serialized using camelCase.");
+    Assert(json.Contains("\"powerAction\":\"lock\""), "Power action was not serialized using camelCase.");
+    var parsed = ProtocolCodec.Deserialize<CommandRequest>(json);
+    Assert(parsed.Payload.Kind == ClassroomCommandKind.PowerControl
+        && parsed.Payload.PowerAction is PowerAction.Lock,
+        "Power-control command did not round-trip.");
+
+    AssertThrows<ProtocolValidationException>(() =>
+        ProtocolValidation.ValidateCommand(command with { PowerAction = null }));
+    AssertThrows<ProtocolValidationException>(() =>
+        ProtocolValidation.ValidateCommand(command with { RequiresAcknowledgement = false }));
+    AssertThrows<ProtocolValidationException>(() =>
+        ProtocolValidation.ValidateCommand(new CommandRequest(
+            command.RequestId,
+            command.SessionId,
+            command.TargetDeviceIds,
+            ClassroomCommandKind.Message,
+            Message: "안내",
+            PowerAction: PowerAction.Shutdown)));
 }
 
 static void RemoteAssistProtocolWorks()

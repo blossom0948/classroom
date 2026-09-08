@@ -1128,7 +1128,7 @@ app.MapPost("/api/classes/{classId:guid}/commands", (
     var statusCode = result.Code switch
     {
         "TARGET_FORBIDDEN" or "FORBIDDEN" => StatusCodes.Status403Forbidden,
-        "SESSION_NOT_ACTIVE" => StatusCodes.Status409Conflict,
+        "SESSION_NOT_ACTIVE" or "TARGET_OFFLINE" or "POWER_ON_REQUIRES_WOL_RELAY" => StatusCodes.Status409Conflict,
         "COMMAND_QUEUE_FULL" => StatusCodes.Status503ServiceUnavailable,
         _ => StatusCodes.Status400BadRequest
     };

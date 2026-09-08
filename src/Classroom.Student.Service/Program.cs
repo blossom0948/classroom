@@ -14,6 +14,7 @@ else
     var builder = Host.CreateApplicationBuilder(args);
     builder.Services.AddSingleton(StudentAgentOptions.FromConfiguration(builder.Configuration));
     builder.Services.AddSingleton<DesktopStatusBridge>();
+    builder.Services.AddSingleton<StudentPowerController>();
     builder.Services.AddSingleton<IStudentStatusSource>(services =>
         services.GetRequiredService<DesktopStatusBridge>());
     builder.Services.AddSingleton<IStudentCommandSink>(services =>

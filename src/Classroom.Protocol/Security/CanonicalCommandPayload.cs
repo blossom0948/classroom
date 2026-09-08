@@ -28,7 +28,8 @@ public static class CanonicalCommandPayload
             $"focusDisplayMode={command.FocusDisplayMode?.ToString().ToUpperInvariant() ?? "-"}",
             $"remoteAssistSessionId={command.RemoteAssistSessionId?.ToString("D").ToLowerInvariant() ?? "-"}",
             $"remoteAssistDurationSeconds={command.RemoteAssistDurationSeconds?.ToString() ?? "-"}",
-            $"remoteAssistTeacherDisplayName={Encode(command.RemoteAssistTeacherDisplayName)}");
+            $"remoteAssistTeacherDisplayName={Encode(command.RemoteAssistTeacherDisplayName)}",
+            $"powerAction={command.PowerAction?.ToString().ToUpperInvariant() ?? "-"}");
     }
 
     private static string Encode(string? value) =>

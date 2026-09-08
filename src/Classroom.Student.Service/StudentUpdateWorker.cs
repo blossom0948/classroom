@@ -20,8 +20,8 @@ public sealed class StudentUpdateWorker(
 {
     private const string ManifestUrl = "https://classroom-2en.pages.dev/classroom-update.json";
     private const long MaximumPackageBytes = 500L * 1024 * 1024;
-    private static readonly TimeSpan InitialCheckDelay = TimeSpan.FromSeconds(15);
-    private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan InitialCheckDelay = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(10);
     private readonly SemaphoreSlim checkGate = new(1, 1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -134,9 +134,10 @@ public sealed class StudentUpdateWorker(
             $"{ManifestUrl}?deviceUpdate={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
             cancellationToken);
         var availableVersion = ParseVersion(manifest?.Version);
+        var packageUrl = manifest is null ? null : SelectPackageUrl(manifest);
         if (manifest is null
             || availableVersion is null
-            || !IsAllowedPackageUrl(manifest.PackageUrl))
+            || packageUrl is null)
         {
             return new StudentUpdateCheckResult(
                 false,
@@ -180,7 +181,7 @@ public sealed class StudentUpdateWorker(
 
         Directory.CreateDirectory(updateRoot);
         var zipPath = Path.Combine(updateRoot, "Classroom-Windows-x64.zip.download");
-        await DownloadPackageAsync(client, new Uri(manifest.PackageUrl), zipPath, cancellationToken);
+        await DownloadPackageWithFallbackAsync(client, manifest, zipPath, cancellationToken);
         ExtractStudentPayload(zipPath, payloadRoot);
         VerifyPayloadVersion(payloadRoot, availableVersion);
         await File.WriteAllTextAsync(
@@ -247,6 +248,44 @@ public sealed class StudentUpdateWorker(
             }
             await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
         }
+    }
+
+    private static async Task DownloadPackageWithFallbackAsync(
+        HttpClient client,
+        UpdateManifest manifest,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
+        var packageUrls = new[] { manifest.StudentPackageUrl, manifest.PackageUrl }
+            .Where(IsAllowedPackageUrl)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        Exception? lastException = null;
+        foreach (var packageUrl in packageUrls)
+        {
+            try
+            {
+                await DownloadPackageAsync(client, new Uri(packageUrl!), destinationPath, cancellationToken);
+                return;
+            }
+            catch (HttpRequestException exception)
+            {
+                lastException = exception;
+                TryDelete(destinationPath);
+            }
+            catch (IOException exception)
+            {
+                lastException = exception;
+                TryDelete(destinationPath);
+            }
+            catch (InvalidDataException exception)
+            {
+                lastException = exception;
+                TryDelete(destinationPath);
+            }
+        }
+
+        throw lastException ?? new InvalidDataException("허용된 Classroom 업데이트 패키지 주소가 없습니다.");
     }
 
     private static void ExtractStudentPayload(string zipPath, string payloadRoot)
@@ -387,6 +426,13 @@ public sealed class StudentUpdateWorker(
                         "/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip",
                         StringComparison.Ordinal))));
 
+    private static string? SelectPackageUrl(UpdateManifest manifest) =>
+        IsAllowedPackageUrl(manifest.StudentPackageUrl)
+            ? manifest.StudentPackageUrl
+            : IsAllowedPackageUrl(manifest.PackageUrl)
+                ? manifest.PackageUrl
+                : null;
+
     private static void TryDelete(string path)
     {
         try { File.Delete(path); }
@@ -394,6 +440,9 @@ public sealed class StudentUpdateWorker(
         catch (UnauthorizedAccessException) { }
     }
 
-    private sealed record UpdateManifest(string Version, string PackageUrl);
+    private sealed record UpdateManifest(
+        string Version,
+        string PackageUrl,
+        string? StudentPackageUrl = null);
 
 }

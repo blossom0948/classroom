@@ -1,4 +1,5 @@
 {
-  "version": "0.9.0",
-  "packageUrl": "https://classroom-api.blossom0948.cloud/downloads/student-package"
+  "version": "0.9.1",
+  "packageUrl": "https://github.com/blossom0948/classroom/releases/latest/download/Classroom-Windows-x64.zip",
+  "studentPackageUrl": "https://classroom-api.blossom0948.cloud/downloads/student-package"
 }

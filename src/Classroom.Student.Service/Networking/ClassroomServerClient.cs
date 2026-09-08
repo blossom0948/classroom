@@ -18,6 +18,7 @@ public sealed class ClassroomServerClient(
     IStudentStatusSource statusSource,
     IStudentCommandSink commandSink,
     DesktopStatusBridge desktopBridge,
+    StudentPowerController powerController,
     ILogger<ClassroomServerClient> logger)
 {
     private readonly object exitPinConnectionGate = new();
@@ -327,7 +328,9 @@ public sealed class ClassroomServerClient(
         CommandApplyResult applied;
         try
         {
-            applied = await commandSink.ApplyAsync(command, cancellationToken);
+            applied = command.Kind == ClassroomCommandKind.PowerControl
+                ? powerController.Schedule(command)
+                : await commandSink.ApplyAsync(command, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

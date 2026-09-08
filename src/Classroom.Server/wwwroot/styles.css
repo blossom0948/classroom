@@ -2342,6 +2342,61 @@ button,
   #class-section > .hero-row { animation: classroom-hero-in 480ms var(--motion-ease) both; }
 }
 
+/* Device power controls use a separate visual language so a destructive
+   action cannot be mistaken for an everyday classroom command. */
+#power-dialog { --dialog-accent: #b54f5b; width: min(650px, calc(100vw - 28px)); }
+#power-dialog .dialog-heading::before { background: linear-gradient(145deg, #d07079, #8f3645); }
+.power-action-grid { display: grid; gap: 11px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.power-action-card {
+  align-items: flex-start;
+  background: var(--ui-surface-raised, #fff);
+  border: 1px solid var(--ui-line, #d7def0);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(27, 39, 65, .04), 0 10px 24px rgba(27, 39, 65, .08);
+  color: var(--ui-ink, #1d2d50);
+  cursor: pointer;
+  display: grid;
+  gap: 3px 11px;
+  grid-template-columns: 35px 1fr;
+  padding: 14px;
+  text-align: left;
+  transition: transform var(--ui-motion-fast, 180ms) var(--ui-spring, cubic-bezier(.2,.8,.2,1)), border-color var(--ui-motion-fast, 180ms) var(--ui-spring, cubic-bezier(.2,.8,.2,1)), box-shadow var(--ui-motion-fast, 180ms) var(--ui-spring, cubic-bezier(.2,.8,.2,1));
+}
+.power-action-card:hover { border-color: color-mix(in srgb, var(--power-accent) 55%, var(--ui-line)); box-shadow: 0 2px 4px rgba(27, 39, 65, .06), 0 15px 30px color-mix(in srgb, var(--power-accent) 16%, transparent); transform: translateY(-2px); }
+.power-action-card:active { transform: scale(.97); }
+.power-action-card:focus-visible { outline: 3px solid color-mix(in srgb, var(--power-accent) 35%, transparent); outline-offset: 2px; }
+.power-action-card[disabled] { cursor: not-allowed; filter: saturate(.45); opacity: .58; transform: none; }
+.power-action-icon { align-items: center; background: color-mix(in srgb, var(--power-accent) 13%, var(--ui-surface-raised)); border-radius: 11px; color: var(--power-accent); display: inline-flex; font-size: 20px; font-weight: 800; grid-row: span 2; height: 35px; justify-content: center; width: 35px; }
+.power-action-card strong { align-self: end; font-size: 14px; letter-spacing: -.02em; }
+.power-action-card small { align-self: start; color: var(--ui-muted, #6e7d98); font-size: 10px; line-height: 1.45; }
+.power-action-lock { --power-accent: #526ee5; }
+.power-action-restart { --power-accent: #bd7a2d; }
+.power-action-shutdown { --power-accent: #b54f5b; }
+.power-action-wake { --power-accent: #4a9a80; }
+.power-safety-note { background: color-mix(in srgb, #b54f5b 8%, var(--ui-surface-raised)); border: 1px solid color-mix(in srgb, #b54f5b 22%, var(--ui-line)); border-radius: 13px; color: var(--ui-muted); display: grid; gap: 4px; line-height: 1.55; padding: 12px 14px; }
+.power-safety-note strong { color: var(--ui-ink); font-size: 11px; }
+.power-safety-note span { font-size: 11px; }
+#power-dialog .dialog-actions { margin-top: 0; }
+#power-dialog .dialog-audience { color: #a84453; }
+html[data-theme="dark"] #power-dialog .dialog-audience { color: #ffb5bd; }
+#more-tools-dialog .power-tool-card { border-color: color-mix(in srgb, #b54f5b 30%, var(--ui-line)); }
+#more-tools-dialog .power-tool-card .more-tool-icon { background: color-mix(in srgb, #b54f5b 14%, var(--ui-surface-raised)); color: #b54f5b; }
+
+html[data-theme="dark"] #power-dialog .power-action-card { background: #1a2a43; border-color: #3d5579; box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 14px 30px rgba(0,0,0,.22); color: #edf3ff; }
+html[data-theme="dark"] #power-dialog .power-action-card small,
+html[data-theme="dark"] #power-dialog .power-safety-note { color: #afc0d9; }
+html[data-theme="dark"] #power-dialog .power-safety-note { background: rgba(181,79,91,.14); border-color: rgba(255,184,195,.34); }
+html[data-theme="dark"] #power-dialog .power-safety-note strong { color: #ffe8eb; }
+
+@media (max-width: 560px) {
+  #power-dialog { width: calc(100vw - 14px); }
+  .power-action-grid { gap: 8px; }
+  .power-action-card { grid-template-columns: 31px 1fr; padding: 11px; }
+  .power-action-icon { font-size: 17px; height: 31px; width: 31px; }
+  .power-action-card strong { font-size: 13px; }
+  .power-action-card small { font-size: 9px; }
+}
+
 @keyframes classroom-section-in {
   from { opacity: .86; transform: translateY(7px); }
   to { opacity: 1; transform: translateY(0); }

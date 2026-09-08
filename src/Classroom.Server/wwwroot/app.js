@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.9.0";
+  const APP_VERSION = "0.9.1";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -114,6 +114,7 @@
     easterEggActive: false,
     easterEggCleanup: null,
     mobileCommandOpen: false,
+    powerTargetIds: null,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -1323,6 +1324,75 @@
 
   function commandTargets() {
     return state.selectedDeviceIds.size ? [...state.selectedDeviceIds] : null;
+  }
+
+  function powerActionLabel(action) {
+    return ({
+      lock: "잠금",
+      restart: "재시작",
+      shutdown: "종료",
+      wake: "켜기"
+    })[action] || "전원 동작";
+  }
+
+  function openPowerDialog(targetIds = null) {
+    setMobileCommandOpen(false);
+    if (!state.session) {
+      showToast("먼저 수업을 시작하세요.");
+      return;
+    }
+    const requestedTargets = Array.isArray(targetIds) && targetIds.length
+      ? [...targetIds]
+      : commandTargets() || state.students.map((student) => student.deviceId);
+    const students = requestedTargets
+      .map((deviceId) => state.students.find((student) => student.deviceId === deviceId))
+      .filter(Boolean);
+    if (!students.length) {
+      showToast("전원·잠금을 적용할 학생 PC가 없습니다.");
+      return;
+    }
+    state.powerTargetIds = students.map((student) => student.deviceId);
+    const onlineCount = students.filter((student) => student.online).length;
+    const offlineCount = students.length - onlineCount;
+    $("power-audience").textContent = offlineCount
+      ? "온라인 " + onlineCount + "대에 즉시 적용할 수 있습니다. 오프라인 " + offlineCount + "대는 선택에서 제외됩니다."
+      : students.length + "대의 온라인 학생 PC에 즉시 적용합니다.";
+    $("power-error").hidden = true;
+    $("power-error").textContent = "";
+    $("power-dialog").showModal();
+  }
+
+  async function applyPowerAction(action) {
+    if (action === "wake") {
+      $("power-error").textContent = "완전히 꺼진 PC를 켜려면 학교망 WOL 중계기 설정이 필요합니다.";
+      $("power-error").hidden = false;
+      return;
+    }
+    const targets = (state.powerTargetIds || commandTargets() || state.students.map((student) => student.deviceId))
+      .filter((deviceId) => state.students.some((student) => student.deviceId === deviceId && student.online));
+    if (!targets.length) {
+      $("power-error").textContent = "현재 온라인인 학생 PC가 없습니다. 연결 상태를 새로고침한 뒤 다시 시도해 주세요.";
+      $("power-error").hidden = false;
+      return;
+    }
+    const label = powerActionLabel(action);
+    const confirmed = await askConfirmation(
+      label + " 명령 확인",
+      targets.length + "대의 온라인 학생 PC에 " + label + "을(를) 실행할까요? 이 동작은 되돌릴 수 없습니다.",
+      label + " 실행");
+    if (!confirmed) return;
+    const buttons = [...document.querySelectorAll("[data-power-action]")];
+    buttons.forEach((button) => { button.disabled = true; });
+    $("power-error").hidden = true;
+    try {
+      await sendCommand("powerControl", targets, { powerAction: action });
+      $("power-dialog").close("sent");
+    } catch (error) {
+      $("power-error").textContent = error.message;
+      $("power-error").hidden = false;
+    } finally {
+      buttons.forEach((button) => { button.disabled = button.dataset.powerAction === "wake"; });
+    }
   }
 
   function filteredStudentsForView() {
@@ -2591,7 +2661,7 @@
   }
 
   function commandKindLabel(kind) {
-    return ({ message: "메시지", openUrl: "URL 열기", focusMode: "집중 모드", launchApprovedApp: "앱 실행", screenShare: "화면 공유", clearHelp: "도움 요청 처리" })[kind] || kind || "명령";
+    return ({ message: "메시지", openUrl: "URL 열기", focusMode: "집중 모드", launchApprovedApp: "앱 실행", screenShare: "화면 공유", clearHelp: "도움 요청 처리", powerControl: "전원·잠금" })[kind] || kind || "명령";
   }
 
   function commandStateLabel(state) {
@@ -2634,7 +2704,12 @@
       const queued = command.devices.filter((device) => device.state === "QUEUED");
       const retryable = command.devices.filter((device) => ["FAILED", "REJECTED"].includes(device.state));
       const schedule = command.scheduledForUtc ? `예약 ${formatTime(command.scheduledForUtc)}` : `보낸 시각 ${formatTime(command.createdAtUtc)}`;
-      const detail = command.payload?.message || command.payload?.url || (command.kind === "focusMode" ? (command.payload.focusDisplayMode === "blackScreen" ? "검은 화면" : command.payload.focusEnabled ? "집중 켜기" : "집중 끄기") : "");
+      const detail = command.payload?.message || command.payload?.url
+        || (command.kind === "focusMode"
+          ? (command.payload.focusDisplayMode === "blackScreen" ? "검은 화면" : command.payload.focusEnabled ? "집중 켜기" : "집중 끄기")
+          : command.kind === "powerControl"
+            ? powerActionLabel(command.payload?.powerAction)
+            : "");
       const deviceRows = command.devices.map((device) => `<li><span>${escapeHtml(device.studentNumber ? `${device.studentNumber}번 ` : "")}${escapeHtml(device.studentDisplayName)}</span><strong class="queue-state queue-state-${escapeHtml(String(device.state).toLowerCase())}">${escapeHtml(commandStateLabel(device.state))}</strong></li>`).join("");
       return `<article class="command-queue-item" data-command-item="${escapeHtml(command.requestId)}"><div class="command-queue-item-head"><div><span class="eyebrow">${escapeHtml(commandKindLabel(command.kind))}</span><h3>${escapeHtml(detail || commandKindLabel(command.kind))}</h3><small>${escapeHtml(schedule)} · ${command.totalCount}명 대상</small></div><span class="queue-summary queue-summary-${command.finished ? "done" : command.failedCount ? "failed" : "active"}">${escapeHtml(commandAggregateLabel(command))}</span></div><details><summary>학생별 결과 보기</summary><ul class="queue-device-list">${deviceRows}</ul></details><div class="command-queue-actions">${queued.length ? `<button class="secondary" type="button" data-command-cancel="${escapeHtml(command.requestId)}">예약 취소</button>` : ""}${retryable.length ? `<button class="secondary" type="button" data-command-retry="${escapeHtml(command.requestId)}">실패 학생 재시도</button>` : ""}<button class="ghost-button" type="button" data-command-status="${escapeHtml(command.requestId)}">상세 새로고침</button></div></article>`;
     }).join("");
@@ -3610,6 +3685,13 @@
   $("groups-dialog-button").addEventListener("click", () => { $("more-tools-dialog")?.close(); openGroupsDialog(); });
   $("report-dialog-button").addEventListener("click", () => { $("more-tools-dialog")?.close(); openReportDialog().catch((error) => showToast(error.message)); });
   $("app-button").addEventListener("click", () => { $("more-tools-dialog")?.close(); openCommandDialog("app", commandTargets()); });
+  $("power-dialog-button").addEventListener("click", () => { $("more-tools-dialog")?.close(); openPowerDialog(commandTargets()); });
+  document.querySelectorAll("[data-power-action]").forEach((button) => {
+    button.addEventListener("click", () => applyPowerAction(button.dataset.powerAction).catch((error) => {
+      $("power-error").textContent = error.message;
+      $("power-error").hidden = false;
+    }));
+  });
   $("tools-form").addEventListener("submit", (event) => {
     event.preventDefault();
     saveLessonTool();

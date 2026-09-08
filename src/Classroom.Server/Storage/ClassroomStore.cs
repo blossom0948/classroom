@@ -454,6 +454,14 @@ public sealed class ClassroomStore
                 "Remote assistance must use its student-consent workflow.");
         }
 
+        if (command.Kind == ClassroomCommandKind.PowerControl
+            && command.PowerAction == PowerAction.Wake)
+        {
+            return StoreResult<CommandDispatchSummary>.Failure(
+                "POWER_ON_REQUIRES_WOL_RELAY",
+                "완전히 꺼진 PC를 켜려면 학교망 WOL 중계기를 먼저 설정해야 합니다.");
+        }
+
         lock (gate)
         {
             EnsureTeacherAccess(teacherId, classId);
@@ -474,6 +482,17 @@ public sealed class ClassroomStore
                     return StoreResult<CommandDispatchSummary>.Failure(
                         "TARGET_FORBIDDEN",
                         "Every target device must belong to the assigned class.");
+                }
+
+                // Power actions are deliberately live-only. Leaving a
+                // shutdown or restart in the durable command queue would
+                // surprise a device that reconnects hours later.
+                if (command.Kind == ClassroomCommandKind.PowerControl
+                    && !device.IsOnline(DateTimeOffset.UtcNow, options.HeartbeatTimeout))
+                {
+                    return StoreResult<CommandDispatchSummary>.Failure(
+                        "TARGET_OFFLINE",
+                        "전원·잠금 명령은 현재 온라인인 학생 PC에만 보낼 수 있습니다.");
                 }
 
                 if (commands.ContainsKey(new CommandKey(command.RequestId, deviceId)))
@@ -509,7 +528,7 @@ public sealed class ClassroomStore
                     AddAuditLocked(AuditEvent.Create(
                         "COMMAND_REQUEST",
                         "QUEUED",
-                        reason: command.Kind.ToString(),
+                        reason: CommandAuditReason(command),
                         schoolId: device.SchoolId,
                         classId: device.ClassId,
                         sessionId: command.SessionId,
@@ -524,7 +543,7 @@ public sealed class ClassroomStore
                     AddAuditLocked(AuditEvent.Create(
                         "COMMAND_REQUEST",
                         "QUEUE_FULL",
-                        reason: command.Kind.ToString(),
+                        reason: CommandAuditReason(command),
                         schoolId: device.SchoolId,
                         classId: device.ClassId,
                         sessionId: command.SessionId,
@@ -1438,6 +1457,11 @@ public sealed class ClassroomStore
     private static bool IsRemoteAssistCommand(CommandRequest command) =>
         command.Kind is ClassroomCommandKind.RemoteAssistRequest or ClassroomCommandKind.RemoteAssistEnd;
 
+    private static string CommandAuditReason(CommandRequest command) =>
+        command.Kind == ClassroomCommandKind.PowerControl
+            ? command.Kind + ":" + command.PowerAction
+            : command.Kind.ToString();
+
     private SessionState? FindActiveSessionLocked(Guid classId) =>
         sessions.Values.FirstOrDefault(session =>
             session.ClassId == classId && session.EndedAtUtc is null);
@@ -1517,6 +1541,17 @@ public sealed class ClassroomStore
             // Consent prompts are tied to the live student connection and
             // must never be replayed after a service/server restart.
             if (IsRemoteAssistCommand(pair.Value.Command))
+            {
+                continue;
+            }
+
+            // Power actions are destructive. Once a student service has
+            // received one (DISPATCHED/ACKED), do not replay it after a
+            // reconnect: the action may already have locked, shut down, or
+            // restarted the PC. A teacher can explicitly retry a failed
+            // power action from the console instead.
+            if (pair.Value.Command.Kind == ClassroomCommandKind.PowerControl
+                && !string.Equals(pair.Value.State, "QUEUED", StringComparison.Ordinal))
             {
                 continue;
             }

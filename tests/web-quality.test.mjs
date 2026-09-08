@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [html, script, styles, config, updater, helper, desktopProgram, desktopForm, focusOverlayController, watchdog, desktopOptions, desktopPipeClient, agentWorker, desktopBridge, diagnostics, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, desktopRecovery, desktopLauncher, cloudflareWorker] = await Promise.all([
+const [html, script, styles, config, updater, helper, desktopProgram, desktopForm, focusOverlayController, watchdog, desktopOptions, desktopPipeClient, agentWorker, desktopBridge, diagnostics, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, desktopRecovery, desktopLauncher, cloudflareWorker, updateManifest] = await Promise.all([
   readFile(new URL("../src/Classroom.Server/wwwroot/index.html", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/app.js", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/styles.css", import.meta.url), "utf8"),
@@ -24,7 +24,8 @@ const [html, script, styles, config, updater, helper, desktopProgram, desktopFor
   readFile(new URL("../scripts/deploy/build-pages.mjs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Service/StudentDesktopRecoveryWorker.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Service/StudentDesktopSessionLauncher.cs", import.meta.url), "utf8"),
-  readFile(new URL("../cloudflare/worker.js", import.meta.url), "utf8")
+  readFile(new URL("../cloudflare/worker.js", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Server/wwwroot/classroom-update.json", import.meta.url), "utf8")
 ]);
 
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
@@ -61,6 +62,11 @@ assert.match(html, /id="command-queue-dialog"/, "Scheduled work needs a dedicate
 assert.match(html, /id="attendance-dialog"/, "Classroom attendance needs a dedicated dialog.");
 assert.match(html, /id="connection-dialog"/, "Connection health needs a dedicated dialog.");
 assert.match(html, /id="more-tools-dialog"/, "Low-frequency tools need a separate overflow dialog.");
+assert.match(html, /id="power-dialog"/, "Device power actions need a dedicated safety dialog.");
+assert.match(html, /data-power-action="lock"/, "The power dialog must expose Windows lock.");
+assert.match(html, /data-power-action="shutdown"/, "The power dialog must expose shutdown.");
+assert.match(html, /data-power-action="restart"/, "The power dialog must expose restart.");
+assert.match(html, /data-power-action="wake"[^>]*disabled/, "Wake must stay visibly disabled until a WOL relay is configured.");
 assert.doesNotMatch(html, /id="weather-info"/, "The low-frequency weather widget should not take space in the classroom header.");
 assert.match(script, /focusDisplayMode: state\.focusDisplayMode/, "The console must send the selected focus presentation.");
 assert.match(cloudflareWorker, /focusDisplayMode:\s*focusDisplayMode/, "The Worker must forward the selected focus presentation to student devices.");
@@ -68,6 +74,9 @@ assert.match(cloudflareWorker, /집중 화면 표시 방식은 집중 모드에�
 assert.match(cloudflareWorker, /MAX_SCHEDULE_DELAY_SECONDS = 7 \* 24 \* 60 \* 60/, "Scheduled commands need a bounded maximum delay.");
 assert.match(cloudflareWorker, /c\.scheduled_for_utc IS NULL OR c\.scheduled_for_utc <= \?/, "Queued commands must wait until their scheduled time before delivery.");
 assert.match(cloudflareWorker, /requestedScheduleAt/, "The Worker must accept an exact scheduled date and time.");
+assert.match(cloudflareWorker, /powerControl/, "The Worker must accept the scoped power-control command.");
+assert.match(cloudflareWorker, /POWER_ON_REQUIRES_WOL_RELAY/, "The Worker must not pretend a WebSocket can wake a powered-off PC.");
+assert.match(cloudflareWorker, /TARGET_OFFLINE.*온라인/, "Power-control commands must reject offline targets.");
 assert.match(cloudflareWorker, /async getCommands\(/, "The Worker must expose recent command records for the work queue.");
 assert.match(cloudflareWorker, /async cancelCommand\(/, "The Worker must cancel queued scheduled commands.");
 assert.match(cloudflareWorker, /async retryCommand\(/, "The Worker must retry failed command targets.");
@@ -76,6 +85,9 @@ assert.match(cloudflareWorker, /async getAttendance\(/, "The Worker must return 
 assert.match(cloudflareWorker, /async saveAttendance\(/, "The Worker must save session attendance records.");
 assert.match(cloudflareWorker, /if \(!scheduledForUtc && kind === "focusMode"\)/, "Scheduled focus commands must not change roster state before delivery.");
 assert.match(script, /scheduleDelaySeconds/, "The command dialog must send the selected delayed-execution interval.");
+assert.match(script, /function openPowerDialog\(/, "The console must expose a device power workspace.");
+assert.match(script, /sendCommand\("powerControl"/, "Power actions must use the authenticated classroom command path.");
+assert.match(script, /powerActionLabel/, "Power actions need human-readable queue labels.");
 assert.match(cloudflareWorker, /SESSION_LIFETIME_MS = 1000 \* 60 \* 60 \* 24 \* 30/, "Sessions need a long-lived lifetime for classroom consoles.");
 assert.match(cloudflareWorker, /renewTeacherSession\(tokenHash, row\.session_expires_at_utc\)/, "Active teacher sessions should renew before expiry.");
 assert.match(script, /requestToken === state\.token/, "A stale request must not clear a newer login session.");
@@ -99,6 +111,10 @@ assert.match(script, /async function openReportDialog\(/, "Teachers need a repor
 assert.match(cloudflareWorker, /ClassGroups/, "Worker must persist student groups per class.");
 assert.match(cloudflareWorker, /ClassPresets/, "Worker must persist classroom presets per class.");
 assert.match(cloudflareWorker, /clearHelp/, "Teacher help acknowledgement must be delivered to student apps.");
+assert.match(updater, /StudentPackageUrl/, "The updater must understand the new student-only manifest field.");
+assert.match(updater, /SelectPackageUrl/, "The updater must fall back to the legacy full-package URL.");
+assert.match(updateManifest, /\"packageUrl\":\s*\"https:\/\/github\.com\/blossom0948\/classroom\/releases\/latest\/download\/Classroom-Windows-x64\.zip\"/, "The update manifest must keep a legacy-compatible full package URL.");
+assert.match(updateManifest, /\"studentPackageUrl\":\s*\"https:\/\/classroom-api\.blossom0948\.cloud\/downloads\/student-package\"/, "The update manifest must advertise the current student-only package URL.");
 assert.match(desktopForm, /ClassroomCommandKind\.ClearHelp/, "Student apps must clear a help request when a teacher acknowledges it.");
 assert.doesNotMatch(html, /id="lesson-flow-card"/, "The removed lesson-flow card should not take dashboard space.");
 assert.doesNotMatch(html, /id="signal-center"/, "The removed signal center should not take dashboard space.");

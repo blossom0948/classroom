@@ -147,11 +147,24 @@ public static class ProtocolValidation
             throw new ProtocolValidationException("FocusDisplayMode is invalid.");
         }
 
+        if (command.PowerAction is { } powerAction
+            && !Enum.IsDefined(typeof(PowerAction), powerAction))
+        {
+            throw new ProtocolValidationException("PowerAction is invalid.");
+        }
+
         if (command.Kind != ClassroomCommandKind.FocusMode
             && command.FocusDisplayMode is not null)
         {
             throw new ProtocolValidationException(
                 "FocusDisplayMode is only valid for focus mode commands.");
+        }
+
+        if (command.Kind != ClassroomCommandKind.PowerControl
+            && command.PowerAction is not null)
+        {
+            throw new ProtocolValidationException(
+                "PowerAction is only valid for power-control commands.");
         }
 
         if (command.RemoteAssistTeacherDisplayName is not null)
@@ -207,6 +220,17 @@ public static class ProtocolValidation
                 break;
             case ClassroomCommandKind.RemoteAssistEnd:
                 ValidateRemoteAssistCommand(command, requiresDuration: false);
+                break;
+            case ClassroomCommandKind.PowerControl:
+                if (command.PowerAction is null)
+                {
+                    throw new ProtocolValidationException("PowerAction is required.");
+                }
+
+                if (!command.RequiresAcknowledgement)
+                {
+                    throw new ProtocolValidationException("Power-control commands require acknowledgment.");
+                }
                 break;
             default:
                 throw new ProtocolValidationException("Unknown Classroom command kind.");

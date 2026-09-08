@@ -1362,17 +1362,44 @@ export class ClassroomState {
     const activeSession = this.one("SELECT * FROM ClassSessions WHERE class_id = ? AND ended_at_utc IS NULL ORDER BY started_at_utc DESC LIMIT 1", classId);
     if (!activeSession) return responseError("SESSION_NOT_ACTIVE", "수업을 시작한 후 명령을 보낼 수 있습니다.", 409, cors);
     const kind = text(body?.kind, 64);
-    if (!new Set(["message", "openUrl", "focusMode", "launchApprovedApp", "screenShare", "clearHelp"]).has(kind)) {
+    if (!new Set(["message", "openUrl", "focusMode", "launchApprovedApp", "screenShare", "clearHelp", "powerControl"]).has(kind)) {
       return responseError("INVALID_COMMAND", "지원하지 않는 수업 명령입니다.", 400, cors);
     }
     const requestId = validId(body?.requestId) ? body.requestId : crypto.randomUUID();
-    const allDevices = this.all("SELECT device_id FROM Devices WHERE class_id = ? AND revoked_at_utc IS NULL", classId);
+    const allDevices = this.all("SELECT device_id, last_heartbeat_utc FROM Devices WHERE class_id = ? AND revoked_at_utc IS NULL", classId);
     const requested = Array.isArray(body?.targetDeviceIds) && body.targetDeviceIds.length ? body.targetDeviceIds : allDevices.map((row) => row.device_id);
     const targets = [...new Set(requested.filter((id) => typeof id === "string"))].slice(0, MAX_COMMAND_TARGETS);
     if (!targets.length) return responseError("NO_TARGETS", "명령을 받을 학생 장치가 없습니다.", 400, cors);
     const validTargets = new Set(allDevices.map((row) => row.device_id));
     const queued = targets.filter((id) => validTargets.has(id));
     if (!queued.length) return responseError("TARGET_FORBIDDEN", "선택한 장치에 명령을 보낼 수 없습니다.", 403, cors);
+
+    const requestedPowerAction = body?.powerAction;
+    const powerAction = ["lock", "shutdown", "restart", "wake"].includes(requestedPowerAction)
+      ? requestedPowerAction
+      : null;
+    if (kind === "powerControl" && !powerAction) {
+      return responseError("INVALID_COMMAND", "전원 명령을 확인해 주세요.", 400, cors);
+    }
+    if (kind === "powerControl" && body?.requiresAcknowledgement === false) {
+      return responseError("INVALID_COMMAND", "전원·잠금 명령은 확인 응답이 필요합니다.", 400, cors);
+    }
+    if (kind !== "powerControl" && requestedPowerAction !== undefined && requestedPowerAction !== null) {
+      return responseError("INVALID_COMMAND", "전원 명령은 전원·잠금 제어에서만 사용할 수 있습니다.", 400, cors);
+    }
+    if (kind === "powerControl" && powerAction === "wake") {
+      return responseError("POWER_ON_REQUIRES_WOL_RELAY", "완전히 꺼진 PC를 켜려면 학교망에 WOL 중계기를 먼저 설정해야 합니다.", 409, cors);
+    }
+    if (kind === "powerControl") {
+      const onlineById = new Map(allDevices.map((device) => [
+        device.device_id,
+        this.isDeviceOnline(device) && this.isDeviceConnected(device.device_id)
+      ]));
+      const offlineCount = queued.filter((deviceId) => !onlineById.get(deviceId)).length;
+      if (offlineCount) {
+        return responseError("TARGET_OFFLINE", `전원·잠금 명령은 온라인 학생 PC에만 보낼 수 있습니다. 오프라인 ${offlineCount}대를 제외하고 다시 선택해 주세요.`, 409, cors);
+      }
+    }
 
     const requestedFocusDisplayMode = body?.focusDisplayMode;
     const focusDisplayMode = requestedFocusDisplayMode === "blackScreen"
@@ -1393,6 +1420,9 @@ export class ClassroomState {
     const hasScheduleAt = requestedScheduleAt !== undefined && requestedScheduleAt !== null;
     if (hasScheduleDelay && hasScheduleAt) {
       return responseError("INVALID_COMMAND", "예약 방식은 시간 간격 또는 날짜·시각 중 하나만 선택해 주세요.", 400, cors);
+    }
+    if (kind === "powerControl" && (hasScheduleDelay || hasScheduleAt)) {
+      return responseError("INVALID_COMMAND", "전원·잠금 명령은 예약할 수 없습니다. 온라인 장치에 즉시 실행해 주세요.", 400, cors);
     }
     let scheduleDelaySeconds = 0;
     let scheduledForUtc = null;
@@ -1429,7 +1459,8 @@ export class ClassroomState {
       requiresAcknowledgement: body?.requiresAcknowledgement !== false,
       focusEnabled: typeof body?.focusEnabled === "boolean" ? body.focusEnabled : null,
       focusDisplayMode: focusDisplayMode,
-      screenShareEnabled: typeof body?.screenShareEnabled === "boolean" ? body.screenShareEnabled : null
+      screenShareEnabled: typeof body?.screenShareEnabled === "boolean" ? body.screenShareEnabled : null,
+      powerAction
     };
     if (kind === "message" && !payload.message) return responseError("INVALID_COMMAND", "보낼 메시지를 입력해 주세요.", 400, cors);
     if (kind === "openUrl" && (!payload.url || !isSafeHttpsUrl(payload.url))) return responseError("INVALID_COMMAND", "HTTPS 주소를 입력해 주세요.", 400, cors);
@@ -1444,7 +1475,8 @@ export class ClassroomState {
     // the applied state after delivery.
     if (!scheduledForUtc && kind === "focusMode") this.exec("UPDATE Devices SET policy_applied = ? WHERE device_id IN (" + placeholders(queued.length) + ")", payload.focusEnabled ? 1 : 0, ...queued);
     if (!scheduledForUtc && kind === "clearHelp") this.exec("UPDATE Devices SET needs_help = 0, help_status = 'RESOLVED' WHERE device_id IN (" + placeholders(queued.length) + ")", ...queued);
-    this.audit({ schoolId: activeSession.school_id, classId, sessionId: activeSession.session_id, teacherId: user.id, requestId, action: "COMMAND", result: "QUEUED", reason: scheduledForUtc ? `${kind} · SCHEDULED` : kind });
+    const auditReason = kind === "powerControl" ? kind + ":" + powerAction : kind;
+    this.audit({ schoolId: activeSession.school_id, classId, sessionId: activeSession.session_id, teacherId: user.id, requestId, action: "COMMAND", result: "QUEUED", reason: scheduledForUtc ? auditReason + " · SCHEDULED" : auditReason });
     for (const deviceId of queued) this.deliverCommands(deviceId);
     return responseJson({ requestId, requestedCount: targets.length, queuedCount: queued.length, queuedDeviceIds: queued, rejectedDeviceIds: targets.filter((id) => !queued.includes(id)), scheduledForUtc }, 200, cors);
   }
@@ -1501,7 +1533,8 @@ export class ClassroomState {
         approvedAppId: payload.approvedAppId || null,
         focusEnabled: payload.focusEnabled,
         focusDisplayMode: payload.focusDisplayMode || null,
-        screenShareEnabled: payload.screenShareEnabled
+        screenShareEnabled: payload.screenShareEnabled,
+        powerAction: payload.powerAction || null
       },
       createdAtUtc: command.created_at_utc,
       scheduledForUtc: command.scheduled_for_utc || null,
@@ -1544,6 +1577,12 @@ export class ClassroomState {
     if (!activeSession) return responseError("SESSION_NOT_ACTIVE", "수업을 시작한 후 다시 보낼 수 있습니다.", 409, cors);
     let payload = {};
     try { payload = JSON.parse(command.payload_json || "{}"); } catch (_) { payload = {}; }
+    if (command.kind === "powerControl") {
+      const onlineById = new Map(this.all("SELECT device_id, last_heartbeat_utc FROM Devices WHERE class_id = ? AND revoked_at_utc IS NULL", classId)
+        .map((device) => [device.device_id, this.isDeviceOnline(device) && this.isDeviceConnected(device.device_id)]));
+      const offlineCount = targets.filter((deviceId) => !onlineById.get(deviceId)).length;
+      if (offlineCount) return responseError("TARGET_OFFLINE", "전원·잠금 재시도는 현재 온라인인 학생 PC에만 보낼 수 있습니다.", 409, cors);
+    }
     const newRequestId = crypto.randomUUID();
     payload.requestId = newRequestId;
     payload.sessionId = activeSession.session_id;
@@ -1554,7 +1593,8 @@ export class ClassroomState {
     for (const deviceId of targets) this.exec("INSERT INTO CommandTargets (request_id, device_id, state) VALUES (?, ?, 'QUEUED')", newRequestId, deviceId);
     if (command.kind === "focusMode") this.exec("UPDATE Devices SET policy_applied = ? WHERE device_id IN (" + placeholders(targets.length) + ")", payload.focusEnabled ? 1 : 0, ...targets);
     if (command.kind === "clearHelp") this.exec("UPDATE Devices SET needs_help = 0, help_status = 'RESOLVED' WHERE device_id IN (" + placeholders(targets.length) + ")", ...targets);
-    this.audit({ schoolId: activeSession.school_id, classId, sessionId: activeSession.session_id, teacherId: user.id, requestId: newRequestId, action: "COMMAND", result: "RETRY_QUEUED", reason: command.kind });
+    const retryReason = command.kind === "powerControl" ? command.kind + ":" + (payload.powerAction || "unknown") : command.kind;
+    this.audit({ schoolId: activeSession.school_id, classId, sessionId: activeSession.session_id, teacherId: user.id, requestId: newRequestId, action: "COMMAND", result: "RETRY_QUEUED", reason: retryReason });
     for (const deviceId of targets) this.deliverCommands(deviceId);
     return responseJson({ requestId: newRequestId, requestedCount: targets.length, queuedCount: targets.length, queuedDeviceIds: targets, rejectedDeviceIds: [], scheduledForUtc: null }, 200, cors);
   }

@@ -12,6 +12,7 @@ var tests = new (string Name, Action Run)[]
     ("device token authentication rejects wrong tokens", DeviceAuthenticationIsBound),
     ("devices follow the server session without reinstalling", HeartbeatUpdatesStatus),
     ("commands are queued and ACK/result are audited", CommandsAreTracked),
+    ("power commands require an online device", PowerCommandsRequireOnlineDevice),
     ("remote assistance requires consent and orders input", RemoteAssistRequiresConsent),
     ("ending a session queues focus mode cleanup", SessionEndQueuesCleanup),
     ("revoked devices can no longer authenticate", RevokedDevicesAreRejected),
@@ -250,6 +251,50 @@ static void CommandsAreTracked()
     var status = fixture.Store.GetCommandStatus(fixture.TeacherId, fixture.ClassId, command.RequestId);
     Assert(status.Finished && status.CompletedCount == 1 && status.FailedCount == 0,
         "Teacher command status did not expose the completed result.");
+}
+
+static void PowerCommandsRequireOnlineDevice()
+{
+    var fixture = CreateEnrolledFixture();
+    var session = fixture.Store.StartSession(fixture.TeacherId, fixture.ClassId, "정보");
+    var command = new CommandRequest(
+        Guid.NewGuid(),
+        session.SessionId,
+        new[] { fixture.DeviceId },
+        ClassroomCommandKind.PowerControl,
+        PowerAction: PowerAction.Lock);
+    var offline = fixture.Store.QueueCommand(fixture.TeacherId, fixture.ClassId, command);
+    Assert(offline.Code == "TARGET_OFFLINE", "Power command was queued for an offline device.");
+
+    Assert(fixture.Store.TryAuthenticateDevice(
+        fixture.DeviceId,
+        fixture.DeviceToken,
+        out var identity) && identity is not null, "Device authentication failed.");
+    Assert(fixture.Store.TryOpenConnection(
+        identity!,
+        Guid.Empty,
+        out _,
+        out var openCode,
+        out var openMessage),
+        $"{openCode}: {openMessage}");
+    Assert(fixture.Store.RecordHeartbeat(identity!, new DeviceHeartbeat(
+        fixture.DeviceId,
+        Guid.Empty,
+        "0.9.1",
+        DateTimeOffset.UtcNow,
+        null,
+        null,
+        "ethernet",
+        true)).Succeeded, "Online power fixture heartbeat was rejected.");
+
+    var online = fixture.Store.QueueCommand(fixture.TeacherId, fixture.ClassId, command);
+    Assert(online.Succeeded && online.Value?.QueuedCount == 1, "Power command was not queued for an online device.");
+    var queued = fixture.Store.WaitForCommandAsync(fixture.DeviceId, CancellationToken.None)
+        .AsTask()
+        .GetAwaiter()
+        .GetResult();
+    Assert(queued.Kind == ClassroomCommandKind.PowerControl && queued.PowerAction is PowerAction.Lock,
+        "Queued power command lost its action.");
 }
 
 static void RemoteAssistRequiresConsent()
