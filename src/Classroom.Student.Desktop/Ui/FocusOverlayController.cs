@@ -367,7 +367,10 @@ internal sealed class FocusOverlaySurface : Form
         {
             try
             {
-                return (IVirtualDesktopManager)new VirtualDesktopManagerClass();
+                // The coclass is intentionally declared without a managed
+                // interface map; COM supplies the interface through
+                // QueryInterface at runtime.
+                return (IVirtualDesktopManager)(object)new VirtualDesktopManagerClass();
             }
             catch (COMException)
             {
