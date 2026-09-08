@@ -179,6 +179,9 @@ assert.doesNotMatch(cloudflareWorker, /async startSession\(request, classId, cor
 assert.doesNotMatch(cloudflareWorker, /async queueCommand\(request, classId, cors\)[\s\S]{0,320}user\.is_guest/, "School guests must be able to send classroom commands through the API.");
 assert.match(styles, /0\.6\.2 — dark mode contrast pass/, "The dark mode contrast pass must be present after the final light-surface rules.");
 assert.match(styles, /html\[data-theme="dark"\] #app-view \.student-card/, "Student cards need an explicit dark surface and readable text.");
+assert.match(script, /studentCardRenderKey/, "Heartbeat refreshes must preserve unchanged student-card DOM.");
+assert.match(script, /student-roster-enter/, "Student-card entrance motion must be limited to the initial roster render.");
+assert.match(styles, /#app-view \.student-grid\.student-roster-enter \.student-card/, "Student-card entrance motion must be opt-in so polling cannot replay it.");
 assert.match(styles, /html\[data-theme="dark"\] #detail-pane\.screen-mode/, "Student screen detail needs an explicit dark surface.");
 assert.match(styles, /html\[data-theme="dark"\] \.workspace-dialog[\s\S]*background: #151f31/, "Workspace dialogs need an opaque dark surface.");
 assert.match(script, /\$\("school-login-button"\)\.addEventListener\("click", openGuestLoginDialog\)/, "School login must open the school guest access flow.");

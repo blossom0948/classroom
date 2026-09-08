@@ -5323,10 +5323,10 @@ html[data-theme="dark"] .auth-tab.active { color: #dce7ff; }
   #class-section > .class-command-strip { animation: mobile-context-in 410ms 45ms cubic-bezier(.22,.8,.24,1) both; }
   #class-section > .class-metrics { animation: mobile-context-in 430ms 85ms cubic-bezier(.22,.8,.24,1) both; }
   #app-view .toolbar-row.toolbar-browse-row { animation: mobile-context-in 450ms 115ms cubic-bezier(.22,.8,.24,1) both; }
-  #app-view .student-card { animation: mobile-card-in 320ms cubic-bezier(.22,.8,.24,1) both; }
-  #app-view .student-card:nth-child(2) { animation-delay: 35ms; }
-  #app-view .student-card:nth-child(3) { animation-delay: 65ms; }
-  #app-view .student-card:nth-child(4) { animation-delay: 95ms; }
+  #app-view .student-grid.student-roster-enter .student-card { animation: mobile-card-in 320ms cubic-bezier(.22,.8,.24,1) both; }
+  #app-view .student-grid.student-roster-enter .student-card:nth-child(2) { animation-delay: 35ms; }
+  #app-view .student-grid.student-roster-enter .student-card:nth-child(3) { animation-delay: 65ms; }
+  #app-view .student-grid.student-roster-enter .student-card:nth-child(4) { animation-delay: 95ms; }
 }
 @keyframes mobile-context-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes mobile-card-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -5924,10 +5924,10 @@ dialog * {
   #app-view .section-view:not([hidden]) { animation: classroom-section-in var(--ui-motion-slow) var(--ui-spring) both; }
   #landing-view .hero-visual { animation-delay: 55ms; }
   #login-view .auth-card { animation-name: classroom-dialog-in; animation-delay: 60ms; }
-  #app-view .student-card { animation: classroom-card-in 360ms var(--ui-spring) both; }
-  #app-view .student-card:nth-child(2) { animation-delay: 32ms; }
-  #app-view .student-card:nth-child(3) { animation-delay: 64ms; }
-  #app-view .student-card:nth-child(4) { animation-delay: 96ms; }
+  #app-view .student-grid.student-roster-enter .student-card { animation: classroom-card-in 360ms var(--ui-spring) both; }
+  #app-view .student-grid.student-roster-enter .student-card:nth-child(2) { animation-delay: 32ms; }
+  #app-view .student-grid.student-roster-enter .student-card:nth-child(3) { animation-delay: 64ms; }
+  #app-view .student-grid.student-roster-enter .student-card:nth-child(4) { animation-delay: 96ms; }
 }
 
 @media (max-width: 820px) {

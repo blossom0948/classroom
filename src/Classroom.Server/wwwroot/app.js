@@ -231,6 +231,12 @@
     state.auditEntries = [];
     state.lessonTool = { goal: "", stage: "prepare", durationSeconds: 1200, remainingSeconds: 1200, endsAtUtc: null };
     state.mobileCommandOpen = false;
+    const rosterGrid = $("student-grid");
+    if (rosterGrid) {
+      rosterGrid.dataset.studentCardRenderKey = "";
+      rosterGrid.dataset.studentRosterRendered = "";
+      rosterGrid.classList.remove("student-roster-enter");
+    }
     syncMobileCommandUi();
     closeAlertDrawer();
     landingView.hidden = false;
@@ -515,6 +521,12 @@
     state.session = null;
     state.selectedDeviceIds.clear();
     state.workspaceClassId = null;
+    const rosterGrid = $("student-grid");
+    if (rosterGrid) {
+      rosterGrid.dataset.studentCardRenderKey = "";
+      rosterGrid.dataset.studentRosterRendered = "";
+      rosterGrid.classList.remove("student-roster-enter");
+    }
     renderClassPicker();
     await refreshClass();
     await loadWorkspaceData();
@@ -1415,11 +1427,55 @@
     renderStudentViewControls();
 
     if (monitorMode) {
+      // The screen wall intentionally refreshes its image tiles on every
+      // heartbeat.  Do not let a previous roster render state leak into the
+      // normal student-card view when the teacher closes the wall.
+      grid.dataset.studentCardRenderKey = "";
+      grid.classList.remove("student-roster-enter");
       renderMonitorGrid(grid, filtered);
       return;
     }
 
     renderMonitorPagination(0, 0);
+    const rosterKey = JSON.stringify({
+      filter: state.filter,
+      search: state.search,
+      sort: state.studentSort,
+      total: state.students.length,
+      selected: [...state.selectedDeviceIds].sort(),
+      students: filtered.map((student) => ({
+        id: student.deviceId,
+        name: student.studentDisplayName,
+        computer: student.computerName,
+        online: student.online,
+        needsHelp: student.needsHelp,
+        helpStatus: student.helpStatus,
+        activityRisk: student.activityRisk
+          ? [student.activityRisk.level, student.activityRisk.label, student.activityRisk.reason]
+          : null,
+        activity: student.activity
+          ? [student.activity.applicationDisplayName, student.activity.browserDomain, student.activity.windowTitle]
+          : null,
+        battery: student.batteryPercent,
+        network: student.networkStatus,
+        policy: student.policyApplied,
+        number: student.studentNumber
+      }))
+    });
+
+    // Polling normally returns the same roster every couple of seconds. Keep
+    // those existing nodes in place so focus, hover and layout state remain
+    // stable instead of re-triggering visual motion on every heartbeat.
+    if (grid.dataset.studentCardRenderKey === rosterKey) return;
+    grid.dataset.studentCardRenderKey = rosterKey;
+    grid.classList.remove("student-roster-enter");
+    const animateInitialRoster = filtered.length > 0 && grid.dataset.studentRosterRendered !== "true";
+    if (animateInitialRoster) {
+      grid.dataset.studentRosterRendered = "true";
+      grid.classList.add("student-roster-enter");
+      window.setTimeout(() => grid.classList.remove("student-roster-enter"), 520);
+    }
+
     if (!filtered.length) {
       if (state.students.length) {
         grid.innerHTML = '<div class="empty-state">현재 필터에 해당하는 학생이 없습니다.</div>';
