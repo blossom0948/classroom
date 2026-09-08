@@ -60,7 +60,7 @@ public sealed class StudentDesktopForm : Form
     private bool serverConnected;
     private Guid serverSessionId;
     private long serverConnectionEpoch;
-    private FocusOverlayForm? focusOverlay;
+    private FocusOverlayController? focusOverlay;
     private RemoteAssistOverlayForm? remoteAssistOverlay;
     private Guid? remoteAssistSessionId;
     private DateTimeOffset remoteAssistExpiresAtUtc;
@@ -211,6 +211,8 @@ public sealed class StudentDesktopForm : Form
             remoteAssistTimer.Dispose();
             RemoteAssistInputInjector.ReleaseAll();
             statusProvider.SetRemoteAssist(null, false);
+            focusOverlay?.Dispose();
+            focusOverlay = null;
             remoteAssistOverlay?.Dismiss();
             trayIcon.Visible = false;
             trayIcon.Dispose();
@@ -446,12 +448,11 @@ public sealed class StudentDesktopForm : Form
         statusProvider.SetPolicyApplied(enabled);
         if (enabled)
         {
-            focusOverlay ??= new FocusOverlayForm();
+            focusOverlay ??= new FocusOverlayController();
             focusOverlay.SetDisplay(
                 command.FocusDisplayMode ?? FocusDisplayMode.Message,
-                command.Message ?? "수업에 집중해 주세요.");
+                command.Message);
             focusOverlay.Show();
-            focusOverlay.BringToFront();
             return new DesktopCommandApplyResult(true, "FOCUS_MODE_ENABLED", "Focus mode enabled.");
         }
 
@@ -462,7 +463,7 @@ public sealed class StudentDesktopForm : Form
     private void ClearFocusMode()
     {
         disconnectFailsafeTimer.Stop();
-        focusOverlay?.Dismiss();
+        focusOverlay?.Dispose();
         focusOverlay = null;
         statusProvider.SetPolicyApplied(false);
     }
@@ -1133,57 +1134,4 @@ public sealed class StudentDesktopForm : Form
         public string Pin => pinInput.Text;
     }
 
-    private sealed class FocusOverlayForm : Form
-    {
-        private static readonly Color MessageBackground = Color.FromArgb(24, 36, 58);
-        private bool allowClose;
-        private readonly Label label = new()
-        {
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = Color.White,
-            BackColor = MessageBackground,
-            Font = new Font("Segoe UI Semibold", 28F, FontStyle.Bold, GraphicsUnit.Point)
-        };
-
-        public FocusOverlayForm()
-        {
-            BackColor = MessageBackground;
-            FormBorderStyle = FormBorderStyle.None;
-            WindowState = FormWindowState.Maximized;
-            TopMost = true;
-            ShowInTaskbar = false;
-            Controls.Add(label);
-            FormClosing += (_, eventArgs) =>
-            {
-                if (!allowClose && eventArgs.CloseReason == CloseReason.UserClosing)
-                {
-                    eventArgs.Cancel = true;
-                    BringToFront();
-                }
-            };
-        }
-
-        public void SetDisplay(FocusDisplayMode displayMode, string message)
-        {
-            var blackScreen = displayMode is FocusDisplayMode.BlackScreen;
-            var background = blackScreen ? Color.Black : MessageBackground;
-            BackColor = background;
-            label.BackColor = background;
-            label.Text = string.Empty;
-            label.Visible = false;
-            if (!blackScreen)
-            {
-                label.ForeColor = Color.White;
-                label.Text = $"집중 모드\n\n{message}";
-                label.Visible = true;
-            }
-        }
-
-        public void Dismiss()
-        {
-            allowClose = true;
-            Close();
-        }
-    }
 }

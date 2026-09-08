@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.7.0";
+  const APP_VERSION = "0.9.0";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -54,6 +54,7 @@
     teacher: null,
     classes: [],
     classId: null,
+    classPickerGrade: null,
     session: null,
     students: [],
     refreshInFlight: false,
@@ -181,6 +182,7 @@
     state.teacher = null;
     state.classes = [];
     state.classId = null;
+    state.classPickerGrade = null;
     state.session = null;
     state.students = [];
     state.refreshInFlight = false;
@@ -411,7 +413,7 @@
     }
   }
 
-  function renderClassPicker() {
+  function renderClassPickerLegacy() {
     const select = $("class-select");
     const button = $("class-select-button");
     const menu = $("class-select-menu");
@@ -431,6 +433,70 @@
     closeClassPicker();
   }
 
+  function classPickerGradeKey(item) {
+    const grade = Number(item?.grade);
+    return Number.isInteger(grade) && grade >= 1 && grade <= 12 ? String(grade) : "other";
+  }
+
+  function classPickerGradeLabel(key) {
+    return key === "other" ? "기타" : `${key}학년`;
+  }
+
+  function renderClassPicker(options = {}) {
+    const select = $("class-select");
+    const button = $("class-select-button");
+    const menu = $("class-select-menu");
+    if (!select || !button || !menu) return;
+    const classes = Array.isArray(state.classes) ? state.classes : [];
+    const selected = currentClass();
+    const wasOpen = !menu.hidden;
+    const gradeKeys = [...new Set(classes.map(classPickerGradeKey))].sort((left, right) => {
+      if (left === "other") return 1;
+      if (right === "other") return -1;
+      return Number(left) - Number(right);
+    });
+    const availableGrades = ["all", ...gradeKeys];
+    const selectedGrade = selected ? classPickerGradeKey(selected) : null;
+    if (!availableGrades.includes(state.classPickerGrade)) {
+      state.classPickerGrade = selectedGrade && availableGrades.includes(selectedGrade)
+        ? selectedGrade
+        : (gradeKeys[0] || "all");
+    }
+    const activeGrade = state.classPickerGrade || "all";
+    const visibleClasses = activeGrade === "all"
+      ? classes
+      : classes.filter((item) => classPickerGradeKey(item) === activeGrade);
+    select.innerHTML = classes.length
+      ? classes.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join("")
+      : `<option value="">학급 없음</option>`;
+    select.value = state.classId || "";
+    select.disabled = !classes.length;
+    button.disabled = !classes.length;
+    button.innerHTML = `<span>${escapeHtml(selected?.name || "학급 없음")}</span><span class="select-chevron" aria-hidden="true">⌄</span>`;
+    if (!classes.length) {
+      menu.innerHTML = `<div class="class-select-empty">관리자 메뉴에서 학급을 먼저 만들어 주세요.</div>`;
+      closeClassPicker();
+      return;
+    }
+    const gradeTabs = [
+      `<button type="button" class="class-grade-tab${activeGrade === "all" ? " active" : ""}" role="tab" aria-selected="${activeGrade === "all"}" data-class-grade="all">전체 <small>${classes.length}</small></button>`,
+      ...gradeKeys.map((key) => {
+        const count = classes.filter((item) => classPickerGradeKey(item) === key).length;
+        return `<button type="button" class="class-grade-tab${activeGrade === key ? " active" : ""}" role="tab" aria-selected="${activeGrade === key}" data-class-grade="${escapeHtml(key)}">${escapeHtml(classPickerGradeLabel(key))} <small>${count}</small></button>`;
+      })
+    ].join("");
+    const optionMarkup = visibleClasses.length
+      ? visibleClasses.map((item) => `<button type="button" class="class-select-option${item.id === state.classId ? " active" : ""}" role="option" aria-selected="${item.id === state.classId}" data-class-option="${escapeHtml(item.id)}"><span class="class-select-option-main"><strong class="class-select-option-name">${escapeHtml(item.name)}</strong>${activeGrade === "all" ? `<small class="class-select-grade">${escapeHtml(classPickerGradeLabel(classPickerGradeKey(item)))}</small>` : ""}</span>${item.defaultSubject ? `<small class="class-select-subject">${escapeHtml(item.defaultSubject)}</small>` : `<small class="class-select-subject">수업 준비</small>`}</button>`).join("")
+      : `<div class="class-select-empty">이 학년에 만든 학급이 없습니다.</div>`;
+    menu.innerHTML = `<div class="class-select-menu-head"><div><span class="toolbar-kicker">CLASS SWITCHER</span><strong>학년별 학급</strong></div><span class="class-select-count">${classes.length}개 반</span></div><div class="class-grade-tabs" role="tablist" aria-label="학년별 학급">${gradeTabs}</div><div class="class-select-options" role="listbox" aria-label="${escapeHtml(activeGrade === "all" ? "전체" : classPickerGradeLabel(activeGrade))} 학급">${optionMarkup}</div>`;
+    if (options.preserveOpen && wasOpen) {
+      menu.hidden = false;
+      button.setAttribute("aria-expanded", "true");
+    } else {
+      closeClassPicker();
+    }
+  }
+
   function toggleClassPicker() {
     const button = $("class-select-button");
     const menu = $("class-select-menu");
@@ -444,6 +510,7 @@
     if (!classId || !state.classes.some((item) => item.id === classId)) return;
     if (state.screenShareTargetIds?.length) await stopScreenSharing(true);
     state.classId = classId;
+    state.classPickerGrade = classPickerGradeKey(state.classes.find((item) => item.id === classId));
     state.session = null;
     state.selectedDeviceIds.clear();
     state.workspaceClassId = null;
@@ -1764,7 +1831,7 @@
     });
   }
 
-  function renderStudentCodes() {
+  function renderStudentCodesLegacy() {
     const list = $("student-codes-list");
     if (!list) return;
     const query = $("student-code-search")?.value.trim().toLocaleLowerCase("ko-KR") || "";
@@ -1789,6 +1856,95 @@
     list.querySelectorAll("[data-roster-class]").forEach((button) => {
       button.addEventListener("click", () => openStudentRoster(button.dataset.rosterClass));
     });
+  }
+
+  function renderStudentCodes() {
+    const list = $("student-codes-list");
+    if (!list) return;
+    const query = $("student-code-search")?.value.trim().toLocaleLowerCase("ko-KR") || "";
+    const models = collectRosterClasses().filter((item) => !query || item.codes.some((code) => String(code.studentDisplayName || "").toLocaleLowerCase("ko-KR").includes(query)));
+    if (!models.length) {
+      list.innerHTML = query
+        ? `<div class="empty-state">검색 조건에 맞는 학생이 없습니다.</div>`
+        : `<div class="empty-state"><strong>아직 만들어진 학급이 없습니다.</strong><p>관리자가 관리자 메뉴에서 학급과 학생 코드를 준비하면 여기에 표시됩니다.</p></div>`;
+      return;
+    }
+
+    const grades = new Map();
+    models.forEach((item) => {
+      if (!grades.has(item.grade)) grades.set(item.grade, []);
+      grades.get(item.grade).push(item);
+    });
+    list.innerHTML = [...grades.entries()].sort(([left], [right]) => right - left).map(([grade, classes]) => {
+      classes.sort((left, right) => left.classNumber - right.classNumber || left.className.localeCompare(right.className, "ko"));
+      return `<section class="grade-roster-group"><div class="grade-roster-heading"><div><span class="eyebrow">GRADE</span><h3>${grade}학년</h3></div><span class="muted small">${classes.length}개 반</span></div><div class="roster-class-grid">${classes.map((item) => `<article class="roster-class-card"><button class="roster-class-main" type="button" data-roster-class-open="${escapeHtml(item.classId)}" aria-label="${escapeHtml(`${item.className} 학생 명단 보기`)}"><span class="roster-class-number">${item.classNumber}반</span><strong class="roster-class-name">${escapeHtml(item.className)}</strong><span class="roster-class-meta">${item.codes.length}명${item.subject ? ` · ${escapeHtml(item.subject)}` : ""}</span><span class="roster-class-action">명단 보기 <span aria-hidden="true">→</span></span></button>${state.teacher?.isAdmin ? `<div class="roster-class-actions"><button class="roster-class-edit" type="button" data-roster-class-edit="${escapeHtml(item.classId)}">수정</button><button class="roster-class-delete" type="button" data-roster-class-delete="${escapeHtml(item.classId)}">삭제</button></div>` : ""}</article>`).join("")}</div></section>`;
+    }).join("");
+
+    list.querySelectorAll("[data-roster-class-open]").forEach((button) => {
+      button.addEventListener("click", () => openStudentRoster(button.dataset.rosterClassOpen));
+    });
+    list.querySelectorAll("[data-roster-class-edit]").forEach((button) => {
+      button.addEventListener("click", () => openClassEditDialog(button.dataset.rosterClassEdit));
+    });
+    list.querySelectorAll("[data-roster-class-delete]").forEach((button) => {
+      button.addEventListener("click", () => deleteClassFromRoster(button.dataset.rosterClassDelete).catch((error) => showToast(error.message)));
+    });
+  }
+
+  function openClassEditDialog(classId) {
+    if (!state.teacher?.isAdmin) {
+      showToast("학급 정보 수정은 관리자만 할 수 있습니다.");
+      return;
+    }
+    const classItem = state.classes.find((item) => item.id === classId);
+    const dialog = $("class-edit-dialog");
+    if (!classItem || !dialog) return;
+    $("class-edit-id").value = classItem.id;
+    $("class-edit-title").textContent = `${classItem.name || "학급"} 정보 수정`;
+    $("class-edit-grade").value = String(classItem.grade || "");
+    $("class-edit-number").value = String(classItem.classNumber || "");
+    $("class-edit-name").value = classItem.name || "";
+    $("class-edit-subject").value = classItem.defaultSubject || "";
+    const errorTarget = $("class-edit-error");
+    errorTarget.textContent = "";
+    errorTarget.hidden = true;
+    dialog.showModal();
+  }
+
+  async function saveClassEdit() {
+    if (!state.teacher?.isAdmin) throw new Error("학급 정보 수정은 관리자만 할 수 있습니다.");
+    const classId = $("class-edit-id").value;
+    const name = $("class-edit-name").value.trim();
+    const grade = Number($("class-edit-grade").value);
+    const classNumber = Number($("class-edit-number").value);
+    const subject = $("class-edit-subject").value.trim();
+    if (!classId || !name || !Number.isInteger(grade) || grade < 1 || grade > 12 || !Number.isInteger(classNumber) || classNumber < 1 || classNumber > 99) {
+      throw new Error("학년, 반 번호, 반 이름을 올바르게 입력해 주세요.");
+    }
+    await api(`/api/admin/classes/${encodeURIComponent(classId)}`, {
+      method: "PUT",
+      body: { name, grade, classNumber, subject }
+    });
+    $("class-edit-dialog")?.close("saved");
+    showToast("반 정보를 저장했습니다.");
+    await loadTeacher();
+    await loadStudentCodes();
+  }
+
+  async function deleteClassFromRoster(classId) {
+    if (!state.teacher?.isAdmin) throw new Error("학급 삭제는 관리자만 할 수 있습니다.");
+    const classItem = state.classes.find((item) => item.id === classId);
+    if (!classItem) return;
+    const model = collectRosterClasses().find((item) => item.classId === classId);
+    const studentCount = model?.codes.length || 0;
+    const confirmed = await askConfirmation("학급 삭제", `${classItem.name}을 삭제할까요?\n학생 코드 ${studentCount}개와 연결된 장치·예약 작업이 함께 정리됩니다.`, "반 삭제");
+    if (!confirmed) return;
+    await api(`/api/admin/classes/${encodeURIComponent(classId)}`, { method: "DELETE" });
+    if ($("student-roster-dialog")?.open && state.studentRosterClassId === classId) $("student-roster-dialog").close("deleted");
+    state.studentRosterClassId = null;
+    showToast(`${classItem.name} 반을 삭제했습니다.`);
+    await loadTeacher();
+    await loadStudentCodes();
   }
 
   function collectRosterClasses() {
@@ -3412,6 +3568,13 @@
   });
   $("class-select-button").addEventListener("click", toggleClassPicker);
   $("class-select-menu").addEventListener("click", (event) => {
+    const gradeTab = event.target.closest("[data-class-grade]");
+    if (gradeTab) {
+      event.stopPropagation();
+      state.classPickerGrade = gradeTab.dataset.classGrade || "all";
+      renderClassPicker({ preserveOpen: true });
+      return;
+    }
     const option = event.target.closest("[data-class-option]");
     if (option) chooseClass(option.dataset.classOption).catch((error) => showToast(error.message));
   });
@@ -3563,6 +3726,22 @@
   $("class-form").addEventListener("submit", (event) => {
     event.preventDefault();
     createClassFromAdmin();
+  });
+  $("class-edit-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const errorTarget = $("class-edit-error");
+    const saveButton = $("class-edit-save");
+    errorTarget.textContent = "";
+    errorTarget.hidden = true;
+    saveButton.disabled = true;
+    try {
+      await saveClassEdit();
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
+    } finally {
+      saveButton.disabled = false;
+    }
   });
   $("roster-import-form").addEventListener("submit", (event) => {
     event.preventDefault();

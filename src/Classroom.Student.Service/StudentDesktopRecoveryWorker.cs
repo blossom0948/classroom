@@ -11,8 +11,11 @@ namespace Blossom.Classroom.Student.Service;
 public sealed class StudentDesktopRecoveryWorker(
     ILogger<StudentDesktopRecoveryWorker> logger) : BackgroundService
 {
-    private static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(4);
-    private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(20);
+    // Keep the first launch quick after logon and recover a force-closed
+    // desktop within a few seconds. The service itself remains the durable
+    // component; this worker only starts the visible per-user watchdog.
+    private static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(5);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -49,8 +52,7 @@ public sealed class StudentDesktopRecoveryWorker(
     {
         var serviceDirectory = Path.GetFullPath(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
         var installRoot = Directory.GetParent(serviceDirectory)?.FullName;
-        if (string.IsNullOrWhiteSpace(installRoot)
-            || !string.Equals(Path.GetFileName(installRoot), "Blossom Classroom Student", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(installRoot))
         {
             return null;
         }

@@ -14,7 +14,7 @@ param(
 
     [string]$IpcToken,
 
-    [string]$AgentVersion = "0.6.9",
+    [string]$AgentVersion = "0.9.0",
 
     [string]$LogPath,
 
@@ -321,6 +321,27 @@ Get-Process -ErrorAction SilentlyContinue | Where-Object {
     }
 } | Stop-Process -Force -ErrorAction SilentlyContinue
 
+# Give the watchdog and any child UI process time to release executable
+# handles before the payload is replaced. This prevents the intermittent
+# “file is still in use” error seen during a fast repair or upgrade.
+$desktopStopDeadline = [DateTime]::UtcNow.AddSeconds(20)
+while ([DateTime]::UtcNow -lt $desktopStopDeadline) {
+    $remainingDesktop = @(Get-Process -Name 'Classroom.Student.Desktop' -ErrorAction SilentlyContinue | Where-Object {
+        try {
+            $processPath = [IO.Path]::GetFullPath($_.Path)
+            $processPath.StartsWith("$resolvedDesktopInstallRoot\", [StringComparison]::OrdinalIgnoreCase)
+        }
+        catch {
+            $false
+        }
+    })
+    if ($remainingDesktop.Count -eq 0) {
+        break
+    }
+
+    Start-Sleep -Milliseconds 250
+}
+
 Copy-ClassroomPayload -SourceDirectory (Split-Path -Parent $serviceExecutable) -DestinationDirectory $serviceInstallRoot
 Copy-ClassroomPayload -SourceDirectory (Split-Path -Parent $desktopExecutable) -DestinationDirectory $desktopInstallRoot
 Write-ClassroomInstallLog "학생용 파일 복사 완료"
@@ -348,6 +369,10 @@ else {
 
 Invoke-ClassroomServiceControl @("description", $serviceName, "Blossom Classroom 학생 기기 연결 및 상태 제공 서비스") -AllowFailure | Out-Null
 Invoke-ClassroomServiceControl @("failure", $serviceName, "reset=", "86400", "actions=", "restart/5000/restart/15000/restart/60000") -AllowFailure | Out-Null
+# Let Windows finish network and user-session initialization before the
+# durable service starts; its recovery worker then launches the visible
+# watchdog immediately for the active user.
+Invoke-ClassroomServiceControl @("config", $serviceName, "start=", "delayed-auto") -AllowFailure | Out-Null
 Write-ClassroomInstallLog "Windows 서비스 등록 완료"
 
 $serviceRegistryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$serviceName"
@@ -360,6 +385,7 @@ $serviceEnvironment = @(
     "CLASSROOM_DISABLE_DESKTOP_AUTOSTART=$(if ($SkipDesktopStartup) { '1' } else { '0' })"
 )
 New-ItemProperty -Path $serviceRegistryPath -Name "Environment" -PropertyType MultiString -Value $serviceEnvironment -Force | Out-Null
+New-ItemProperty -Path $serviceRegistryPath -Name "DelayedAutoStart" -PropertyType DWord -Value 1 -Force | Out-Null
 
 # Keep a machine-level copy for the interactive tray process. User environment
 # variables are still written for compatibility, but a school image or a

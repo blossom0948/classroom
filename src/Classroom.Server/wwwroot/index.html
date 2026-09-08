@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-    <link rel="stylesheet" href="/styles.css?v=0.7.0">
+    <link rel="stylesheet" href="/styles.css?v=0.9.0">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -262,7 +262,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.7.0</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.9.0</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -451,6 +451,21 @@
       </div>
     </form>
   </dialog>
+  <dialog id="class-edit-dialog" class="command-dialog class-edit-dialog">
+    <form method="dialog" id="class-edit-form" class="stack">
+      <div class="dialog-heading"><span class="eyebrow">CLASS SETTINGS</span><h2 id="class-edit-title">반 정보 수정</h2></div>
+      <input id="class-edit-id" type="hidden">
+      <div class="class-edit-grid">
+        <label>학년<select id="class-edit-grade" required><option value="1">1학년</option><option value="2">2학년</option><option value="3">3학년</option><option value="4">4학년</option><option value="5">5학년</option><option value="6">6학년</option><option value="7">7학년</option><option value="8">8학년</option><option value="9">9학년</option><option value="10">10학년</option><option value="11">11학년</option><option value="12">12학년</option></select></label>
+        <label>반<input id="class-edit-number" type="number" min="1" max="99" required placeholder="예: 1"></label>
+      </div>
+      <label>반 이름<input id="class-edit-name" maxlength="128" required placeholder="예: 1학년 1반"></label>
+      <label>과목 <span class="optional-label">선택</span><input id="class-edit-subject" maxlength="128" placeholder="예: 정보"></label>
+      <p class="muted small">학생 코드는 유지되고 반 정보만 바뀝니다. 이름·학년·반 번호를 한 번에 수정할 수 있습니다.</p>
+      <p id="class-edit-error" class="error" hidden></p>
+      <div class="dialog-actions"><button class="secondary" type="button" data-dialog-cancel>취소</button><button id="class-edit-save" class="primary" type="submit">저장</button></div>
+    </form>
+  </dialog>
   <dialog id="onboarding-dialog" class="command-dialog onboarding-dialog">
     <form method="dialog" id="onboarding-form" class="stack">
       <div class="dialog-heading"><span class="eyebrow">WELCOME</span><h2>수업 프로필을 설정해 주세요</h2></div>
@@ -492,6 +507,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.7.0" defer></script>
+  <script src="/app.js?v=0.9.0" defer></script>
 </body>
 </html>

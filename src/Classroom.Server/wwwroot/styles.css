@@ -5984,3 +5984,171 @@ dialog a {
 @media (prefers-reduced-motion: reduce) {
   :where(*, *::before, *::after) { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+/* 0.8.0 — class navigation and overlay hierarchy
+   The picker is a horizontal grade switcher rather than a long vertical list.
+   Temporary surfaces use one explicit stack so a drawer or command sheet
+   cannot disappear beneath the top bar or another fixed control. */
+#app-view .app-shell { isolation: isolate; }
+#app-view .topbar { position: relative; z-index: 420 !important; }
+#app-view .custom-class-picker { position: relative; z-index: 950 !important; }
+#app-view .class-select-menu {
+  background: var(--ui-surface-solid) !important;
+  border: 1px solid var(--ui-line) !important;
+  border-radius: 20px;
+  box-shadow: var(--ui-shadow-float) !important;
+  display: grid;
+  gap: 12px;
+  max-height: min(470px, 64vh);
+  min-width: min(430px, calc(100vw - 24px));
+  overflow: hidden;
+  padding: 13px;
+  z-index: 1400 !important;
+}
+#app-view .class-select-menu-head {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 1px 2px 0;
+}
+#app-view .class-select-menu-head > div { display: grid; gap: 3px; min-width: 0; }
+#app-view .class-select-menu-head .toolbar-kicker { color: var(--ui-blue-strong); font-size: 10px; font-weight: 850; letter-spacing: .12em; }
+#app-view .class-select-menu-head strong { color: var(--ui-ink); font-size: 16px; letter-spacing: -.03em; }
+#app-view .class-select-count { background: var(--ui-surface-raised); border: 1px solid var(--ui-line); border-radius: 999px; color: var(--ui-muted); flex: 0 0 auto; font-size: 10px; font-weight: 800; padding: 6px 9px; }
+#app-view .class-grade-tabs {
+  display: flex;
+  gap: 7px;
+  margin: 0 -2px;
+  overflow-x: auto;
+  padding: 0 2px 3px;
+  scrollbar-width: none;
+}
+#app-view .class-grade-tabs::-webkit-scrollbar { display: none; }
+#app-view .class-grade-tab {
+  align-items: center;
+  background: var(--ui-surface-raised);
+  border: 1px solid var(--ui-line);
+  border-radius: 999px;
+  color: var(--ui-muted);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 820;
+  gap: 5px;
+  min-height: 35px;
+  padding: 7px 11px;
+}
+#app-view .class-grade-tab small { color: currentColor; font-size: 10px; opacity: .72; }
+#app-view .class-grade-tab:hover { border-color: color-mix(in srgb, var(--ui-blue) 48%, var(--ui-line)); color: var(--ui-blue-strong); transform: translateY(-1px); }
+#app-view .class-grade-tab.active { background: var(--ui-blue); border-color: var(--ui-blue); box-shadow: 0 7px 16px color-mix(in srgb, var(--ui-blue) 24%, transparent); color: #fff; }
+#app-view .class-select-options {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-height: 300px;
+  min-height: 0;
+  overflow: auto;
+  padding: 1px 2px 2px 0;
+  scrollbar-color: color-mix(in srgb, var(--ui-blue) 42%, var(--ui-line)) transparent;
+}
+#app-view .class-select-option {
+  align-items: stretch;
+  background: var(--ui-surface-raised);
+  border: 1px solid var(--ui-line);
+  border-radius: 15px;
+  color: var(--ui-ink);
+  display: grid;
+  gap: 9px;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+  min-height: 67px;
+  padding: 12px;
+  text-align: left;
+  width: 100%;
+}
+#app-view .class-select-option:hover { border-color: color-mix(in srgb, var(--ui-blue) 48%, var(--ui-line)); box-shadow: var(--ui-shadow-card); transform: translateY(-1px); }
+#app-view .class-select-option.active { background: color-mix(in srgb, var(--ui-blue-soft) 74%, var(--ui-surface-raised)); border-color: color-mix(in srgb, var(--ui-blue) 70%, var(--ui-line)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-blue) 14%, transparent); }
+#app-view .class-select-option-main { display: grid; gap: 4px; min-width: 0; }
+#app-view .class-select-option-name { color: var(--ui-ink); font-size: 13px; font-weight: 850; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#app-view .class-select-grade,
+#app-view .class-select-subject { color: var(--ui-muted); font-size: 10px; font-weight: 720; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#app-view .class-select-option.active .class-select-option-name { color: var(--ui-blue-strong); }
+#app-view .class-select-empty { color: var(--ui-muted); font-size: 12px; line-height: 1.55; padding: 12px 4px; }
+
+#app-view .roster-class-card {
+  align-items: stretch;
+  background: var(--ui-surface-solid) !important;
+  border: 1px solid var(--ui-line) !important;
+  border-radius: 18px;
+  box-shadow: var(--ui-shadow-card);
+  display: grid;
+  gap: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+}
+#app-view .roster-class-card:hover { border-color: color-mix(in srgb, var(--ui-blue) 40%, var(--ui-line)) !important; box-shadow: var(--ui-shadow-float); }
+#app-view .roster-class-main {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--ui-ink);
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 16px;
+  text-align: left;
+}
+#app-view .roster-class-main:hover { background: color-mix(in srgb, var(--ui-blue-soft) 45%, transparent); transform: none; }
+#app-view .roster-class-number { color: var(--ui-blue-strong); font-size: 11px; font-weight: 850; letter-spacing: .04em; }
+#app-view .roster-class-name { color: var(--ui-ink); font-size: 17px; letter-spacing: -.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#app-view .roster-class-meta { color: var(--ui-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#app-view .roster-class-action { color: var(--ui-blue-strong); font-size: 11px; font-weight: 820; margin-top: 5px; }
+#app-view .roster-class-actions { align-items: center; display: flex; gap: 6px; padding: 10px 12px 10px 0; }
+#app-view .roster-class-actions button { border: 1px solid var(--ui-line); border-radius: 10px; font-size: 10px; font-weight: 820; min-height: 34px; padding: 6px 9px; white-space: nowrap; }
+#app-view .roster-class-edit { background: var(--ui-blue-soft); border-color: color-mix(in srgb, var(--ui-blue) 35%, var(--ui-line)) !important; color: var(--ui-blue-strong); }
+#app-view .roster-class-delete { background: color-mix(in srgb, var(--ui-red) 10%, var(--ui-surface-raised)); border-color: color-mix(in srgb, var(--ui-red) 28%, var(--ui-line)) !important; color: var(--ui-red); }
+#class-edit-dialog { --dialog-accent: var(--ui-green); width: min(560px, calc(100vw - 28px)); }
+#class-edit-dialog .class-edit-grid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* Fixed controls and drawers follow one stack. Native <dialog> elements keep
+   their browser top-layer priority above this stack. */
+#app-view .mobile-command-launcher { z-index: 1290 !important; }
+#app-view .mobile-command-scrim { z-index: 1300 !important; }
+#app-view #bulk-actions { z-index: 1310 !important; }
+#app-view .monitor-fullscreen-fab { z-index: 1280 !important; }
+#app-view #detail-pane:not(.screen-mode) { z-index: 1490 !important; }
+#app-view .alert-drawer { z-index: 1500 !important; }
+#app-view #detail-pane.screen-mode { z-index: 1600 !important; }
+.install-app-prompt { z-index: 1900 !important; }
+#toast { z-index: 2100 !important; }
+.easter-egg-layer { z-index: 2300 !important; }
+
+@media (max-width: 560px) {
+  #app-view .class-select-menu { max-height: min(520px, 72vh); min-width: calc(100vw - 24px); }
+  #app-view .class-select-options { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 330px; }
+  #app-view .class-select-option { min-height: 64px; padding: 11px; }
+  #app-view .roster-class-card { grid-template-columns: 1fr; }
+  #app-view .roster-class-actions { justify-content: flex-end; padding: 0 12px 12px; }
+  #class-edit-dialog .class-edit-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 380px) {
+  #app-view .class-select-options { grid-template-columns: 1fr; }
+}
+html[data-theme="dark"] #app-view .class-select-option.active { background: color-mix(in srgb, var(--ui-blue-soft) 72%, var(--ui-surface-raised)); }
+html[data-theme="dark"] #app-view .class-grade-tab.active { color: #fff; }
+
+@keyframes classroom-picker-in {
+  from { opacity: 0; transform: translateY(-6px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #app-view .class-select-menu:not([hidden]) { animation: classroom-picker-in var(--ui-motion-fast) var(--ui-spring) both; transform-origin: top left; }
+  #app-view .class-select-option { animation: classroom-card-in 240ms var(--ui-spring) both; }
+  #app-view .class-select-option:nth-child(2) { animation-delay: 24ms; }
+  #app-view .class-select-option:nth-child(3) { animation-delay: 48ms; }
+  #app-view .class-select-option:nth-child(4) { animation-delay: 72ms; }
+  #app-view .roster-class-card { transition-property: transform, border-color, box-shadow, background-color; transition-duration: var(--ui-motion-fast); transition-timing-function: var(--ui-spring); }
+}

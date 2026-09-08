@@ -139,6 +139,7 @@ internal static class StudentUpdateHelper
         {
             log.Write($"학생 서비스 자동 시작 설정 결과: {config.ExitCode} {config.Output}");
         }
+        RunScOptional(log, "config", ServiceName, "start=", "delayed-auto");
         RunScOptional(log, "failure", ServiceName, "reset=", "86400", "actions=", "restart/5000/restart/15000/restart/60000");
         var result = RunSc("start", ServiceName);
         if (result.ExitCode != 0 && result.ExitCode != ServiceAlreadyRunning)
@@ -197,7 +198,7 @@ internal static class StudentUpdateHelper
         {
             try
             {
-                var processPath = process.MainModule?.FileName;
+                var processPath = TryGetProcessPath(process);
                 if (string.IsNullOrWhiteSpace(processPath)
                     || !Path.GetFullPath(processPath).StartsWith(resolvedRoot, StringComparison.OrdinalIgnoreCase))
                 {
@@ -220,6 +221,46 @@ internal static class StudentUpdateHelper
             {
                 process.Dispose();
             }
+        }
+    }
+
+    private static string? TryGetProcessPath(Process process)
+    {
+        try
+        {
+            var mainModulePath = process.MainModule?.FileName;
+            if (!string.IsNullOrWhiteSpace(mainModulePath))
+            {
+                return mainModulePath;
+            }
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        try
+        {
+            var buffer = new StringBuilder(1_024);
+            var length = (uint)buffer.Capacity;
+            return QueryFullProcessImageName(process.Handle, 0, buffer, ref length)
+                ? buffer.ToString()
+                : null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return null;
         }
     }
 
@@ -395,6 +436,14 @@ internal static class StudentUpdateHelper
     }
 
     private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryFullProcessImageName(
+        IntPtr processHandle,
+        uint flags,
+        StringBuilder exeName,
+        ref uint size);
 
     private sealed record ScResult(int ExitCode, string Output);
 

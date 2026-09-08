@@ -471,6 +471,9 @@ export class ClassroomState {
       if (path === "/api/admin/operations-status" && request.method === "GET") return this.getOperationsStatus(request, cors);
       if (path === "/api/student-codes" && request.method === "GET") return this.getStudentCodes(request, cors);
       if (path === "/api/admin/classes" && request.method === "POST") return this.createClass(request, cors);
+      const adminClassMatch = path.match(/^\/api\/admin\/classes\/([^/]+)$/);
+      if (adminClassMatch && request.method === "PUT") return this.updateClass(request, adminClassMatch[1], cors);
+      if (adminClassMatch && request.method === "DELETE") return this.deleteClass(request, adminClassMatch[1], cors);
       if (path === "/api/admin/student-codes/import" && request.method === "POST") return this.importStudentCodes(request, cors);
       if (path === "/api/admin/teachers" && request.method === "GET") return this.getAdministrators(request, cors);
       if (path === "/api/admin/teachers" && request.method === "POST") return this.setAdministrator(request, cors);
@@ -894,6 +897,72 @@ export class ClassroomState {
     }
     this.audit({ schoolId: user.school_id, classId: classItem.id, teacherId: user.id, action: "CLASS", result: existing ? "UPDATED" : "CREATED", reason: name });
     return responseJson(serializeClass(classItem), 200, cors);
+  }
+
+  async updateClass(request, classId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "학급 정보 수정은 관리자만 할 수 있습니다.", 403, cors);
+    if (!validId(classId)) return responseError("CLASS_NOT_FOUND", "학급을 찾지 못했습니다.", 404, cors);
+    const classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
+    if (!classItem || classItem.school_id !== user.school_id) return responseError("CLASS_NOT_FOUND", "학급을 찾지 못했습니다.", 404, cors);
+    const body = await readJson(request);
+    const hasGrade = Object.prototype.hasOwnProperty.call(body || {}, "grade");
+    const hasClassNumber = Object.prototype.hasOwnProperty.call(body || {}, "classNumber");
+    const grade = hasGrade ? numberInRange(body?.grade, 1, 12) : numberInRange(classItem.grade, 1, 12);
+    const classNumber = hasClassNumber ? numberInRange(body?.classNumber, 1, 99) : numberInRange(classItem.class_number, 1, 99);
+    if (!grade || !classNumber) return responseError("INVALID_CLASS", "학년과 반을 올바르게 입력해 주세요.", 400, cors);
+    const name = text(body?.name, 128) || `${grade}학년 ${classNumber}반`;
+    const subject = Object.prototype.hasOwnProperty.call(body || {}, "subject")
+      ? text(body?.subject, 128)
+      : (classItem.default_subject || "");
+    const duplicate = this.one("SELECT id FROM Classes WHERE school_id = ? AND grade = ? AND class_number = ? AND id <> ?", user.school_id, grade, classNumber, classId);
+    if (duplicate) return responseError("CLASS_EXISTS", "같은 학년과 반 번호를 이미 사용 중입니다.", 409, cors);
+    const now = isoNow();
+    this.exec("UPDATE Classes SET name = ?, default_subject = ?, grade = ?, class_number = ?, updated_at_utc = ? WHERE id = ?", name, subject, grade, classNumber, now, classId);
+    // Student codes and device records mirror the class label so a rename or
+    // grade change is immediately reflected in every teacher view.
+    this.exec("UPDATE StudentCodes SET grade = ?, class_number = ? WHERE class_id = ?", grade, classNumber, classId);
+    this.exec("UPDATE Devices SET grade = ?, class_number = ? WHERE class_id = ?", grade, classNumber, classId);
+    const updated = this.one("SELECT * FROM Classes WHERE id = ?", classId);
+    this.audit({ schoolId: user.school_id, classId, teacherId: user.id, action: "CLASS", result: "UPDATED", reason: name });
+    return responseJson(serializeClass(updated), 200, cors);
+  }
+
+  async deleteClass(request, classId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "학급 삭제는 관리자만 할 수 있습니다.", 403, cors);
+    if (!validId(classId)) return responseError("CLASS_NOT_FOUND", "학급을 찾지 못했습니다.", 404, cors);
+    const classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
+    if (!classItem || classItem.school_id !== user.school_id) return responseError("CLASS_NOT_FOUND", "학급을 찾지 못했습니다.", 404, cors);
+    if (this.activeSessionForClass(classId)) return responseError("CLASS_ACTIVE", "진행 중인 수업을 먼저 종료해 주세요.", 409, cors);
+
+    this.endRemoteAssistForClass(classId, "CLASS_DELETED");
+    const devices = this.all("SELECT device_id FROM Devices WHERE class_id = ?", classId);
+    for (const device of devices) {
+      this.screenFrames.delete(device.device_id);
+      this.closeDeviceSockets(device.device_id, 1008, "Class deleted");
+    }
+
+    // No foreign keys are enabled in older Durable Object databases, so clean
+    // dependent rows explicitly before removing the class itself. AuditEvents
+    // intentionally remain for accountability after a class is deleted.
+    this.exec("DELETE FROM ClassGroupMembers WHERE group_id IN (SELECT group_id FROM ClassGroups WHERE class_id = ?)", classId);
+    this.exec("DELETE FROM ClassGroups WHERE class_id = ?", classId);
+    this.exec("DELETE FROM StudentAdminGrants WHERE class_id = ?", classId);
+    this.exec("DELETE FROM CommandTargets WHERE request_id IN (SELECT request_id FROM Commands WHERE class_id = ?)", classId);
+    this.exec("DELETE FROM Commands WHERE class_id = ?", classId);
+    this.exec("DELETE FROM AttendanceRecords WHERE class_id = ?", classId);
+    this.exec("DELETE FROM RemoteAssistSessions WHERE class_id = ?", classId);
+    this.exec("DELETE FROM ClassSessions WHERE class_id = ?", classId);
+    this.exec("DELETE FROM StudentCodes WHERE class_id = ?", classId);
+    this.exec("DELETE FROM Devices WHERE class_id = ?", classId);
+    this.exec("DELETE FROM ClassTeachers WHERE class_id = ?", classId);
+    this.exec("DELETE FROM ClassPresets WHERE class_id = ?", classId);
+    this.exec("DELETE FROM Classes WHERE id = ?", classId);
+    this.audit({ schoolId: user.school_id, classId, teacherId: user.id, action: "CLASS", result: "DELETED", reason: classItem.name });
+    return responseJson({ classId, status: "deleted" }, 200, cors);
   }
 
   async importStudentCodes(request, cors) {

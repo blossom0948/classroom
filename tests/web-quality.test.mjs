@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [html, script, styles, config, updater, helper, desktopProgram, desktopForm, watchdog, desktopOptions, desktopPipeClient, agentWorker, desktopBridge, diagnostics, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, desktopRecovery, desktopLauncher, cloudflareWorker] = await Promise.all([
+const [html, script, styles, config, updater, helper, desktopProgram, desktopForm, focusOverlayController, watchdog, desktopOptions, desktopPipeClient, agentWorker, desktopBridge, diagnostics, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, desktopRecovery, desktopLauncher, cloudflareWorker] = await Promise.all([
   readFile(new URL("../src/Classroom.Server/wwwroot/index.html", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/app.js", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/styles.css", import.meta.url), "utf8"),
@@ -10,6 +10,7 @@ const [html, script, styles, config, updater, helper, desktopProgram, desktopFor
   readFile(new URL("../src/Classroom.Student.Service/StudentUpdateHelper.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Desktop/Program.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Desktop/Ui/StudentDesktopForm.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Desktop/Ui/FocusOverlayController.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Desktop/StudentDesktopWatchdog.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Desktop/Configuration/StudentDesktopOptions.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Desktop/Networking/DesktopPipeClient.cs", import.meta.url), "utf8"),
@@ -84,7 +85,8 @@ assert.match(script, /function activateEasterEgg\(\)/, "The teacher console shou
 assert.match(styles, /\.easter-egg-layer/, "The hidden classroom celebration needs a dedicated visual layer.");
 assert.match(script, /easter-egg-aurora/, "The hidden celebration should render the full-screen visual layers.");
 assert.match(styles, /\.easter-egg-vortex/, "The hidden celebration needs an immersive full-screen vortex.");
-assert.match(desktopForm, /label\.Text = string\.Empty;[\s\S]*label\.Visible = false;[\s\S]*if \(!blackScreen\)/, "Black-screen focus mode must hide the overlay label and clear its text.");
+assert.match(focusOverlayController, /label\.Text = string\.Empty;[\s\S]*label\.Visible = false;[\s\S]*return;/, "Black-screen focus mode must hide the overlay label and clear its text.");
+assert.match(focusOverlayController, /IsWindowOnCurrentVirtualDesktop/, "Focus mode must detect virtual-desktop changes.");
 assert.match(html, /id="alert-drawer"/, "The classroom needs a compact intervention drawer instead of a permanent signal card.");
 assert.match(html, /id="tools-dialog"/, "Teacher-only lesson tools should open on demand.");
 assert.match(html, /id="preset-dialog"/, "Frequent classroom commands need reusable presets.");
@@ -251,7 +253,7 @@ assert.match(desktopPipeClient, /catch \(Exception exception\)\n\s*\{[\s\S]*?ret
 assert.match(desktopPipeClient, /status collection failed; using a safe fallback/, "Student status collection errors must not terminate the desktop process.");
 assert.match(agentWorker, /while \(!stoppingToken\.IsCancellationRequested\)/, "The Windows service must restart its connection loop if it returns unexpectedly.");
 assert.match(desktopRecovery, /StudentDesktopSessionLauncher\.EnsureRunning/, "The Windows service must heal the interactive student process after login or a tray crash.");
-assert.match(desktopRecovery, /RetryInterval = TimeSpan\.FromSeconds\(20\)/, "Student desktop recovery must retry without requiring a manual reinstall.");
+assert.match(desktopRecovery, /RetryInterval = TimeSpan\.FromSeconds\(5\)/, "Student desktop recovery must retry quickly without requiring a manual reinstall.");
 assert.match(desktopLauncher, /CreateProcessAsUser/, "Student desktop recovery must launch into the active user session instead of session 0.");
 assert.match(desktopLauncher, /StudentDesktopExitAuthorization\.IsGrantedForCurrentBoot/, "Intentional administrator-authorized exits must not be immediately undone by the service.");
 assert.match(desktopBridge, /IPC recovered from an unexpected error/, "The service pipe listener must keep accepting desktop reconnects after unexpected errors.");

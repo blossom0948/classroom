@@ -208,6 +208,10 @@ internal static class ElevatedStudentInstaller
 
         using var serviceKey = Registry.LocalMachine.CreateSubKey(ServiceRegistryPath, writable: true)
             ?? throw new InvalidOperationException("Windows 서비스 레지스트리 키를 열지 못했습니다.");
+        // Delayed automatic start gives Windows networking and the interactive
+        // logon session time to settle, while the recovery worker still starts
+        // the student's visible watchdog as soon as a session is available.
+        serviceKey.SetValue("DelayedAutoStart", 1, RegistryValueKind.DWord);
         serviceKey.SetValue(
             "Environment",
             new[]
@@ -337,7 +341,7 @@ internal static class ElevatedStudentInstaller
         {
             try
             {
-                var path = process.MainModule?.FileName;
+                var path = TryGetProcessPath(process);
                 if (!string.IsNullOrWhiteSpace(path)
                     && Path.GetFullPath(path).StartsWith(resolvedRoot, StringComparison.OrdinalIgnoreCase))
                 {
@@ -379,6 +383,46 @@ internal static class ElevatedStudentInstaller
 
         Log(logPath, $"서비스 상태 확인 실패: {FormatServiceQuery(state)}");
         throw new InvalidOperationException($"학생 서비스 상태가 예상과 다릅니다: {FormatServiceQuery(state)}");
+    }
+
+    private static string? TryGetProcessPath(Process process)
+    {
+        try
+        {
+            var mainModulePath = process.MainModule?.FileName;
+            if (!string.IsNullOrWhiteSpace(mainModulePath))
+            {
+                return mainModulePath;
+            }
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (Win32Exception)
+        {
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        try
+        {
+            var buffer = new StringBuilder(1_024);
+            var length = (uint)buffer.Capacity;
+            return QueryFullProcessImageName(process.Handle, 0, buffer, ref length)
+                ? buffer.ToString()
+                : null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+        catch (Win32Exception)
+        {
+            return null;
+        }
     }
 
     private static ServiceQuery QueryService()
@@ -700,6 +744,14 @@ internal static class ElevatedStudentInstaller
 
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool CloseServiceHandle(IntPtr handle);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryFullProcessImageName(
+        IntPtr processHandle,
+        uint flags,
+        StringBuilder exeName,
+        ref uint size);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct ServiceStatusProcess
