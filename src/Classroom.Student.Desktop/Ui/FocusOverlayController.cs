@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Runtime.InteropServices;
 using Blossom.Classroom.Protocol;
+using Blossom.Classroom.Protocol.Models;
 
 namespace Blossom.Classroom.Student.Desktop.Ui;
 
