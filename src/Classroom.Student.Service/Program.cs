@@ -20,6 +20,10 @@ else
         services.GetRequiredService<DesktopStatusBridge>());
     builder.Services.AddSingleton<ClassroomServerClient>();
     builder.Services.AddHostedService<StudentAgentWorker>();
+    // The service is the durable, boot-time component. It also heals the
+    // interactive tray/watchdog process after logon policies or security
+    // software remove a Run-key-launched process.
+    builder.Services.AddHostedService<StudentDesktopRecoveryWorker>();
     builder.Services.AddSingleton<StudentUpdateWorker>();
     builder.Services.AddHostedService(services =>
         services.GetRequiredService<StudentUpdateWorker>());

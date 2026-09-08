@@ -234,6 +234,8 @@ export class ClassroomState {
       network_status TEXT,
       policy_applied INTEGER NOT NULL DEFAULT 0,
       needs_help INTEGER NOT NULL DEFAULT 0,
+      help_requested_at_utc TEXT,
+      help_status TEXT NOT NULL DEFAULT 'NONE',
       active_session_id TEXT,
       revoked_at_utc TEXT
     )`);
@@ -265,6 +267,19 @@ export class ClassroomState {
       completed_at_utc TEXT,
       result_json TEXT,
       PRIMARY KEY (request_id, device_id)
+    )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS AttendanceRecords (
+      record_id TEXT PRIMARY KEY,
+      school_id TEXT NOT NULL,
+      class_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      student_id TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      note TEXT,
+      marked_by_teacher_id TEXT NOT NULL,
+      marked_at_utc TEXT NOT NULL,
+      UNIQUE(session_id, device_id)
     )`);
     this.exec(`CREATE TABLE IF NOT EXISTS AuditEvents (
       event_id TEXT PRIMARY KEY,
@@ -362,6 +377,8 @@ export class ClassroomState {
     this.exec("CREATE INDEX IF NOT EXISTS idx_sessions_teacher ON TeacherSessions(teacher_id, expires_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_guest_sessions_school ON GuestSessions(school_id, expires_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_audit_class ON AuditEvents(class_id, timestamp_utc)");
+    this.exec("CREATE INDEX IF NOT EXISTS idx_commands_class ON Commands(class_id, created_at_utc)");
+    this.exec("CREATE INDEX IF NOT EXISTS idx_attendance_class_session ON AttendanceRecords(class_id, session_id)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_student_admin_school ON StudentAdminGrants(school_id, active)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_remote_assist_class ON RemoteAssistSessions(class_id, requested_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_remote_assist_device ON RemoteAssistSessions(device_id, state)");
@@ -382,6 +399,8 @@ export class ClassroomState {
     this.ensureColumn("Devices", "class_number", "INTEGER");
     this.ensureColumn("Devices", "student_number", "INTEGER");
     this.ensureColumn("Devices", "needs_help", "INTEGER NOT NULL DEFAULT 0");
+    this.ensureColumn("Devices", "help_requested_at_utc", "TEXT");
+    this.ensureColumn("Devices", "help_status", "TEXT NOT NULL DEFAULT 'NONE'");
     this.ensureColumn("Commands", "scheduled_for_utc", "TEXT");
     // Older releases created a new device row every time a persistent
     // student code was entered again. Reconcile those rows before adding the
@@ -487,8 +506,15 @@ export class ClassroomState {
       if (revokeMatch && request.method === "DELETE") return this.revokeDevice(request, revokeMatch[1], revokeMatch[2], cors);
       const commandMatch = path.match(/^\/api\/classes\/([^/]+)\/commands$/);
       if (commandMatch && request.method === "POST") return this.queueCommand(request, commandMatch[1], cors);
+      if (commandMatch && request.method === "GET") return this.getCommands(request, commandMatch[1], url, cors);
       const commandStatusMatch = path.match(/^\/api\/classes\/([^/]+)\/commands\/([^/]+)$/);
       if (commandStatusMatch && request.method === "GET") return this.getCommandStatus(request, commandStatusMatch[1], commandStatusMatch[2], cors);
+      if (commandStatusMatch && request.method === "DELETE") return this.cancelCommand(request, commandStatusMatch[1], commandStatusMatch[2], cors);
+      const commandRetryMatch = path.match(/^\/api\/classes\/([^/]+)\/commands\/([^/]+)\/retry$/);
+      if (commandRetryMatch && request.method === "POST") return this.retryCommand(request, commandRetryMatch[1], commandRetryMatch[2], cors);
+      const attendanceMatch = path.match(/^\/api\/classes\/([^/]+)\/attendance$/);
+      if (attendanceMatch && request.method === "GET") return this.getAttendance(request, attendanceMatch[1], url, cors);
+      if (attendanceMatch && request.method === "PUT") return this.saveAttendance(request, attendanceMatch[1], cors);
       const auditMatch = path.match(/^\/api\/classes\/([^/]+)\/audit$/);
       if (auditMatch && request.method === "GET") return this.getAudit(request, auditMatch[1], url, cors);
       const groupsMatch = path.match(/^\/api\/classes\/([^/]+)\/groups$/);
@@ -933,7 +959,7 @@ export class ClassroomState {
     const now = isoNow();
     this.endRemoteAssistForClass(classId, "CLASS_ENDED");
     this.exec("UPDATE ClassSessions SET ended_at_utc = ? WHERE session_id = ?", now, sessionId);
-    this.exec("UPDATE Devices SET policy_applied = 0, needs_help = 0, active_session_id = NULL WHERE class_id = ?", classId);
+    this.exec("UPDATE Devices SET policy_applied = 0, needs_help = 0, help_requested_at_utc = NULL, help_status = 'NONE', active_session_id = NULL WHERE class_id = ?", classId);
     for (const device of this.all("SELECT device_id FROM Devices WHERE class_id = ?", classId)) this.screenFrames.delete(device.device_id);
     this.audit({ schoolId: session.school_id, classId, sessionId, teacherId: user.id, action: "CLASS_SESSION", result: "ENDED", reason: session.subject });
     this.notifyClassSession(classId, "00000000-0000-0000-0000-000000000000");
@@ -1238,7 +1264,7 @@ export class ClassroomState {
       this.exec(`UPDATE Devices SET
         school_id = ?, class_id = ?, student_id = ?, student_display_name = ?, grade = ?, class_number = ?, student_number = ?, computer_name = ?,
         agent_version = ?, device_token_hash = ?, issued_at_utc = ?, last_heartbeat_utc = NULL, activity_json = NULL,
-        battery_percent = NULL, network_status = NULL, policy_applied = 0, needs_help = 0, active_session_id = NULL, revoked_at_utc = NULL
+        battery_percent = NULL, network_status = NULL, policy_applied = 0, needs_help = 0, help_requested_at_utc = NULL, help_status = 'NONE', active_session_id = NULL, revoked_at_utc = NULL
         WHERE device_id = ?`, code.school_id, code.class_id, code.student_id, code.student_display_name, code.grade, code.class_number, code.student_number, deviceName, agentVersion, await sha256Text(token), now, deviceId);
     } else {
       this.exec(`INSERT INTO Devices (
@@ -1348,7 +1374,7 @@ export class ClassroomState {
     // student device has actually received it. The next heartbeat reflects
     // the applied state after delivery.
     if (!scheduledForUtc && kind === "focusMode") this.exec("UPDATE Devices SET policy_applied = ? WHERE device_id IN (" + placeholders(queued.length) + ")", payload.focusEnabled ? 1 : 0, ...queued);
-    if (!scheduledForUtc && kind === "clearHelp") this.exec("UPDATE Devices SET needs_help = 0 WHERE device_id IN (" + placeholders(queued.length) + ")", ...queued);
+    if (!scheduledForUtc && kind === "clearHelp") this.exec("UPDATE Devices SET needs_help = 0, help_status = 'RESOLVED' WHERE device_id IN (" + placeholders(queued.length) + ")", ...queued);
     this.audit({ schoolId: activeSession.school_id, classId, sessionId: activeSession.session_id, teacherId: user.id, requestId, action: "COMMAND", result: "QUEUED", reason: scheduledForUtc ? `${kind} · SCHEDULED` : kind });
     for (const deviceId of queued) this.deliverCommands(deviceId);
     return responseJson({ requestId, requestedCount: targets.length, queuedCount: queued.length, queuedDeviceIds: queued, rejectedDeviceIds: targets.filter((id) => !queued.includes(id)), scheduledForUtc }, 200, cors);
@@ -1360,10 +1386,174 @@ export class ClassroomState {
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const command = this.one("SELECT * FROM Commands WHERE request_id = ? AND class_id = ?", requestId, classId);
     if (!command) return responseError("COMMAND_NOT_FOUND", "명령 기록을 찾지 못했습니다.", 404, cors);
-    const devices = this.all("SELECT device_id, state FROM CommandTargets WHERE request_id = ?", requestId).map((row) => ({ deviceId: row.device_id, state: row.state }));
-    const complete = devices.filter((row) => ["SUCCESS", "FAILED", "REJECTED"].includes(row.state));
-    const failed = devices.filter((row) => ["FAILED", "REJECTED"].includes(row.state));
-    return responseJson({ requestId, totalCount: devices.length, completedCount: complete.length, failedCount: failed.length, finished: complete.length === devices.length, devices }, 200, cors);
+    return responseJson(this.serializeCommand(command), 200, cors);
+  }
+
+  async getCommands(request, classId, url, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit")) || 80, 200));
+    const rows = this.all("SELECT * FROM Commands WHERE class_id = ? ORDER BY created_at_utc DESC LIMIT ?", classId, limit);
+    return responseJson(rows.map((command) => this.serializeCommand(command)), 200, cors);
+  }
+
+  serializeCommand(command) {
+    let payload = {};
+    try { payload = JSON.parse(command.payload_json || "{}"); } catch (_) { payload = {}; }
+    const devices = this.all(`SELECT t.device_id, t.state, t.acknowledged_at_utc, t.completed_at_utc, t.result_json,
+      d.student_display_name, d.student_number
+      FROM CommandTargets t LEFT JOIN Devices d ON d.device_id = t.device_id
+      WHERE t.request_id = ? ORDER BY COALESCE(d.student_number, 999), d.student_display_name COLLATE NOCASE`, command.request_id)
+      .map((row) => {
+        let result = null;
+        try { result = row.result_json ? JSON.parse(row.result_json) : null; } catch (_) { result = null; }
+        return {
+          deviceId: row.device_id,
+          studentDisplayName: row.student_display_name || "학생 장치",
+          studentNumber: row.student_number ?? null,
+          state: row.state,
+          acknowledgedAtUtc: row.acknowledged_at_utc || null,
+          completedAtUtc: row.completed_at_utc || null,
+          result
+        };
+      });
+    const completed = devices.filter((device) => ["SUCCESS", "FAILED", "REJECTED", "CANCELLED"].includes(device.state));
+    const failed = devices.filter((device) => ["FAILED", "REJECTED"].includes(device.state));
+    const cancelled = devices.filter((device) => device.state === "CANCELLED");
+    return {
+      requestId: command.request_id,
+      classId: command.class_id,
+      sessionId: command.session_id,
+      kind: command.kind,
+      payload: {
+        message: payload.message || null,
+        url: payload.url || null,
+        approvedAppId: payload.approvedAppId || null,
+        focusEnabled: payload.focusEnabled,
+        focusDisplayMode: payload.focusDisplayMode || null,
+        screenShareEnabled: payload.screenShareEnabled
+      },
+      createdAtUtc: command.created_at_utc,
+      scheduledForUtc: command.scheduled_for_utc || null,
+      totalCount: devices.length,
+      completedCount: completed.length,
+      failedCount: failed.length,
+      cancelledCount: cancelled.length,
+      finished: devices.length > 0 && completed.length === devices.length,
+      devices
+    };
+  }
+
+  async cancelCommand(request, classId, requestId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    const command = this.one("SELECT * FROM Commands WHERE request_id = ? AND class_id = ?", requestId, classId);
+    if (!command) return responseError("COMMAND_NOT_FOUND", "명령 기록을 찾지 못했습니다.", 404, cors);
+    const targets = this.all("SELECT device_id FROM CommandTargets WHERE request_id = ? AND state = 'QUEUED'", requestId);
+    if (targets.length) {
+      this.exec("UPDATE CommandTargets SET state = 'CANCELLED', completed_at_utc = ? WHERE request_id = ? AND state = 'QUEUED'", isoNow(), requestId);
+      this.audit({ schoolId: command.school_id, classId, sessionId: command.session_id, teacherId: user.id, requestId, action: "COMMAND", result: "CANCELLED", reason: command.kind });
+    }
+    return responseJson({ cancelledCount: targets.length, command: this.serializeCommand(command) }, 200, cors);
+  }
+
+  async retryCommand(request, classId, requestId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    const command = this.one("SELECT * FROM Commands WHERE request_id = ? AND class_id = ?", requestId, classId);
+    if (!command) return responseError("COMMAND_NOT_FOUND", "명령 기록을 찾지 못했습니다.", 404, cors);
+    const body = await readJson(request);
+    const failedTargets = this.all("SELECT device_id FROM CommandTargets WHERE request_id = ? AND state IN ('FAILED', 'REJECTED')", requestId).map((row) => row.device_id);
+    const requested = Array.isArray(body?.deviceIds) && body.deviceIds.length ? body.deviceIds : failedTargets;
+    const valid = new Set(this.all("SELECT device_id FROM Devices WHERE class_id = ? AND revoked_at_utc IS NULL", classId).map((row) => row.device_id));
+    const targets = [...new Set(requested.filter((id) => typeof id === "string" && valid.has(id)))].slice(0, MAX_COMMAND_TARGETS);
+    if (!targets.length) return responseError("NO_RETRY_TARGETS", "다시 보낼 실패 장치가 없습니다.", 400, cors);
+    const activeSession = this.activeSessionForClass(classId);
+    if (!activeSession) return responseError("SESSION_NOT_ACTIVE", "수업을 시작한 후 다시 보낼 수 있습니다.", 409, cors);
+    let payload = {};
+    try { payload = JSON.parse(command.payload_json || "{}"); } catch (_) { payload = {}; }
+    const newRequestId = crypto.randomUUID();
+    payload.requestId = newRequestId;
+    payload.sessionId = activeSession.session_id;
+    payload.targetDeviceIds = targets;
+    const now = isoNow();
+    this.exec(`INSERT INTO Commands (request_id, school_id, class_id, session_id, kind, payload_json, created_by_teacher_id, created_at_utc, scheduled_for_utc)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`, newRequestId, activeSession.school_id, classId, activeSession.session_id, command.kind, JSON.stringify(payload), user.id, now);
+    for (const deviceId of targets) this.exec("INSERT INTO CommandTargets (request_id, device_id, state) VALUES (?, ?, 'QUEUED')", newRequestId, deviceId);
+    if (command.kind === "focusMode") this.exec("UPDATE Devices SET policy_applied = ? WHERE device_id IN (" + placeholders(targets.length) + ")", payload.focusEnabled ? 1 : 0, ...targets);
+    if (command.kind === "clearHelp") this.exec("UPDATE Devices SET needs_help = 0, help_status = 'RESOLVED' WHERE device_id IN (" + placeholders(targets.length) + ")", ...targets);
+    this.audit({ schoolId: activeSession.school_id, classId, sessionId: activeSession.session_id, teacherId: user.id, requestId: newRequestId, action: "COMMAND", result: "RETRY_QUEUED", reason: command.kind });
+    for (const deviceId of targets) this.deliverCommands(deviceId);
+    return responseJson({ requestId: newRequestId, requestedCount: targets.length, queuedCount: targets.length, queuedDeviceIds: targets, rejectedDeviceIds: [], scheduledForUtc: null }, 200, cors);
+  }
+
+  async getAttendance(request, classId, url, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    const requestedSessionId = text(url.searchParams.get("sessionId"), 80);
+    const session = requestedSessionId
+      ? this.one("SELECT * FROM ClassSessions WHERE session_id = ? AND class_id = ?", requestedSessionId, classId)
+      : this.one("SELECT * FROM ClassSessions WHERE class_id = ? ORDER BY CASE WHEN ended_at_utc IS NULL THEN 0 ELSE 1 END, started_at_utc DESC LIMIT 1", classId);
+    if (!session) return responseJson({ session: null, records: [] }, 200, cors);
+    return responseJson(this.attendancePayload(classId, session), 200, cors);
+  }
+
+  attendancePayload(classId, session) {
+    const rows = this.all(`SELECT d.device_id, d.student_id, d.student_display_name, d.student_number, d.last_heartbeat_utc,
+      r.status, r.note, r.marked_at_utc
+      FROM Devices d LEFT JOIN AttendanceRecords r ON r.device_id = d.device_id AND r.session_id = ?
+      WHERE d.class_id = ? AND d.revoked_at_utc IS NULL
+      ORDER BY COALESCE(d.student_number, 999), d.student_display_name COLLATE NOCASE`, session.session_id, classId);
+    const now = Date.now();
+    return {
+      session: serializeSession(session),
+      records: rows.map((row) => {
+        const lastSeen = row.last_heartbeat_utc ? Date.parse(row.last_heartbeat_utc) : 0;
+        return {
+          deviceId: row.device_id,
+          studentId: row.student_id,
+          studentDisplayName: row.student_display_name,
+          studentNumber: row.student_number ?? null,
+          online: Boolean(lastSeen && now - lastSeen <= ONLINE_WINDOW_MS),
+          status: row.status || "unmarked",
+          note: row.note || "",
+          markedAtUtc: row.marked_at_utc || null
+        };
+      })
+    };
+  }
+
+  async saveAttendance(request, classId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
+    const body = await readJson(request);
+    const sessionId = text(body?.sessionId, 80);
+    const session = sessionId ? this.one("SELECT * FROM ClassSessions WHERE session_id = ? AND class_id = ?", sessionId, classId) : null;
+    if (!session) return responseError("SESSION_NOT_FOUND", "출결을 기록할 수업을 찾지 못했습니다.", 404, cors);
+    const records = Array.isArray(body?.records) ? body.records : [];
+    const allowed = new Set(["present", "late", "absent", "excused", "unmarked"]);
+    const devices = new Map(this.all("SELECT device_id, student_id FROM Devices WHERE class_id = ? AND revoked_at_utc IS NULL", classId).map((row) => [row.device_id, row]));
+    const now = isoNow();
+    for (const item of records) {
+      const device = devices.get(item?.deviceId);
+      if (!device || !allowed.has(item?.status)) continue;
+      const note = text(item.note, 300) || null;
+      if (item.status === "unmarked") {
+        this.exec("DELETE FROM AttendanceRecords WHERE session_id = ? AND device_id = ?", sessionId, device.device_id);
+        continue;
+      }
+      this.exec(`INSERT INTO AttendanceRecords (record_id, school_id, class_id, session_id, student_id, device_id, status, note, marked_by_teacher_id, marked_at_utc)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(session_id, device_id) DO UPDATE SET status = excluded.status, note = excluded.note, marked_by_teacher_id = excluded.marked_by_teacher_id, marked_at_utc = excluded.marked_at_utc`,
+        crypto.randomUUID(), session.school_id, classId, sessionId, device.student_id, device.device_id, item.status, note, user.id, now);
+    }
+    this.audit({ schoolId: session.school_id, classId, sessionId, teacherId: user.id, action: "ATTENDANCE", result: "SAVED", reason: `${records.length}명` });
+    return responseJson(this.attendancePayload(classId, session), 200, cors);
   }
 
   async getAudit(request, classId, url, cors) {
@@ -1738,6 +1928,14 @@ export class ClassroomState {
       }
       const active = this.activeSessionForClass(device.class_id);
       const now = isoNow();
+      const incomingNeedsHelp = incoming.payload.needsHelp === true;
+      const previousNeedsHelp = Boolean(device.needs_help);
+      const helpRequestedAtUtc = incomingNeedsHelp
+        ? (previousNeedsHelp ? (device.help_requested_at_utc || now) : now)
+        : null;
+      const helpStatus = incomingNeedsHelp
+        ? "OPEN"
+        : previousNeedsHelp || device.help_status === "OPEN" ? "RESOLVED" : (device.help_status || "NONE");
       const activity = normalizeActivity(incoming.payload.activity);
       const screenFrame = normalizeScreenFrame(incoming.payload.screenFrame);
       const heartbeatRemoteSessionId = text(incoming.payload.remoteAssistSessionId, 80) || null;
@@ -1751,14 +1949,16 @@ export class ClassroomState {
       } else if (incoming.payload.screenSharingEnabled !== true) {
         this.screenFrames.delete(device.device_id);
       }
-      this.exec(`UPDATE Devices SET last_heartbeat_utc = ?, agent_version = ?, activity_json = ?, battery_percent = ?, network_status = ?, policy_applied = ?, needs_help = ?, active_session_id = ? WHERE device_id = ?`,
+      this.exec(`UPDATE Devices SET last_heartbeat_utc = ?, agent_version = ?, activity_json = ?, battery_percent = ?, network_status = ?, policy_applied = ?, needs_help = ?, help_requested_at_utc = ?, help_status = ?, active_session_id = ? WHERE device_id = ?`,
         now,
         text(incoming.payload.agentVersion, 128) || device.agent_version,
         activity ? JSON.stringify(activity) : null,
         numberInRange(incoming.payload.batteryPercent, 0, 100),
         text(incoming.payload.networkStatus, 64) || null,
         incoming.payload.policyApplied === true ? 1 : 0,
-        incoming.payload.needsHelp === true ? 1 : 0,
+        incomingNeedsHelp ? 1 : 0,
+        helpRequestedAtUtc,
+        helpStatus,
         active?.session_id || null,
         device.device_id);
       this.reconcileRemoteAssistHeartbeat(device, {
@@ -2438,6 +2638,7 @@ function serializeDevice(device, activeSessionId, now, remoteAssistRow = null) {
   let activity = null;
   try { activity = device.activity_json ? JSON.parse(device.activity_json) : null; } catch (_) { activity = null; }
   const lastSeen = device.last_heartbeat_utc ? Date.parse(device.last_heartbeat_utc) : 0;
+  const heartbeatAgeSeconds = lastSeen ? Math.max(0, Math.floor((now - lastSeen) / 1000)) : null;
   return {
     deviceId: device.device_id,
     studentId: device.student_id,
@@ -2446,6 +2647,8 @@ function serializeDevice(device, activeSessionId, now, remoteAssistRow = null) {
     studentDisplayName: device.student_display_name,
     computerName: device.computer_name,
     online: Boolean(lastSeen && now - lastSeen <= ONLINE_WINDOW_MS),
+    connectionState: lastSeen ? (now - lastSeen <= ONLINE_WINDOW_MS ? "online" : "offline") : "never",
+    heartbeatAgeSeconds,
     lastHeartbeatUtc: device.last_heartbeat_utc || device.issued_at_utc,
     agentVersion: device.agent_version,
     activity,
@@ -2457,6 +2660,8 @@ function serializeDevice(device, activeSessionId, now, remoteAssistRow = null) {
     networkStatus: device.network_status || null,
     policyApplied: Boolean(device.policy_applied),
     needsHelp: Boolean(device.needs_help),
+    helpRequestedAtUtc: device.help_requested_at_utc || null,
+    helpStatus: device.help_status || (device.needs_help ? "OPEN" : "NONE"),
     screenSharingAvailable: true,
     statusSharingMode: "visible-status",
     remoteAssist: remoteAssistRow ? serializeRemoteAssist(remoteAssistRow) : null

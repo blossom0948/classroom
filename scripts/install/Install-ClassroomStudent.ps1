@@ -14,7 +14,7 @@ param(
 
     [string]$IpcToken,
 
-    [string]$AgentVersion = "0.6.8",
+    [string]$AgentVersion = "0.6.9",
 
     [string]$LogPath,
 
@@ -356,7 +356,8 @@ $serviceEnvironment = @(
     "CLASSROOM_DEVICE_ID=$DeviceId",
     "CLASSROOM_DEVICE_TOKEN=$DeviceToken",
     "CLASSROOM_IPC_TOKEN=$IpcToken",
-    "CLASSROOM_AGENT_VERSION=$AgentVersion"
+    "CLASSROOM_AGENT_VERSION=$AgentVersion",
+    "CLASSROOM_DISABLE_DESKTOP_AUTOSTART=$(if ($SkipDesktopStartup) { '1' } else { '0' })"
 )
 New-ItemProperty -Path $serviceRegistryPath -Name "Environment" -PropertyType MultiString -Value $serviceEnvironment -Force | Out-Null
 

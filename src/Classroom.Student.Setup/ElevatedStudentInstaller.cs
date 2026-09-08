@@ -216,7 +216,8 @@ internal static class ElevatedStudentInstaller
                 $"CLASSROOM_DEVICE_ID={config.DeviceId}",
                 $"CLASSROOM_DEVICE_TOKEN={config.DeviceToken}",
                 $"CLASSROOM_IPC_TOKEN={config.IpcToken}",
-                $"CLASSROOM_AGENT_VERSION={agentVersion}"
+                $"CLASSROOM_AGENT_VERSION={agentVersion}",
+                "CLASSROOM_DISABLE_DESKTOP_AUTOSTART=0"
             },
             RegistryValueKind.MultiString);
         Log(logPath, "Windows 서비스 등록 및 장치 설정 저장 완료");

@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.6.8";
+  const APP_VERSION = "0.6.9";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -77,7 +77,10 @@
     activeSection: "class",
     deferredInstallPrompt: null,
     schoolSearchTimers: new Map(),
-    weatherLoaded: false,
+    commandQueue: [],
+    commandQueueTimer: null,
+    attendance: null,
+    attendanceSessionId: null,
     passwordVerificationId: null,
     confirmResolver: null,
     studentRosterClassId: null,
@@ -190,7 +193,11 @@
     state.studentExitPinStatus = null;
     state.guestPasswordStatus = null;
     state.selectedDeviceIds.clear();
-    state.weatherLoaded = false;
+    state.commandQueue = [];
+    if (state.commandQueueTimer) clearInterval(state.commandQueueTimer);
+    state.commandQueueTimer = null;
+    state.attendance = null;
+    state.attendanceSessionId = null;
     state.passwordVerificationId = null;
     if (state.initialSessionRetryTimer) clearTimeout(state.initialSessionRetryTimer);
     state.initialSessionRetryTimer = null;
@@ -443,6 +450,7 @@
     renderClassPicker();
     await refreshClass();
     await loadWorkspaceData();
+    await loadCommandQueue().catch(() => {});
   }
 
   function displayText(value, fallback = "확인 필요") {
@@ -500,8 +508,14 @@
         return Number.isInteger(value) && value >= 0 && value <= 100 ? value : null;
       })(),
       networkStatus: displayText(student.networkStatus, "") || null,
+      connectionState: ["online", "offline", "never"].includes(student.connectionState)
+        ? student.connectionState
+        : (student.online === true ? "online" : "offline"),
+      heartbeatAgeSeconds: Number.isFinite(Number(student.heartbeatAgeSeconds)) ? Math.max(0, Number(student.heartbeatAgeSeconds)) : null,
       policyApplied: student.policyApplied === true,
       needsHelp: student.needsHelp === true,
+      helpRequestedAtUtc: displayText(student.helpRequestedAtUtc, "") || null,
+      helpStatus: displayText(student.helpStatus, student.needsHelp ? "OPEN" : "NONE"),
       grade: asInteger(student.grade),
       classNumber: asInteger(student.classNumber),
       studentNumber: asInteger(student.studentNumber),
@@ -559,9 +573,9 @@
     applyTheme(state.theme);
     syncProfileControls(session);
     renderTodayInfo();
-    loadWeather();
     await refreshClass();
     await loadWorkspaceData();
+    await loadCommandQueue().catch(() => {});
     startClassPolling();
     window.setTimeout(() => maybeOpenOnboarding(session), 150);
   }
@@ -668,6 +682,16 @@
     $("session-caption").textContent = formatSessionCaption(state.session);
     $("start-session-button").hidden = Boolean(state.session) || !state.classId;
     $("end-session-button").hidden = !state.session;
+    const queueButton = $("command-queue-button");
+    const queueCount = $("command-queue-count");
+    const activeQueueCount = state.commandQueue.filter((command) => !command.finished && command.cancelledCount < command.totalCount).length;
+    if (queueCount) {
+      queueCount.textContent = String(activeQueueCount);
+      queueCount.hidden = activeQueueCount === 0;
+    }
+    if (queueButton) queueButton.title = activeQueueCount ? `진행 중인 작업 ${activeQueueCount}개` : "예약·전달 결과 작업함";
+    const attendanceButton = $("attendance-button");
+    if (attendanceButton) attendanceButton.disabled = !state.session;
     const screenWallButton = $("screen-wall-button");
     if (screenWallButton) {
       screenWallButton.textContent = state.screenWallOpen ? "화면 보기 닫기" : "화면 보기";
@@ -2268,6 +2292,7 @@
       showToast(`${result.queuedCount}대 장치에 명령을 대기열로 보냈습니다.`);
       monitorCommand(result.requestId).catch((error) => showToast(error.message));
     }
+    if ($("command-queue-dialog")?.open) await loadCommandQueue();
     return result;
   }
 
@@ -2401,10 +2426,191 @@
         } else {
           showToast(`명령 적용 완료: ${status.completedCount}/${status.totalCount}대`);
         }
+        if ($("command-queue-dialog")?.open) await loadCommandQueue();
         return;
       }
     }
     showToast("명령은 전달됐지만 일부 학생 PC의 응답을 기다리는 중입니다.");
+    if ($("command-queue-dialog")?.open) await loadCommandQueue();
+  }
+
+  function commandKindLabel(kind) {
+    return ({ message: "메시지", openUrl: "URL 열기", focusMode: "집중 모드", launchApprovedApp: "앱 실행", screenShare: "화면 공유", clearHelp: "도움 요청 처리" })[kind] || kind || "명령";
+  }
+
+  function commandStateLabel(state) {
+    return ({ QUEUED: "대기 중", DELIVERED: "전달됨", ACCEPTED: "확인됨", SUCCESS: "성공", FAILED: "실패", REJECTED: "거절됨", CANCELLED: "취소됨" })[state] || state || "확인 필요";
+  }
+
+  function commandAggregateLabel(command) {
+    if (command.cancelledCount === command.totalCount) return "취소됨";
+    if (command.scheduledForUtc && !command.finished) return "예약됨";
+    if (command.failedCount) return `${command.failedCount}명 실패`;
+    if (command.finished) return "완료";
+    return `${command.completedCount}/${command.totalCount}명 처리 중`;
+  }
+
+  async function loadCommandQueue() {
+    if (!state.classId) return;
+    const rows = await api(`/api/classes/${state.classId}/commands?limit=80`);
+    state.commandQueue = Array.isArray(rows) ? rows : [];
+    renderHeader();
+    if ($("command-queue-dialog")?.open) renderCommandQueue();
+  }
+
+  function renderCommandQueue() {
+    const list = $("command-queue-list");
+    const status = $("command-queue-status");
+    if (!list || !status) return;
+    const filter = $("command-queue-filter")?.value || "all";
+    const filtered = state.commandQueue.filter((command) => {
+      if (filter === "active") return !command.finished;
+      if (filter === "failed") return command.failedCount > 0;
+      if (filter === "scheduled") return Boolean(command.scheduledForUtc) && !command.finished;
+      return true;
+    });
+    status.textContent = state.commandQueue.length ? `최근 ${state.commandQueue.length}개 작업 · 자동 새로고침 10초` : "아직 이 수업에서 보낸 작업이 없습니다.";
+    if (!filtered.length) {
+      list.innerHTML = '<div class="empty-state">조건에 맞는 작업이 없습니다.<br><small>예약하거나 명령을 보내면 이곳에서 전달 결과를 확인할 수 있어요.</small></div>';
+      return;
+    }
+    list.innerHTML = filtered.map((command) => {
+      const queued = command.devices.filter((device) => device.state === "QUEUED");
+      const retryable = command.devices.filter((device) => ["FAILED", "REJECTED"].includes(device.state));
+      const schedule = command.scheduledForUtc ? `예약 ${formatTime(command.scheduledForUtc)}` : `보낸 시각 ${formatTime(command.createdAtUtc)}`;
+      const detail = command.payload?.message || command.payload?.url || (command.kind === "focusMode" ? (command.payload.focusDisplayMode === "blackScreen" ? "검은 화면" : command.payload.focusEnabled ? "집중 켜기" : "집중 끄기") : "");
+      const deviceRows = command.devices.map((device) => `<li><span>${escapeHtml(device.studentNumber ? `${device.studentNumber}번 ` : "")}${escapeHtml(device.studentDisplayName)}</span><strong class="queue-state queue-state-${escapeHtml(String(device.state).toLowerCase())}">${escapeHtml(commandStateLabel(device.state))}</strong></li>`).join("");
+      return `<article class="command-queue-item" data-command-item="${escapeHtml(command.requestId)}"><div class="command-queue-item-head"><div><span class="eyebrow">${escapeHtml(commandKindLabel(command.kind))}</span><h3>${escapeHtml(detail || commandKindLabel(command.kind))}</h3><small>${escapeHtml(schedule)} · ${command.totalCount}명 대상</small></div><span class="queue-summary queue-summary-${command.finished ? "done" : command.failedCount ? "failed" : "active"}">${escapeHtml(commandAggregateLabel(command))}</span></div><details><summary>학생별 결과 보기</summary><ul class="queue-device-list">${deviceRows}</ul></details><div class="command-queue-actions">${queued.length ? `<button class="secondary" type="button" data-command-cancel="${escapeHtml(command.requestId)}">예약 취소</button>` : ""}${retryable.length ? `<button class="secondary" type="button" data-command-retry="${escapeHtml(command.requestId)}">실패 학생 재시도</button>` : ""}<button class="ghost-button" type="button" data-command-status="${escapeHtml(command.requestId)}">상세 새로고침</button></div></article>`;
+    }).join("");
+    list.querySelectorAll("[data-command-cancel]").forEach((button) => button.addEventListener("click", () => cancelCommand(button.dataset.commandCancel).catch((error) => showToast(error.message))));
+    list.querySelectorAll("[data-command-retry]").forEach((button) => button.addEventListener("click", () => retryCommand(button.dataset.commandRetry).catch((error) => showToast(error.message))));
+    list.querySelectorAll("[data-command-status]").forEach((button) => button.addEventListener("click", () => refreshCommandStatus(button.dataset.commandStatus).catch((error) => showToast(error.message))));
+  }
+
+  async function refreshCommandStatus(requestId) {
+    const command = await api(`/api/classes/${state.classId}/commands/${requestId}`);
+    const index = state.commandQueue.findIndex((item) => item.requestId === requestId);
+    if (index >= 0) state.commandQueue[index] = command;
+    else state.commandQueue.unshift(command);
+    renderCommandQueue();
+    renderHeader();
+  }
+
+  async function cancelCommand(requestId) {
+    const command = state.commandQueue.find((item) => item.requestId === requestId);
+    if (!command || !await askConfirmation("예약 취소", "아직 전달되지 않은 학생 PC 작업을 취소할까요? 이미 전달된 학생의 작업은 되돌릴 수 없습니다.", "취소하기")) return;
+    const result = await api(`/api/classes/${state.classId}/commands/${requestId}`, { method: "DELETE" });
+    showToast(result.cancelledCount ? `${result.cancelledCount}대 작업을 취소했습니다.` : "취소할 대기 작업이 없습니다.");
+    await loadCommandQueue();
+  }
+
+  async function retryCommand(requestId) {
+    const command = state.commandQueue.find((item) => item.requestId === requestId);
+    const failed = command?.devices.filter((device) => ["FAILED", "REJECTED"].includes(device.state)) || [];
+    if (!failed.length || !await askConfirmation("실패 학생 재시도", `${failed.length}명에게 같은 명령을 지금 다시 보낼까요?`, "다시 보내기")) return;
+    const result = await api(`/api/classes/${state.classId}/commands/${requestId}/retry`, { method: "POST", body: { deviceIds: failed.map((device) => device.deviceId) } });
+    showToast(`${result.queuedCount}대에 재시도 작업을 보냈습니다.`);
+    await loadCommandQueue();
+    monitorCommand(result.requestId).catch(() => {});
+  }
+
+  async function openCommandQueueDialog() {
+    const dialog = $("command-queue-dialog");
+    if (!dialog) return;
+    await loadCommandQueue().catch((error) => showToast(error.message));
+    renderCommandQueue();
+    dialog.showModal();
+    if (state.commandQueueTimer) clearInterval(state.commandQueueTimer);
+    state.commandQueueTimer = window.setInterval(() => loadCommandQueue().catch(() => {}), 10_000);
+  }
+
+  function closeCommandQueueDialog() {
+    if (state.commandQueueTimer) clearInterval(state.commandQueueTimer);
+    state.commandQueueTimer = null;
+  }
+
+  function attendanceStatusLabel(status) {
+    return ({ present: "출석", late: "지각", absent: "결석", excused: "사유 결석", unmarked: "미기록" })[status] || "미기록";
+  }
+
+  async function loadAttendance() {
+    if (!state.classId || !state.session) {
+      state.attendance = null;
+      renderAttendance();
+      return;
+    }
+    const result = await api(`/api/classes/${state.classId}/attendance?sessionId=${encodeURIComponent(state.session.sessionId)}`);
+    state.attendance = result && typeof result === "object" ? result : null;
+    state.attendanceSessionId = result?.session?.sessionId || state.session.sessionId;
+    renderAttendance();
+  }
+
+  function renderAttendance() {
+    const list = $("attendance-list");
+    const summary = $("attendance-summary");
+    const caption = $("attendance-session-caption");
+    if (!list || !summary || !caption) return;
+    const records = Array.isArray(state.attendance?.records) ? state.attendance.records : [];
+    if (!state.session || !state.attendance?.session) {
+      caption.textContent = "수업을 시작하면 학생별 출결을 기록할 수 있습니다.";
+      summary.innerHTML = "";
+      list.innerHTML = '<div class="empty-state">진행 중인 수업이 없어 출결을 기록할 수 없습니다.<br><small>먼저 수업 시작을 눌러 주세요.</small></div>';
+      return;
+    }
+    caption.textContent = `${displayText(state.attendance.session.subject, "수업")} · ${formatTime(state.attendance.session.startedAtUtc)} 시작`;
+    const counts = records.reduce((acc, row) => { acc[row.status] = (acc[row.status] || 0) + 1; return acc; }, {});
+    summary.innerHTML = ["present", "late", "absent", "excused", "unmarked"].map((status) => `<span class="attendance-count attendance-count-${status}"><strong>${counts[status] || 0}</strong><small>${attendanceStatusLabel(status)}</small></span>`).join("");
+    list.innerHTML = records.length ? records.map((record) => `<div class="attendance-row" data-attendance-device="${escapeHtml(record.deviceId)}"><div class="attendance-student"><strong>${escapeHtml(record.studentNumber ? `${record.studentNumber}번 ` : "")}${escapeHtml(record.studentDisplayName)}</strong><small class="${record.online ? "online-text" : "offline-text"}">${record.online ? "온라인" : "오프라인"}</small></div><select data-attendance-status aria-label="${escapeHtml(record.studentDisplayName)} 출결 상태"><option value="unmarked" ${record.status === "unmarked" ? "selected" : ""}>미기록</option><option value="present" ${record.status === "present" ? "selected" : ""}>출석</option><option value="late" ${record.status === "late" ? "selected" : ""}>지각</option><option value="absent" ${record.status === "absent" ? "selected" : ""}>결석</option><option value="excused" ${record.status === "excused" ? "selected" : ""}>사유 결석</option></select><input data-attendance-note value="${escapeHtml(record.note || "")}" maxlength="300" placeholder="메모(선택)"></div>`).join("") : '<div class="empty-state">등록된 학생이 없습니다.</div>';
+  }
+
+  async function saveAttendance() {
+    if (!state.session) throw new Error("먼저 수업을 시작하세요.");
+    const records = [...document.querySelectorAll(".attendance-row")].map((row) => ({
+      deviceId: row.dataset.attendanceDevice,
+      status: row.querySelector("[data-attendance-status]")?.value || "unmarked",
+      note: row.querySelector("[data-attendance-note]")?.value || ""
+    }));
+    const result = await api(`/api/classes/${state.classId}/attendance`, { method: "PUT", body: { sessionId: state.session.sessionId, records } });
+    state.attendance = result;
+    renderAttendance();
+    showToast("출결을 저장했습니다.");
+  }
+
+  async function openAttendanceDialog() {
+    const dialog = $("attendance-dialog");
+    if (!dialog) return;
+    await loadAttendance().catch((error) => showToast(error.message));
+    renderAttendance();
+    dialog.showModal();
+  }
+
+  function connectionAgeLabel(student) {
+    if (student.connectionState === "never") return "아직 연결되지 않음";
+    const seconds = student.heartbeatAgeSeconds;
+    if (seconds == null) return student.online ? "방금 연결" : "연결 지연 확인 필요";
+    if (seconds < 60) return `${seconds}초 전 신호`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}분 전 신호`;
+    return `${Math.floor(seconds / 3600)}시간 전 신호`;
+  }
+
+  function renderConnectionHealth() {
+    const list = $("connection-list");
+    const summary = $("connection-summary");
+    if (!list || !summary) return;
+    const online = state.students.filter((student) => student.connectionState === "online").length;
+    const offline = state.students.filter((student) => student.connectionState === "offline").length;
+    const never = state.students.filter((student) => student.connectionState === "never").length;
+    summary.innerHTML = `<span class="connection-stat connection-stat-online"><strong>${online}</strong><small>온라인</small></span><span class="connection-stat connection-stat-offline"><strong>${offline}</strong><small>재연결 대기</small></span><span class="connection-stat connection-stat-never"><strong>${never}</strong><small>첫 연결 전</small></span>`;
+    if (!state.students.length) {
+      list.innerHTML = '<div class="empty-state">등록된 학생 장치가 없습니다.</div>';
+      return;
+    }
+    list.innerHTML = state.students.map((student) => `<article class="connection-row connection-row-${escapeHtml(student.connectionState)}"><div class="connection-row-main"><span class="status-dot ${student.online ? "online" : ""}">${student.online ? "온라인" : student.connectionState === "never" ? "미연결" : "오프라인"}</span><div><strong>${escapeHtml(student.studentDisplayName)}</strong><small>${escapeHtml(student.computerName)}</small></div></div><div class="connection-row-meta"><span>${escapeHtml(connectionAgeLabel(student))}</span><span>${escapeHtml(student.networkStatus || "네트워크 정보 없음")}</span>${student.agentVersion !== "확인 필요" ? `<span>앱 v${escapeHtml(student.agentVersion)}</span>` : ""}</div></article>`).join("");
+  }
+
+  function openConnectionHealthDialog() {
+    renderConnectionHealth();
+    $("connection-dialog")?.showModal();
   }
 
   async function startSession(subject) {
@@ -2524,55 +2730,6 @@
     const now = new Date();
     const date = $("current-date");
     if (date) date.textContent = now.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" });
-  }
-
-  function describeWeather(code) {
-    if (code === 0) return { icon: "☀️", label: "맑음" };
-    if (code === 1) return { icon: "🌤️", label: "대체로 맑음" };
-    if (code === 2) return { icon: "⛅", label: "구름 많음" };
-    if (code === 3) return { icon: "☁️", label: "흐림" };
-    if ([45, 48].includes(code)) return { icon: "🌫️", label: "안개" };
-    if ([51, 53, 55, 56, 57].includes(code)) return { icon: "🌦️", label: "이슬비" };
-    if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return { icon: "🌧️", label: "비" };
-    if ([71, 73, 75, 77, 85, 86].includes(code)) return { icon: "🌨️", label: "눈" };
-    if ([95, 96, 99].includes(code)) return { icon: "⛈️", label: "뇌우" };
-    return { icon: "🌤️", label: "날씨 변동" };
-  }
-
-  function setWeatherState(icon, description, temperature = "") {
-    const iconTarget = $("weather-icon");
-    const descriptionTarget = $("weather-description");
-    const temperatureTarget = $("weather-temperature");
-    if (iconTarget) iconTarget.textContent = icon;
-    if (descriptionTarget) descriptionTarget.textContent = description;
-    if (temperatureTarget) temperatureTarget.textContent = temperature;
-  }
-
-  async function loadWeather() {
-    const target = $("weather-info");
-    if (!target || state.weatherLoaded) return;
-    state.weatherLoaded = true;
-    const load = async (latitude, longitude) => {
-      const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code&timezone=auto`);
-      if (!response.ok) throw new Error("weather");
-      const payload = await response.json();
-      const current = payload.current;
-      const code = Number(current?.weather_code);
-      const weather = describeWeather(code);
-      const temperature = Number.isFinite(Number(current?.temperature_2m))
-        ? `${Math.round(Number(current.temperature_2m))}°C`
-        : "";
-      setWeatherState(weather.icon, weather.label, temperature);
-    };
-    if (!navigator.geolocation) {
-      setWeatherState("—", "위치 권한 필요");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) => load(position.coords.latitude, position.coords.longitude).catch(() => { setWeatherState("—", "날씨 확인 불가"); }),
-      () => { setWeatherState("—", "위치 권한 필요"); },
-      { enableHighAccuracy: false, maximumAge: 15 * 60 * 1000, timeout: 5000 }
-    );
   }
 
   function escapeHtml(value) {
@@ -3275,15 +3432,21 @@
   });
   $("announcement-button").addEventListener("click", () => openCommandDialog("message"));
   $("end-session-button").addEventListener("click", () => endSession().catch((error) => showToast(error.message)));
+  $("command-queue-button").addEventListener("click", () => openCommandQueueDialog());
+  $("attendance-button").addEventListener("click", () => openAttendanceDialog());
+  $("connection-health-button").addEventListener("click", openConnectionHealthDialog);
   $("alert-drawer-button").addEventListener("click", toggleAlertDrawer);
   $("alert-drawer-close").addEventListener("click", closeAlertDrawer);
+  $("more-tools-open-button").addEventListener("click", () => $("more-tools-dialog").showModal());
   $("tools-dialog-button").addEventListener("click", () => {
+    $("more-tools-dialog")?.close();
     renderLessonTool();
     $("tools-dialog").showModal();
   });
-  $("preset-dialog-button").addEventListener("click", openPresetsDialog);
-  $("groups-dialog-button").addEventListener("click", openGroupsDialog);
-  $("report-dialog-button").addEventListener("click", () => openReportDialog().catch((error) => showToast(error.message)));
+  $("preset-dialog-button").addEventListener("click", () => { $("more-tools-dialog")?.close(); openPresetsDialog(); });
+  $("groups-dialog-button").addEventListener("click", () => { $("more-tools-dialog")?.close(); openGroupsDialog(); });
+  $("report-dialog-button").addEventListener("click", () => { $("more-tools-dialog")?.close(); openReportDialog().catch((error) => showToast(error.message)); });
+  $("app-button").addEventListener("click", () => { $("more-tools-dialog")?.close(); openCommandDialog("app", commandTargets()); });
   $("tools-form").addEventListener("submit", (event) => {
     event.preventDefault();
     saveLessonTool();
@@ -3302,6 +3465,22 @@
     createGroupFromForm();
   });
   $("report-csv-button").addEventListener("click", downloadReportCsv);
+  $("command-queue-filter").addEventListener("change", renderCommandQueue);
+  $("command-queue-refresh").addEventListener("click", () => loadCommandQueue().catch((error) => showToast(error.message)));
+  $("command-queue-dialog").addEventListener("close", closeCommandQueueDialog);
+  $("attendance-refresh").addEventListener("click", () => loadAttendance().catch((error) => showToast(error.message)));
+  $("attendance-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const status = $("attendance-status");
+    status.textContent = "저장 중…";
+    try {
+      await saveAttendance();
+      status.textContent = "저장했습니다.";
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  });
+  $("connection-refresh").addEventListener("click", () => refreshClass().then(renderConnectionHealth).catch((error) => showToast(error.message)));
   $("command-schedule").addEventListener("change", syncScheduleControls);
   $("focus-display-mode").addEventListener("change", (event) => {
     const value = event.target.value === "blackScreen" ? "blackScreen" : "message";
@@ -3316,7 +3495,6 @@
   $("focus-off-button").addEventListener("click", () => sendCommand("focusMode", commandTargets(), { focusEnabled: false }).catch((error) => showToast(error.message)));
   $("message-button").addEventListener("click", () => openCommandDialog("message", commandTargets()));
   $("url-button").addEventListener("click", () => openCommandDialog("url", commandTargets()));
-  $("app-button").addEventListener("click", () => openCommandDialog("app", commandTargets()));
   $("screen-wall-button").addEventListener("click", () => openScreenWall().catch((error) => showToast(error.message)));
   $("screen-wall-stop").addEventListener("click", () => stopScreenSharing().catch((error) => showToast(error.message)));
   $("screen-wall-fullscreen").addEventListener("click", () => toggleScreenWallFullscreen().catch(() => showToast("전체 화면을 사용할 수 없습니다.")));

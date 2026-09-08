@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [html, script, styles, config, updater, helper, desktopProgram, desktopForm, watchdog, desktopOptions, desktopPipeClient, agentWorker, desktopBridge, diagnostics, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, cloudflareWorker] = await Promise.all([
+const [html, script, styles, config, updater, helper, desktopProgram, desktopForm, watchdog, desktopOptions, desktopPipeClient, agentWorker, desktopBridge, diagnostics, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, desktopRecovery, desktopLauncher, cloudflareWorker] = await Promise.all([
   readFile(new URL("../src/Classroom.Server/wwwroot/index.html", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/app.js", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/styles.css", import.meta.url), "utf8"),
@@ -21,6 +21,8 @@ const [html, script, styles, config, updater, helper, desktopProgram, desktopFor
   readFile(new URL("../src/Classroom.Student.Setup/ElevatedStudentInstaller.cs", import.meta.url), "utf8"),
   readFile(new URL("../scripts/install/Install-ClassroomStudent.ps1", import.meta.url), "utf8"),
   readFile(new URL("../scripts/deploy/build-pages.mjs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Service/StudentDesktopRecoveryWorker.cs", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Student.Service/StudentDesktopSessionLauncher.cs", import.meta.url), "utf8"),
   readFile(new URL("../cloudflare/worker.js", import.meta.url), "utf8")
 ]);
 
@@ -54,12 +56,23 @@ assert.match(html, /id="focus-display-mode"/, "The focus command needs a visible
 assert.match(html, /id="command-schedule"/, "Command dialogs need a visible delayed-execution selector.");
 assert.match(html, /id="command-schedule-minutes"/, "Command dialogs need a custom minute input.");
 assert.match(html, /id="command-schedule-at"/, "Command dialogs need a custom date-time input.");
+assert.match(html, /id="command-queue-dialog"/, "Scheduled work needs a dedicated command queue dialog.");
+assert.match(html, /id="attendance-dialog"/, "Classroom attendance needs a dedicated dialog.");
+assert.match(html, /id="connection-dialog"/, "Connection health needs a dedicated dialog.");
+assert.match(html, /id="more-tools-dialog"/, "Low-frequency tools need a separate overflow dialog.");
+assert.doesNotMatch(html, /id="weather-info"/, "The low-frequency weather widget should not take space in the classroom header.");
 assert.match(script, /focusDisplayMode: state\.focusDisplayMode/, "The console must send the selected focus presentation.");
 assert.match(cloudflareWorker, /focusDisplayMode:\s*focusDisplayMode/, "The Worker must forward the selected focus presentation to student devices.");
 assert.match(cloudflareWorker, /집중 화면 표시 방식은 집중 모드에서만 사용할 수 있습니다/, "The Worker must reject focus presentation values on unrelated commands.");
 assert.match(cloudflareWorker, /MAX_SCHEDULE_DELAY_SECONDS = 7 \* 24 \* 60 \* 60/, "Scheduled commands need a bounded maximum delay.");
 assert.match(cloudflareWorker, /c\.scheduled_for_utc IS NULL OR c\.scheduled_for_utc <= \?/, "Queued commands must wait until their scheduled time before delivery.");
 assert.match(cloudflareWorker, /requestedScheduleAt/, "The Worker must accept an exact scheduled date and time.");
+assert.match(cloudflareWorker, /async getCommands\(/, "The Worker must expose recent command records for the work queue.");
+assert.match(cloudflareWorker, /async cancelCommand\(/, "The Worker must cancel queued scheduled commands.");
+assert.match(cloudflareWorker, /async retryCommand\(/, "The Worker must retry failed command targets.");
+assert.match(cloudflareWorker, /CREATE TABLE IF NOT EXISTS AttendanceRecords/, "Attendance must be persisted per class session.");
+assert.match(cloudflareWorker, /async getAttendance\(/, "The Worker must return session attendance records.");
+assert.match(cloudflareWorker, /async saveAttendance\(/, "The Worker must save session attendance records.");
 assert.match(cloudflareWorker, /if \(!scheduledForUtc && kind === "focusMode"\)/, "Scheduled focus commands must not change roster state before delivery.");
 assert.match(script, /scheduleDelaySeconds/, "The command dialog must send the selected delayed-execution interval.");
 assert.match(cloudflareWorker, /SESSION_LIFETIME_MS = 1000 \* 60 \* 60 \* 24 \* 30/, "Sessions need a long-lived lifetime for classroom consoles.");
@@ -237,6 +250,10 @@ assert.match(watchdog, /catch \(Exception exception\)\n\s*\{[\s\S]*?StudentDeskt
 assert.match(desktopPipeClient, /catch \(Exception exception\)\n\s*\{[\s\S]*?retrying:/, "Student Desktop IPC must retry after any unexpected service error.");
 assert.match(desktopPipeClient, /status collection failed; using a safe fallback/, "Student status collection errors must not terminate the desktop process.");
 assert.match(agentWorker, /while \(!stoppingToken\.IsCancellationRequested\)/, "The Windows service must restart its connection loop if it returns unexpectedly.");
+assert.match(desktopRecovery, /StudentDesktopSessionLauncher\.EnsureRunning/, "The Windows service must heal the interactive student process after login or a tray crash.");
+assert.match(desktopRecovery, /RetryInterval = TimeSpan\.FromSeconds\(20\)/, "Student desktop recovery must retry without requiring a manual reinstall.");
+assert.match(desktopLauncher, /CreateProcessAsUser/, "Student desktop recovery must launch into the active user session instead of session 0.");
+assert.match(desktopLauncher, /StudentDesktopExitAuthorization\.IsGrantedForCurrentBoot/, "Intentional administrator-authorized exits must not be immediately undone by the service.");
 assert.match(desktopBridge, /IPC recovered from an unexpected error/, "The service pipe listener must keep accepting desktop reconnects after unexpected errors.");
 assert.match(diagnostics, /student-desktop\.log/, "The background student process must leave a diagnosable local log.");
 assert.match(desktopOptions, /StudentDesktopConfigurationStore\.TryLoad/, "The tray process must recover enrollment from machine-level configuration.");

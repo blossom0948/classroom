@@ -131,6 +131,15 @@ internal static class StudentUpdateHelper
 
     private static void StartService(UpdateLog log)
     {
+        // Older installations may have been left with a manual start mode by
+        // school imaging tools. Re-assert the self-healing service policy on
+        // every successful update before asking SCM to start it.
+        var config = RunSc("config", ServiceName, "start=", "auto");
+        if (config.ExitCode != 0)
+        {
+            log.Write($"학생 서비스 자동 시작 설정 결과: {config.ExitCode} {config.Output}");
+        }
+        RunScOptional(log, "failure", ServiceName, "reset=", "86400", "actions=", "restart/5000/restart/15000/restart/60000");
         var result = RunSc("start", ServiceName);
         if (result.ExitCode != 0 && result.ExitCode != ServiceAlreadyRunning)
         {
@@ -139,6 +148,15 @@ internal static class StudentUpdateHelper
         }
 
         log.Write("업데이트 후 학생 서비스 시작 완료");
+    }
+
+    private static void RunScOptional(UpdateLog log, params string[] arguments)
+    {
+        var result = RunSc(arguments);
+        if (result.ExitCode != 0)
+        {
+            log.Write($"선택적 서비스 복구 설정을 건너뜀: {result.ExitCode} {result.Output}");
+        }
     }
 
     private static bool WaitForProcessExit(int processId, TimeSpan timeout, UpdateLog log)
