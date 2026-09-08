@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.6.7";
+  const APP_VERSION = "0.6.8";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -24,6 +24,8 @@
   }
 
   const persistedFocusDisplayMode = storageGet("localStorage", FOCUS_DISPLAY_MODE_KEY);
+  const persistedTheme = storageGet("localStorage", "classroom.theme") || "light";
+  const persistedStudentSort = storageGet("localStorage", "classroom.studentSort");
 
   function readTeacherToken() {
     if (cookieSessionEnabled) return null;
@@ -71,7 +73,7 @@
     initialSessionRetryTimer: null,
     toastTimer: null,
     enrollmentBundle: null,
-    theme: localStorage.getItem("classroom.theme") || "light",
+    theme: persistedTheme === "dark" ? "dark" : "light",
     activeSection: "class",
     deferredInstallPrompt: null,
     schoolSearchTimers: new Map(),
@@ -91,8 +93,8 @@
     studentExitPinStatus: null,
     guestPasswordStatus: null,
     focusDisplayMode: persistedFocusDisplayMode === "blackScreen" ? "blackScreen" : "message",
-    studentSort: ["number", "name", "status"].includes(localStorage.getItem("classroom.studentSort"))
-      ? localStorage.getItem("classroom.studentSort")
+    studentSort: ["number", "name", "status"].includes(persistedStudentSort)
+      ? persistedStudentSort
       : "number",
     remoteControl: null,
     groups: [],
@@ -355,6 +357,7 @@
     const available = isMobileCommandLayout();
     if (!available) state.mobileCommandOpen = false;
     const open = Boolean(state.mobileCommandOpen && available);
+    const mobileLayout = mobileCommandMedia.matches && !appView.hidden;
     const deck = $("bulk-actions");
     const launcher = $("mobile-command-launcher");
     appView.classList.toggle("mobile-command-open", open);
@@ -364,10 +367,23 @@
         deck.setAttribute("role", "dialog");
         deck.setAttribute("aria-modal", "true");
         deck.setAttribute("aria-labelledby", "mobile-command-title");
+        deck.removeAttribute("aria-hidden");
+        deck.removeAttribute("inert");
+      } else if (mobileLayout) {
+        // The closed mobile sheet is visually off-screen, but it must also be
+        // removed from the accessibility tree and tab order. Keep it inline
+        // and accessible on desktop where the same deck is the command bar.
+        deck.removeAttribute("role");
+        deck.removeAttribute("aria-modal");
+        deck.removeAttribute("aria-labelledby");
+        deck.setAttribute("aria-hidden", "true");
+        deck.setAttribute("inert", "");
       } else {
         deck.removeAttribute("role");
         deck.removeAttribute("aria-modal");
         deck.removeAttribute("aria-labelledby");
+        deck.removeAttribute("aria-hidden");
+        deck.removeAttribute("inert");
       }
     }
   }
@@ -720,7 +736,7 @@
 
   function readStoredJson(key, fallback) {
     try {
-      const raw = localStorage.getItem(key);
+      const raw = storageGet("localStorage", key);
       return raw ? JSON.parse(raw) : fallback;
     } catch (_) {
       return fallback;
@@ -728,7 +744,7 @@
   }
 
   function writeStoredJson(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) { /* storage can be disabled */ }
+    storageSet("localStorage", key, JSON.stringify(value));
   }
 
   function lessonToolStorageKey(classId = state.classId) {
@@ -2481,7 +2497,7 @@
   function applyTheme(theme) {
     state.theme = theme === "dark" ? "dark" : "light";
     document.documentElement.dataset.theme = state.theme;
-    localStorage.setItem("classroom.theme", state.theme);
+    storageSet("localStorage", "classroom.theme", state.theme);
     const toggle = $("theme-toggle");
     if (toggle) {
       toggle.innerHTML = state.theme === "dark" ? "☀ <span>라이트</span>" : "◐ <span>다크</span>";
@@ -2821,7 +2837,7 @@
     const result = await api("/auth/profile", { method: "PUT", body: values });
     state.teacher = result;
     state.classes = Array.isArray(result.classes) ? result.classes : [];
-    sessionStorage.removeItem("classroom.onboardingDismissed");
+    storageRemove("sessionStorage", "classroom.onboardingDismissed");
     await loadTeacher();
   }
 
@@ -2829,7 +2845,7 @@
     const available = Boolean(state.deferredInstallPrompt);
     $("landing-install-button").hidden = !available;
     $("settings-install-button").hidden = !available;
-    $("install-app-prompt").hidden = !available || localStorage.getItem("classroom.dismissInstallPrompt") === "1";
+    $("install-app-prompt").hidden = !available || storageGet("localStorage", "classroom.dismissInstallPrompt") === "1";
   }
 
   async function installApp() {
@@ -2872,7 +2888,7 @@
     });
     window.addEventListener("appinstalled", () => {
       state.deferredInstallPrompt = null;
-      localStorage.removeItem("classroom.dismissInstallPrompt");
+      storageRemove("localStorage", "classroom.dismissInstallPrompt");
       syncInstallUi();
       showToast("Classroom 앱이 설치되었습니다.");
     });
@@ -2967,8 +2983,8 @@
         privacyAccepted: profile.privacyAccepted === true
       }
     });
-    sessionStorage.removeItem("classroom.pendingFirebaseProfile");
-    sessionStorage.removeItem(PENDING_FIREBASE_ENTRY_KEY);
+    storageRemove("sessionStorage", "classroom.pendingFirebaseProfile");
+    storageRemove("sessionStorage", PENDING_FIREBASE_ENTRY_KEY);
     applySessionToken(result);
     await loadTeacher();
   }
@@ -3004,11 +3020,12 @@
         throw new Error("이용약관과 개인정보처리방침 동의가 필요합니다.");
       }
       if (signupMode) {
-        sessionStorage.setItem("classroom.pendingFirebaseProfile", JSON.stringify(signupProfile));
+        storageSet("sessionStorage", "classroom.pendingFirebaseProfile", JSON.stringify(signupProfile));
       } else {
-        sessionStorage.removeItem("classroom.pendingFirebaseProfile");
+        storageRemove("sessionStorage", "classroom.pendingFirebaseProfile");
       }
-      sessionStorage.setItem(
+      storageSet(
+        "sessionStorage",
         PENDING_FIREBASE_ENTRY_KEY,
         isSchoolEntry ? "school" : signupMode ? "admin-signup" : "admin-login");
       const credentials = await firebaseClient().signInGoogle();
@@ -3215,7 +3232,7 @@
   $("settings-install-button").addEventListener("click", installApp);
   $("check-update-button").addEventListener("click", () => checkForAppUpdate(true));
   $("dismiss-install-button").addEventListener("click", () => {
-    localStorage.setItem("classroom.dismissInstallPrompt", "1");
+    storageSet("localStorage", "classroom.dismissInstallPrompt", "1");
     syncInstallUi();
   });
   document.querySelectorAll("[data-legal-document]").forEach((button) => {
@@ -3324,7 +3341,7 @@
   });
   $("student-sort").addEventListener("change", (event) => {
     state.studentSort = event.target.value;
-    localStorage.setItem("classroom.studentSort", state.studentSort);
+    storageSet("localStorage", "classroom.studentSort", state.studentSort);
     renderStudents();
   });
   $("student-code-search").addEventListener("input", renderStudentCodes);
@@ -3663,7 +3680,7 @@
     if (!credentials) return false;
     let profile = {};
     try {
-      profile = JSON.parse(sessionStorage.getItem("classroom.pendingFirebaseProfile") || "{}");
+      profile = JSON.parse(storageGet("sessionStorage", "classroom.pendingFirebaseProfile") || "{}");
     } catch (_) {
       profile = {};
     }
