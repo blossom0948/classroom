@@ -53,7 +53,7 @@ assert.match(script, /function startClassPolling\(\)/, "Class refresh must use a
 assert.match(script, /function storageSet\(storageName, key, value\)[\s\S]*?return storage\.getItem\(key\) === String\(value\);/, "Stored login tokens must verify that browser storage actually accepted the write.");
 assert.match(script, /if \(storageSet\("localStorage", TEACHER_TOKEN_KEY, token\)\) \{[\s\S]*?\} else \{\s*\/\/ Some managed\/private browser contexts deny persistent storage\.[\s\S]*?storageSet\("sessionStorage", TEACHER_TOKEN_KEY, token\);/, "A denied persistent-storage write must fall back to a tab-scoped token so reloads do not lose a valid login.");
 const storageHelpers = script.match(/  function storageSet\(storageName, key, value\) \{[\s\S]*?\n  \}/)?.[0];
-const tokenStore = script.match(/  function storeTeacherToken\(token, isGuest = false\) \{[\s\S]*?\n  \}/)?.[0];
+const tokenStore = script.match(/  function storeTeacherToken\(token, sessionOnly = false\) \{[\s\S]*?\n  \}/)?.[0];
 assert.ok(storageHelpers && tokenStore, "Storage and token persistence helpers must remain testable.");
 const storedToken = runInNewContext(`${storageHelpers}\n${tokenStore}\nstoreTeacherToken("preview-token", false); window.sessionStorage.getItem("classroom.teacherToken");`, {
   cookieSessionEnabled: false,
@@ -207,8 +207,38 @@ assert.match(styles, /html\[data-theme="dark"\] \.workspace-dialog[\s\S]*backgro
 assert.match(script, /\$\("school-login-button"\)\.addEventListener\("click", openGuestLoginDialog\)/, "School login must open the school guest access flow.");
 assert.doesNotMatch(html, /id="login-guest-button"/, "The duplicate school guest button should not be visible beside school login.");
 assert.match(html, /id="guest-login-dialog"[^>]*class="command-dialog guest-login-dialog"/, "School login must retain the branded school access dialog.");
-assert.match(html, /id="guest-login-submit"[^>]*class="primary"[^>]*>학교 로그인<\/button>/, "The school access dialog must use the same school login action label.");
+assert.match(html, /id="guest-login-submit"[^>]*class="primary"[^>]*>게스트로 로그인<\/button>/, "The school access dialog must label its guest-only action clearly.");
 assert.doesNotMatch(script, /\$\("school-login-button"\)\.disabled = !firebaseReady/, "School login must not depend on Firebase admin authentication readiness.");
+assert.match(html, /id="teacher-login-choice"/, "Teacher login must have a distinct account path.");
+assert.match(html, /id="central-admin-login-choice"/, "School central-admin login must have a distinct account path.");
+assert.match(html, /id="admin-one-time-checkbox"/, "Central admins need an explicit one-time login choice for classroom computers.");
+assert.match(html, /id="signup-central-admin-role"/, "Central-admin signup must be separate from ordinary teacher signup.");
+assert.match(html, /id="developer-section"/, "The developer-only management surface must exist.");
+assert.match(html, /id="auth-help-dialog"/, "Signup and admin enrollment need a help and support surface.");
+assert.match(html, /id="guest-favorite-schools"/, "School guest access must render saved favorite schools.");
+assert.match(script, /FAVORITE_SCHOOLS_KEY/, "Guest school favorites must persist locally without exposing them to the school server.");
+assert.match(cloudflareWorker, /ensureColumn\("Users", "is_developer_admin", "INTEGER NOT NULL DEFAULT 0"\)/, "The global developer role must be separate from school-admin access.");
+assert.match(cloudflareWorker, /emailVerified: user\.emailVerified === true/, "Firebase email verification must be checked server-side.");
+assert.match(cloudflareWorker, /async submitRegistrationRequest\(/, "New teacher/admin accounts must use the scoped approval workflow.");
+assert.match(cloudflareWorker, /async reviewSchoolAdminApplication\(/, "Only the developer workflow may activate a school central-admin request.");
+assert.match(cloudflareWorker, /if \(!user\.is_developer_admin\) return responseError\("DEVELOPER_REQUIRED"/, "Developer-management APIs must reject ordinary school accounts.");
+assert.match(cloudflareWorker, /async reviewTeacherRequest\(/, "School central admins must be able to approve teacher signup requests.");
+assert.match(cloudflareWorker, /async createSupportRequest\(/, "Developer support requests must be stored through a server-side endpoint.");
+assert.match(cloudflareWorker, /ensureColumn\("Users", "disabled_at_utc", "TEXT"\)/, "Developer account access blocks must use an additive, auditable migration.");
+assert.match(cloudflareWorker, /u\.disabled_at_utc IS NULL/, "Disabled accounts must not retain existing teacher sessions.");
+assert.match(cloudflareWorker, /async updateSchoolAdministratorAccess\(/, "Developers must be able to block and restore central-admin access without deleting identity records.");
+assert.match(cloudflareWorker, /status = 'SUPPORT_REQUIRED'[\s\S]{0,500}SCHOOL_ADMIN_APPLICATION_PENDING/, "A competing central-admin applicant must remain eligible to contact developer support.");
+assert.match(script, /data-school-admin-disable/, "The developer console must expose reversible account access blocking.");
+assert.match(script, /Firebase 계정과 기존 기록은 삭제하지 않아 나중에 복구할 수 있습니다/, "The access-block action must disclose that Firebase identity and audit data are retained.");
+assert.match(script, /\(isCentralAdmin \|\| isDeveloperAdmin\)/, "Persistent developer-admin sessions must also show the shared-computer logout warning.");
+assert.match(script, /관리자가 설정한 PIN으로 연결합니다/, "The school guest entry must use PIN terminology consistently.");
+assert.match(cloudflareWorker, /support-user.{0,12}2, 24 \* 60 \* 60_000/, "Support requests must be rate-limited per verified identity.");
+assert.match(cloudflareWorker, /SUPPORT_ACCOUNT_NOT_ELIGIBLE[\s\S]{0,220}학생 계정은 학교 선생님께 문의해 주세요/, "Student sessions and unrelated Firebase accounts must not use teacher developer support.");
+assert.match(cloudflareWorker, /session_kind TEXT NOT NULL DEFAULT 'persistent'/, "Teacher sessions must record whether a login is one-time.");
+assert.match(cloudflareWorker, /GUEST_SESSION_LIFETIME_MS = 1000 \* 60 \* 60 \* 12/, "Guest and one-time sessions must have a bounded lifetime.");
+assert.match(cloudflareWorker, /if \(user\.is_admin && !user\.is_developer_admin\) return true;[\s\S]{0,220}ClassTeachers/, "Regular teachers must have explicit class membership rather than blanket school access.");
+assert.match(cloudflareWorker, /Require explicit class membership at request time without revoking[\s\S]{0,180}INSERT OR IGNORE INTO ClassTeachers/, "Class access hardening must preserve existing teacher assignments while ensuring class owners remain assigned.");
+assert.match(cloudflareWorker, /async compareTeacherStudentExitPin\(/, "Teachers must be able to verify whether their guest PIN matches the student-app exit PIN without receiving a stored secret.");
 assert.match(styles, /@media \(max-width: 820px\)/, "The mobile shell must keep a compact breakpoint.");
 assert.match(html, /id="mobile-command-launcher"[^>]*aria-controls="bulk-actions"/, "Phones need one explicit entry point for student commands.");
 assert.doesNotMatch(html, /toolbar-section-heading/, "The roster toolbar must not spend a column repeating its own purpose.");

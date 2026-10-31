@@ -40,14 +40,14 @@
       || storageGet("sessionStorage", TEACHER_TOKEN_KEY);
   }
 
-  function storeTeacherToken(token, isGuest = false) {
+  function storeTeacherToken(token, sessionOnly = false) {
     if (cookieSessionEnabled) {
       storageRemove("localStorage", TEACHER_TOKEN_KEY);
       storageRemove("sessionStorage", TEACHER_TOKEN_KEY);
       return;
     }
     if (!token) return;
-    if (isGuest) {
+    if (sessionOnly) {
       storageRemove("localStorage", TEACHER_TOKEN_KEY);
       storageSet("sessionStorage", TEACHER_TOKEN_KEY, token);
       return;
@@ -63,6 +63,12 @@
 
   const state = {
     token: readTeacherToken(),
+    sessionOnly: Boolean(storageGet("sessionStorage", TEACHER_TOKEN_KEY) && !storageGet("localStorage", TEACHER_TOKEN_KEY)),
+    pendingRegistrationCredentials: null,
+    pendingRegistrationProfile: null,
+    selectedSignupRole: "TEACHER",
+    selectedLoginRole: "teacher",
+    adminLoginNoticeShown: false,
     teacher: null,
     classes: [],
     classId: null,
@@ -192,6 +198,8 @@
 
   function clearSession() {
     state.token = null;
+    state.sessionOnly = false;
+    state.adminLoginNoticeShown = false;
     state.teacher = null;
     state.classes = [];
     state.classId = null;
@@ -256,11 +264,12 @@
     appView.hidden = true;
   }
 
-  function applySessionToken(result, isGuest = false) {
+  function applySessionToken(result, isGuest = false, forceSessionOnly = false) {
     if (state.initialSessionRetryTimer) clearTimeout(state.initialSessionRetryTimer);
     state.initialSessionRetryTimer = null;
     state.token = cookieSessionEnabled ? null : (result?.accessToken || null);
-    storeTeacherToken(result?.accessToken, isGuest);
+    state.sessionOnly = isGuest || forceSessionOnly || result?.sessionOnly === true;
+    storeTeacherToken(result?.accessToken, state.sessionOnly);
   }
 
   function showToast(message) {
@@ -615,7 +624,8 @@
     const isGuest = session.isGuest === true;
     // Account sessions survive closing/reopening the installed console. Guest
     // sessions deliberately stay tab-scoped and are never promoted to disk.
-    storeTeacherToken(state.token, isGuest);
+    state.sessionOnly = isGuest || session.sessionOnly === true;
+    storeTeacherToken(state.token, state.sessionOnly);
     state.classId = state.classId && state.classes.some((item) => item.id === state.classId)
       ? state.classId
       : state.classes[0]?.id || null;
@@ -623,9 +633,11 @@
     $("teacher-account").textContent = isGuest
       ? `${session.school?.name || "학교"} · 수업 운영`
       : session.email || session.loginName || "Teacher";
-    $("teacher-role").textContent = isGuest ? "게스트" : "관리자";
+    const isDeveloperAdmin = session.isDeveloperAdmin === true;
+    const isCentralAdmin = session.isAdmin === true;
+    $("teacher-role").textContent = isDeveloperAdmin ? "개발자" : isGuest ? "게스트" : isCentralAdmin ? "중앙 관리자" : "선생님";
     $("teacher-role").classList.toggle("guest-badge", isGuest);
-    $("teacher-role").hidden = !session.isAdmin && !isGuest;
+    $("teacher-role").hidden = !isCentralAdmin && !isDeveloperAdmin && !isGuest;
     const focusDisplayMode = $("focus-display-mode");
     if (focusDisplayMode) focusDisplayMode.value = state.focusDisplayMode;
     // The installed shell owns the Windows title-bar close action. Keeping a
@@ -633,16 +645,18 @@
     // a reliable browser close path, so it intentionally stays out of view.
     $("close-console-button").hidden = true;
     $("admins-nav").hidden = !session.isAdmin;
+    $("developer-nav").hidden = !isDeveloperAdmin;
     $("student-codes-nav").hidden = false;
     $("settings-nav").hidden = isGuest;
+    $("teacher-exit-pin-check-form").hidden = isGuest || isDeveloperAdmin;
     $("admin-enroll-button").disabled = !session.isAdmin || !state.classes.length;
-    $("admin-enroll-button").hidden = isGuest;
+    $("admin-enroll-button").hidden = !session.isAdmin;
     $("admin-enroll-button").title = state.classes.length ? "학생 코드 발급" : "먼저 관리자 메뉴에서 학급을 만들어 주세요";
     $("student-code-permission").textContent = isGuest
       ? "게스트 · 수업 운영 가능 · 학생 코드 발급과 보안 설정은 관리자만"
       : session.isAdmin
-      ? "관리자: 코드 발급 및 재발급 가능"
-      : "조회 전용 · 코드는 관리자에게 요청하세요";
+      ? "중앙 관리자 · 학생 코드 발급 및 재발급 가능"
+      : "조회 전용 · 담당 학급 코드를 확인할 수 있습니다.";
     renderClassPicker();
     $("teacher-greeting").textContent = isGuest ? "게스트로 접속했습니다." : `${session.displayName || "선생님"}선생님 안녕하세요.`;
     $("school-name").textContent = session.school?.name || "학교를 설정해 주세요";
@@ -664,6 +678,15 @@
       // should not turn that valid login into a logged-out screen; a real 401
       // clears the session in api() and is still allowed to reach the caller.
       if (!hasTeacherSession() || !state.teacher) throw error;
+    }
+    if ((isCentralAdmin || isDeveloperAdmin) && !state.adminLoginNoticeShown) {
+      state.adminLoginNoticeShown = true;
+      $("central-admin-login-dialog-copy").textContent = session.sessionOnly
+        ? "일회성 로그인으로 접속했습니다. 이 창의 세션은 브라우저에만 보관되며, 창을 닫으면 이 기기에서 로그인 상태가 사라집니다."
+        : isDeveloperAdmin
+          ? "개발자 관리자 계정은 창을 닫아도 자동 로그아웃되지 않습니다. 반에서 사용한 뒤에는 반드시 로그아웃하고, 공용 PC에서는 로그인 화면의 ‘일회성 로그인’을 선택하세요."
+          : "학교 중앙 관리자 계정은 창을 닫아도 자동 로그아웃되지 않습니다. 반에서 로그인했다면 사용 후 반드시 로그아웃해 주세요. 반 컴퓨터에서는 로그인 화면의 ‘일회성 로그인’을 선택하세요.";
+      if (!$("central-admin-login-dialog").open) $("central-admin-login-dialog").showModal();
     }
     await loadWorkspaceData();
     await loadCommandQueue().catch(() => {});
@@ -2200,7 +2223,8 @@
     const [directory, exitPinStatus, guestPasswordStatus] = await Promise.all([
       api("/api/admin/teachers"),
       api("/api/admin/student-exit-pin"),
-      api("/api/admin/guest-password")
+      api("/api/admin/guest-password"),
+      loadTeacherAccessRequests()
     ]);
     state.adminDirectory = directory;
     state.studentExitPinStatus = exitPinStatus;
@@ -2209,6 +2233,103 @@
     renderAdminDirectory();
     renderStudentExitPinStatus();
     renderGuestPasswordStatus();
+  }
+
+  async function loadTeacherAccessRequests() {
+    const card = $("teacher-access-requests");
+    if (!state.teacher?.isAdmin) {
+      if (card) card.hidden = true;
+      return [];
+    }
+    if (card) card.hidden = false;
+    const target = $("teacher-requests-list");
+    if (target) target.innerHTML = '<div class="empty-state">가입 신청을 확인하는 중입니다…</div>';
+    const requests = await api("/api/admin/teacher-requests");
+    const rows = Array.isArray(requests) ? requests : [];
+    if (target) {
+      target.innerHTML = rows.length
+        ? rows.map((request) => `<div class="access-request-row"><div><strong>${escapeHtml(request.displayName)}</strong><small>${escapeHtml(request.email)} · ${formatTime(request.createdAtUtc)}</small></div><div class="access-request-actions"><button class="secondary" type="button" data-teacher-request-review="approve" data-request-id="${escapeHtml(request.requestId)}">승인</button><button class="ghost-button" type="button" data-teacher-request-review="reject" data-request-id="${escapeHtml(request.requestId)}">거절</button></div></div>`).join("")
+        : '<div class="empty-state">검토할 가입 신청이 없습니다.</div>';
+      target.querySelectorAll("[data-teacher-request-review]").forEach((button) => button.addEventListener("click", () => {
+        reviewTeacherAccessRequest(button.dataset.requestId, button.dataset.teacherRequestReview === "approve")
+          .catch((error) => showToast(error.message));
+      }));
+    }
+    return rows;
+  }
+
+  async function reviewTeacherAccessRequest(requestId, approve) {
+    if (!requestId) return;
+    if (!await askConfirmation(approve ? "가입 승인" : "가입 거절", approve ? "이 선생님의 계정을 승인하고 학교 수업에 연결할까요?" : "이 가입 신청을 거절할까요?", approve ? "승인" : "거절")) return;
+    await api(`/api/admin/teacher-requests/${encodeURIComponent(requestId)}`, { method: "POST", body: { approve } });
+    showToast(approve ? "선생님 가입을 승인했습니다." : "가입 신청을 거절했습니다.");
+    await loadAdminDirectory();
+  }
+
+  async function loadDeveloperOverview() {
+    if (!state.teacher?.isDeveloperAdmin) return;
+    const applicationsTarget = $("developer-applications-list");
+    const adminsTarget = $("developer-admins-list");
+    const supportTarget = $("developer-support-list");
+    [applicationsTarget, adminsTarget, supportTarget].forEach((target) => {
+      if (target) target.innerHTML = '<div class="empty-state">정보를 불러오는 중입니다…</div>';
+    });
+    const overview = await api("/api/developer/overview");
+    const applications = Array.isArray(overview.applications) ? overview.applications : [];
+    const admins = Array.isArray(overview.schoolAdmins) ? overview.schoolAdmins : [];
+    const requests = Array.isArray(overview.supportRequests) ? overview.supportRequests : [];
+    $("developer-application-count").textContent = String(applications.length);
+    $("developer-admin-count").textContent = String(admins.length);
+    $("developer-support-count").textContent = String(requests.filter((item) => item.status === "OPEN").length);
+    applicationsTarget.innerHTML = applications.length
+      ? applications.map((item) => `<div class="developer-row"><div><strong>${escapeHtml(item.schoolName)}</strong><small>${escapeHtml(item.displayName)} · ${escapeHtml(item.email)} · ${formatTime(item.createdAtUtc)}</small></div><div class="access-request-actions"><button class="secondary" type="button" data-school-admin-review="approve" data-request-id="${escapeHtml(item.requestId)}">승인</button><button class="ghost-button" type="button" data-school-admin-review="reject" data-request-id="${escapeHtml(item.requestId)}">거절</button></div></div>`).join("")
+      : '<div class="empty-state">검토할 중앙 관리자 신청이 없습니다.</div>';
+    adminsTarget.innerHTML = admins.length
+      ? admins.map((item) => `<div class="developer-row ${item.disabledAtUtc ? "is-disabled" : ""}"><div><strong>${escapeHtml(item.schoolName)}</strong><small>${escapeHtml(item.displayName)} · ${escapeHtml(item.email)} · ${item.disabledAtUtc ? "접근 차단" : "관리자 권한 사용 중"}</small></div>${item.disabledAtUtc ? `<button class="secondary" type="button" data-school-admin-restore="${escapeHtml(item.userId)}">접근 복구</button>` : `<div class="access-request-actions"><button class="ghost-button" type="button" data-school-admin-revoke="${escapeHtml(item.userId)}">관리자 권한 회수</button><button class="danger-outline" type="button" data-school-admin-disable="${escapeHtml(item.userId)}">계정 접근 차단</button></div>`}</div>`).join("")
+      : '<div class="empty-state">등록된 학교 중앙 관리자가 없습니다.</div>';
+    supportTarget.innerHTML = requests.length
+      ? requests.map((item) => `<article class="developer-support-item ${item.status === "CLOSED" ? "is-closed" : ""}"><div class="developer-row"><div><strong>${escapeHtml(item.category)} · ${escapeHtml(item.schoolName)}</strong><small>${escapeHtml(item.email)} · ${formatTime(item.createdAtUtc)}</small></div><button class="ghost-button" type="button" data-support-status="${escapeHtml(item.requestId)}" data-next-status="${item.status === "OPEN" ? "CLOSED" : "OPEN"}">${item.status === "OPEN" ? "닫기" : "다시 열기"}</button></div><p>${escapeHtml(item.message)}</p></article>`).join("")
+      : '<div class="empty-state">접수된 도움 요청이 없습니다.</div>';
+    applicationsTarget.querySelectorAll("[data-school-admin-review]").forEach((button) => button.addEventListener("click", () => reviewSchoolAdminApplication(button.dataset.requestId, button.dataset.schoolAdminReview === "approve").catch((error) => showToast(error.message))));
+    adminsTarget.querySelectorAll("[data-school-admin-revoke]").forEach((button) => button.addEventListener("click", () => revokeSchoolAdmin(button.dataset.schoolAdminRevoke).catch((error) => showToast(error.message))));
+    adminsTarget.querySelectorAll("[data-school-admin-disable]").forEach((button) => button.addEventListener("click", () => disableSchoolAdmin(button.dataset.schoolAdminDisable).catch((error) => showToast(error.message))));
+    adminsTarget.querySelectorAll("[data-school-admin-restore]").forEach((button) => button.addEventListener("click", () => restoreSchoolAdmin(button.dataset.schoolAdminRestore).catch((error) => showToast(error.message))));
+    supportTarget.querySelectorAll("[data-support-status]").forEach((button) => button.addEventListener("click", () => updateDeveloperSupportRequest(button.dataset.supportStatus, button.dataset.nextStatus).catch((error) => showToast(error.message))));
+  }
+
+  async function reviewSchoolAdminApplication(requestId, approve) {
+    if (!await askConfirmation(approve ? "중앙 관리자 승인" : "신청 거절", approve ? "신청 이메일과 학교를 확인했나요? 승인하면 이 계정에 학교 관리자 권한이 부여됩니다." : "이 중앙 관리자 신청을 거절할까요?", approve ? "승인" : "거절")) return;
+    await api(`/api/developer/school-admin-applications/${encodeURIComponent(requestId)}`, { method: "POST", body: { approve } });
+    showToast(approve ? "중앙 관리자 계정을 승인했습니다." : "신청을 거절했습니다.");
+    await loadDeveloperOverview();
+  }
+
+  async function revokeSchoolAdmin(userId) {
+    if (!await askConfirmation("중앙 관리자 권한 회수", "해당 계정의 현재 로그인을 종료하고 관리자 권한을 회수할까요?", "권한 회수")) return;
+    await api(`/api/developer/school-admins/${encodeURIComponent(userId)}`, { method: "DELETE" });
+    showToast("중앙 관리자 권한을 회수했습니다.");
+    await loadDeveloperOverview();
+  }
+
+  async function disableSchoolAdmin(userId) {
+    const confirmed = await askConfirmation("계정 접근 차단", "이 계정의 현재 로그인을 종료하고 Classroom 접근을 차단합니다. Firebase 계정과 기존 기록은 삭제하지 않아 나중에 복구할 수 있습니다.", "접근 차단");
+    if (!confirmed) return;
+    await api(`/api/developer/school-admins/${encodeURIComponent(userId)}/disable`, { method: "POST", body: {} });
+    showToast("Classroom 계정 접근을 차단했습니다.");
+    await loadDeveloperOverview();
+  }
+
+  async function restoreSchoolAdmin(userId) {
+    const confirmed = await askConfirmation("중앙 관리자 접근 복구", "다른 중앙 관리자가 없는지 확인한 뒤 이 학교 관리자 계정의 접근을 복구할까요?", "접근 복구");
+    if (!confirmed) return;
+    await api(`/api/developer/school-admins/${encodeURIComponent(userId)}/restore`, { method: "POST", body: {} });
+    showToast("중앙 관리자 접근을 복구했습니다. 새로 로그인해 주세요.");
+    await loadDeveloperOverview();
+  }
+
+  async function updateDeveloperSupportRequest(requestId, status) {
+    await api(`/api/developer/support-requests/${encodeURIComponent(requestId)}`, { method: "POST", body: { status } });
+    await loadDeveloperOverview();
   }
 
   function renderStudentExitPinStatus() {
@@ -3101,6 +3222,32 @@
     }
   }
 
+  function setLoginRole(role = "teacher") {
+    state.selectedLoginRole = role === "central-admin" ? "central-admin" : "teacher";
+    const central = state.selectedLoginRole === "central-admin";
+    $("teacher-login-choice").classList.toggle("active", !central);
+    $("teacher-login-choice").setAttribute("aria-pressed", String(!central));
+    $("central-admin-login-choice").classList.toggle("active", central);
+    $("central-admin-login-choice").setAttribute("aria-pressed", String(central));
+    $("central-admin-login-notice").hidden = !central;
+    $("admin-one-time-button").hidden = !central;
+    $("admin-one-time-options").hidden = true;
+    $("admin-one-time-checkbox").checked = false;
+    $("account-login-submit").innerHTML = central ? "학교 중앙 관리자 로그인 <span>→</span>" : "선생님 로그인 <span>→</span>";
+  }
+
+  function setSignupRole(role = "TEACHER") {
+    state.selectedSignupRole = role === "SCHOOL_ADMIN" ? "SCHOOL_ADMIN" : "TEACHER";
+    document.querySelectorAll("[data-signup-role]").forEach((button) => {
+      const selected = button.dataset.signupRole === state.selectedSignupRole;
+      button.classList.toggle("active", selected);
+      button.setAttribute("aria-pressed", String(selected));
+    });
+    $("signup-submit").innerHTML = state.selectedSignupRole === "SCHOOL_ADMIN"
+      ? "중앙 관리자 신청 <span>→</span>"
+      : "선생님 가입 신청 <span>→</span>";
+  }
+
   function setAuthMode(mode = "login") {
     const resolvedMode = mode === "signup" ? "signup" : "login";
     loginView.dataset.authMode = resolvedMode;
@@ -3116,6 +3263,14 @@
     $("login-error").hidden = true;
     $("signup-error").hidden = true;
     $("school-login-error").hidden = true;
+    if (signup) {
+      setSignupRole("TEACHER");
+      $("signup-submit").hidden = false;
+      $("signup-verification-continue").hidden = true;
+      $("signup-status").hidden = true;
+    } else {
+      setLoginRole("teacher");
+    }
   }
 
   const legalDocuments = {
@@ -3138,6 +3293,49 @@
     $("legal-content").innerHTML = documentInfo.html;
     const dialog = $("legal-dialog");
     if (!dialog.open) dialog.showModal();
+  }
+
+  const FAVORITE_SCHOOLS_KEY = "classroom.favoriteSchools.v1";
+
+  function readFavoriteSchools() {
+    try {
+      const value = JSON.parse(storageGet("localStorage", FAVORITE_SCHOOLS_KEY) || "[]");
+      return Array.isArray(value) ? value.filter((school) => school?.id && school?.name).slice(0, 12) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function renderGuestFavoriteSchools() {
+    const container = $("guest-favorite-schools");
+    if (!container) return;
+    const favorites = readFavoriteSchools();
+    container.hidden = favorites.length === 0;
+    container.innerHTML = favorites.length
+      ? `<span class="favorite-schools-label">즐겨찾는 학교</span><div class="favorite-school-list">${favorites.map((school) => `<div class="favorite-school-item"><button type="button" class="favorite-school-select" data-favorite-school-select="${escapeHtml(school.id)}" data-school-name="${escapeHtml(school.name)}">${escapeHtml(school.name)}</button><button type="button" class="favorite-school-star is-favorite" data-favorite-remove="${escapeHtml(school.id)}" aria-label="${escapeHtml(school.name)} 즐겨찾기 해제" aria-pressed="true">★</button></div>`).join("")}</div>`
+      : "";
+    container.querySelectorAll("[data-favorite-school-select]").forEach((button) => button.addEventListener("click", () => {
+      setSchoolControls("guest-school-search", "guest-school-results", "guest-school-id", {
+        id: button.dataset.favoriteSchoolSelect,
+        name: button.dataset.schoolName
+      });
+      $("guest-login-password").focus();
+    }));
+    container.querySelectorAll("[data-favorite-remove]").forEach((button) => button.addEventListener("click", () => {
+      const updated = readFavoriteSchools().filter((school) => school.id !== button.dataset.favoriteRemove);
+      storageSet("localStorage", FAVORITE_SCHOOLS_KEY, JSON.stringify(updated));
+      renderGuestFavoriteSchools();
+    }));
+  }
+
+  function toggleFavoriteSchool(school) {
+    const favorites = readFavoriteSchools();
+    const existing = favorites.some((item) => item.id === school.id);
+    const updated = existing
+      ? favorites.filter((item) => item.id !== school.id)
+      : [{ id: school.id, name: school.name, address: school.address || "" }, ...favorites].slice(0, 12);
+    storageSet("localStorage", FAVORITE_SCHOOLS_KEY, JSON.stringify(updated));
+    renderGuestFavoriteSchools();
   }
 
   function setupSchoolSearch(inputId, resultsId, hiddenId) {
@@ -3165,11 +3363,22 @@
             results.innerHTML = '<div class="school-search-status">검색 결과가 없습니다. 학교 이름을 더 정확히 입력해 주세요.</div>';
             return;
           }
-          results.innerHTML = schools.map((school) => `<button type="button" class="school-result" data-school-id="${escapeHtml(school.id)}" data-school-name="${escapeHtml(school.name)}"><strong>${escapeHtml(school.name)}</strong><small>${escapeHtml(school.address || school.schoolType || "")}</small></button>`).join("");
+          if (input.value.trim() !== query) return;
+          const favorites = new Set(readFavoriteSchools().map((school) => school.id));
+          results.innerHTML = schools.map((school) => `<div class="school-result-row"><button type="button" class="school-result" data-school-id="${escapeHtml(school.id)}" data-school-name="${escapeHtml(school.name)}"><strong>${escapeHtml(school.name)}</strong><small>${escapeHtml(school.address || school.schoolType || "")}</small></button>${inputId === "guest-school-search" ? `<button type="button" class="school-favorite-toggle ${favorites.has(school.id) ? "is-favorite" : ""}" data-favorite-id="${escapeHtml(school.id)}" data-favorite-name="${escapeHtml(school.name)}" data-favorite-address="${escapeHtml(school.address || school.schoolType || "")}" aria-label="${escapeHtml(school.name)} 즐겨찾기" aria-pressed="${favorites.has(school.id)}">${favorites.has(school.id) ? "★" : "☆"}</button>` : ""}</div>`).join("");
           results.querySelectorAll("[data-school-id]").forEach((button) => button.addEventListener("click", () => {
             hidden.value = button.dataset.schoolId || "";
             input.value = button.dataset.schoolName || "";
             results.hidden = true;
+          }));
+          results.querySelectorAll("[data-favorite-id]").forEach((button) => button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleFavoriteSchool({ id: button.dataset.favoriteId, name: button.dataset.favoriteName, address: button.dataset.favoriteAddress });
+            const favorite = readFavoriteSchools().some((school) => school.id === button.dataset.favoriteId);
+            button.classList.toggle("is-favorite", favorite);
+            button.setAttribute("aria-pressed", String(favorite));
+            button.textContent = favorite ? "★" : "☆";
           }));
         } catch (error) {
           results.innerHTML = `<div class="school-search-status error">${escapeHtml(error.message)}</div>`;
@@ -3193,6 +3402,7 @@
     if (!dialog) return;
     $("guest-login-form").reset();
     setSchoolControls("guest-school-search", "guest-school-results", "guest-school-id", null);
+    renderGuestFavoriteSchools();
     $("guest-login-error").hidden = true;
     if (!dialog.open) dialog.showModal();
   }
@@ -3429,6 +3639,36 @@
     if (!credentials?.idToken) {
       throw new Error("Firebase 인증 결과를 받지 못했습니다. 다시 시도해 주세요.");
     }
+    if (profile.registrationRole) {
+      const result = await api("/auth/registration-request", {
+        method: "POST",
+        body: {
+          idToken: credentials.idToken,
+          role: profile.registrationRole,
+          schoolId: profile.schoolId,
+          displayName: profile.displayName,
+          subject: profile.subject,
+          termsAccepted: profile.termsAccepted === true,
+          privacyAccepted: profile.privacyAccepted === true
+        }
+      });
+      storageRemove("sessionStorage", "classroom.pendingFirebaseProfile");
+      storageRemove("sessionStorage", PENDING_FIREBASE_ENTRY_KEY);
+      if (!result?.accessToken) {
+        const status = $("signup-status");
+        status.textContent = result?.requestType === "school-admin"
+          ? `${result.schoolName} 중앙 관리자 신청이 접수되었습니다. 개발자(${result.developerEmail || "blossom0948@gmail.com"}) 승인 전까지 관리자 기능은 사용할 수 없습니다.`
+          : `${result.schoolName || "학교"} 선생님 가입 신청이 접수되었습니다. 학교 중앙 관리자의 승인 후 로그인할 수 있습니다.`;
+        status.hidden = false;
+        $("signup-verification-continue").hidden = true;
+        $("signup-submit").hidden = true;
+        return;
+      }
+      state.adminLoginNoticeShown = false;
+      applySessionToken(result, false, result.sessionOnly === true);
+      await loadTeacher();
+      return;
+    }
     const result = await api("/auth/firebase-login", {
       method: "POST",
       body: {
@@ -3436,12 +3676,15 @@
         displayName: String(profile.displayName || "").trim(),
         subject: String(profile.subject || "").trim(),
         termsAccepted: profile.termsAccepted === true,
-        privacyAccepted: profile.privacyAccepted === true
+        privacyAccepted: profile.privacyAccepted === true,
+        oneTimeLogin: profile.oneTimeLogin === true,
+        accountType: profile.accountType || "TEACHER"
       }
     });
     storageRemove("sessionStorage", "classroom.pendingFirebaseProfile");
     storageRemove("sessionStorage", PENDING_FIREBASE_ENTRY_KEY);
-    applySessionToken(result);
+    state.adminLoginNoticeShown = false;
+    applySessionToken(result, false, result.sessionOnly === true);
     await loadTeacher();
   }
 
@@ -3475,6 +3718,13 @@
       if (signupMode && (!signupProfile.termsAccepted || !signupProfile.privacyAccepted)) {
         throw new Error("이용약관과 개인정보처리방침 동의가 필요합니다.");
       }
+      if (signupMode && (!signupProfile.registrationRole || !signupProfile.schoolId || !signupProfile.displayName)) {
+        throw new Error("이름과 학교를 선택한 뒤 Google 가입을 진행해 주세요.");
+      }
+      if (!signupMode && !isSchoolEntry) signupProfile = {
+        oneTimeLogin: $("admin-one-time-checkbox").checked,
+        accountType: state.selectedLoginRole === "central-admin" ? "SCHOOL_ADMIN" : "TEACHER"
+      };
       if (signupMode) {
         storageSet("sessionStorage", "classroom.pendingFirebaseProfile", JSON.stringify(signupProfile));
       } else {
@@ -3491,6 +3741,7 @@
       // In particular, a successful Google credential must never fall through
       // to the landing page before the Classroom session exchange finishes.
       showAuth(isSchoolEntry ? "school" : signupMode ? "signup" : "login");
+      if (signupMode && signupProfile.registrationRole) setSignupRole(signupProfile.registrationRole);
       if (error.code === "auth/popup-closed-by-user" || error.code === "auth/cancelled-popup-request") {
         if (isSchoolEntry) setSchoolLoginStatus("학교 로그인을 취소했습니다.");
         else setFirebaseStatus("Google 로그인을 취소했습니다.");
@@ -3511,12 +3762,25 @@
     try {
       const loginName = $("login-name").value.trim();
       const password = $("login-password").value;
+      const oneTimeLogin = $("admin-one-time-checkbox").checked;
       if (loginName.includes("@")) {
         const credentials = await firebaseClient().signInEmail(loginName, password);
-        await finishFirebaseLogin(credentials);
+        await finishFirebaseLogin(credentials, {
+          oneTimeLogin,
+          accountType: state.selectedLoginRole === "central-admin" ? "SCHOOL_ADMIN" : "TEACHER"
+        });
       } else {
-        const result = await api("/auth/login", { method: "POST", body: { loginName, password } });
-        applySessionToken(result);
+        const result = await api("/auth/login", {
+          method: "POST",
+          body: {
+            loginName,
+            password,
+            oneTimeLogin,
+            accountType: state.selectedLoginRole === "central-admin" ? "SCHOOL_ADMIN" : "TEACHER"
+          }
+        });
+        state.adminLoginNoticeShown = false;
+        applySessionToken(result, false, result.sessionOnly === true);
         await loadTeacher();
       }
     } catch (error) {
@@ -3568,8 +3832,15 @@
     errorTarget.hidden = true;
     const email = $("signup-email").value.trim();
     const password = $("signup-password").value;
+    const displayName = $("signup-display-name").value.trim();
+    const schoolId = $("signup-school-id").value.trim();
     if (!email || !email.includes("@")) {
       errorTarget.textContent = "학교 이메일 주소를 입력해 주세요.";
+      errorTarget.hidden = false;
+      return;
+    }
+    if (displayName.length < 2 || !schoolId) {
+      errorTarget.textContent = "이름을 입력하고 학교 검색 결과에서 학교를 선택해 주세요.";
       errorTarget.hidden = false;
       return;
     }
@@ -3590,14 +3861,32 @@
     }
     setAuthBusy(form, true);
     try {
-      const credentials = await firebaseClient().signUpEmail(
-        email,
-        password,
-        "");
-      await finishFirebaseLogin(credentials, {
+      const profile = {
+        registrationRole: state.selectedSignupRole,
+        schoolId,
+        displayName,
+        subject: $("signup-subject").value.trim(),
         termsAccepted: true,
         privacyAccepted: true
-      });
+      };
+      let credentials;
+      try {
+        credentials = await firebaseClient().signUpEmail(email, password, displayName);
+      } catch (error) {
+        if (error.code !== "auth/email-already-in-use") throw error;
+        credentials = await firebaseClient().signInEmail(email, password);
+      }
+      state.pendingRegistrationCredentials = credentials;
+      state.pendingRegistrationProfile = profile;
+      if (!credentials.emailVerified) {
+        await firebaseClient().sendEmailVerification();
+        $("signup-status").textContent = `${email}로 인증 메일을 보냈습니다. 인증 링크를 누른 뒤 이 화면으로 돌아와 아래 버튼을 누르세요.`;
+        $("signup-status").hidden = false;
+        $("signup-verification-continue").hidden = false;
+        $("signup-submit").hidden = true;
+      } else {
+        await finishFirebaseLogin(credentials, profile);
+      }
     } catch (error) {
       errorTarget.textContent = error.message;
       errorTarget.hidden = false;
@@ -3606,15 +3895,43 @@
     }
   });
 
+  $("signup-verification-continue").addEventListener("click", async () => {
+    const errorTarget = $("signup-error");
+    errorTarget.hidden = true;
+    try {
+      const credentials = await firebaseClient().refreshCurrentCredentials();
+      if (!credentials.emailVerified) throw new Error("이메일 인증을 확인하지 못했습니다. 메일의 인증 링크를 누른 뒤 다시 시도해 주세요.");
+      const profile = state.pendingRegistrationProfile;
+      if (!profile) throw new Error("가입 신청 정보를 찾지 못했습니다. 가입 정보를 다시 입력해 주세요.");
+      state.pendingRegistrationCredentials = credentials;
+      await finishFirebaseLogin(credentials, profile);
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
+    }
+  });
+
   $("school-login-button").addEventListener("click", openGuestLoginDialog);
   $("google-login-button").addEventListener("click", () => {
-    const signupProfile = !$("signup-panel").hidden
-      ? { termsAccepted: $("signup-terms").checked, privacyAccepted: $("signup-privacy").checked }
-      : {};
+    const signupMode = !$("signup-panel").hidden;
+    const signupProfile = signupMode
+      ? {
+        registrationRole: state.selectedSignupRole,
+        schoolId: $("signup-school-id").value.trim(),
+        displayName: $("signup-display-name").value.trim(),
+        subject: $("signup-subject").value.trim(),
+        termsAccepted: $("signup-terms").checked,
+        privacyAccepted: $("signup-privacy").checked
+      }
+      : {
+        oneTimeLogin: $("admin-one-time-checkbox").checked,
+        accountType: state.selectedLoginRole === "central-admin" ? "SCHOOL_ADMIN" : "TEACHER"
+      };
     return runGoogleLogin("google-login-button", "admin", signupProfile);
   });
 
   setupSchoolSearch("guest-school-search", "guest-school-results", "guest-school-id");
+  setupSchoolSearch("signup-school-search", "signup-school-results", "signup-school-id");
 
   $("forgot-password-button").addEventListener("click", async () => {
     const email = $("login-name").value.trim();
@@ -3651,7 +3968,7 @@
     try {
       const methods = await firebaseClient().lookupAccount(email);
       if (email === "blossom0948@gmail.com") {
-        result.textContent = "관리자 계정입니다. Google 로그인 또는 교사 아이디 blossom0948로 로그인하세요.";
+        result.textContent = "개발자 계정입니다. 학교 중앙 관리자 로그인에서 기존 Google 또는 교사 아이디로 로그인하세요.";
       } else if (methods.includes("google.com") && methods.includes("password")) {
         result.textContent = "이 이메일은 Google 로그인과 이메일·비밀번호 로그인을 사용할 수 있습니다.";
       } else if (methods.includes("google.com")) {
@@ -3673,6 +3990,87 @@
       setAuthEntry("admin");
       setAuthMode(button.dataset.authMode);
     });
+  });
+  $("teacher-login-choice").addEventListener("click", () => setLoginRole("teacher"));
+  $("central-admin-login-choice").addEventListener("click", () => setLoginRole("central-admin"));
+  $("admin-one-time-button").addEventListener("click", () => {
+    $("admin-one-time-options").hidden = !$("admin-one-time-options").hidden;
+  });
+  document.querySelectorAll("[data-signup-role]").forEach((button) => button.addEventListener("click", () => setSignupRole(button.dataset.signupRole)));
+  $("auth-help-button").addEventListener("click", () => {
+    $("auth-support-status").hidden = true;
+    $("auth-support-error").hidden = true;
+    $("auth-help-dialog").showModal();
+  });
+  $("auth-help-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const errorTarget = $("auth-support-error");
+    const statusTarget = $("auth-support-status");
+    errorTarget.hidden = true;
+    statusTarget.hidden = true;
+    const submitButton = $("auth-support-submit");
+    submitButton.disabled = true;
+    try {
+      if (state.teacher?.isGuest) throw new Error("학교 게스트 계정에서는 개발자 지원을 요청할 수 없습니다. 학교 중앙 관리자에게 문의해 주세요.");
+      const credentials = await firebaseClient().currentCredentials();
+      if (!credentials.emailVerified) throw new Error("이메일 인증을 마친 교사 또는 가입 검토 중인 계정으로 문의할 수 있습니다.");
+      const message = $("auth-support-message").value.trim();
+      const result = await api("/api/support-requests", {
+        method: "POST",
+        body: {
+          idToken: credentials.idToken,
+          category: $("auth-support-category").value,
+          message,
+          schoolId: $("signup-school-id").value || state.teacher?.school?.id || ""
+        }
+      });
+      statusTarget.textContent = result.notificationSent
+        ? `도움 요청이 접수되어 ${result.developerEmail}로 알림을 보냈습니다. 접수번호: ${result.requestId.slice(0, 8)}`
+        : `도움 요청은 접수됐지만 이메일 알림은 전송되지 않았습니다. ${result.developerEmail}로 직접 문의해 주세요. 접수번호: ${result.requestId.slice(0, 8)}`;
+      statusTarget.hidden = false;
+      $("auth-support-message").value = "";
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
+    } finally {
+      submitButton.disabled = false;
+    }
+  });
+  $("central-admin-notice-logout").addEventListener("click", async () => {
+    try { await api("/auth/logout", { method: "POST" }); } catch (_) { /* local logout still clears the session */ }
+    try { await window.ClassroomFirebaseAuth?.signOut(); } catch (_) { /* local logout still clears the session */ }
+    $("central-admin-login-dialog").close();
+    clearSession();
+    showAuth("admin");
+  });
+  $("teacher-requests-refresh").addEventListener("click", () => loadTeacherAccessRequests().catch((error) => showToast(error.message)));
+  $("developer-refresh").addEventListener("click", () => loadDeveloperOverview().catch((error) => showToast(error.message)));
+  $("teacher-exit-pin-check-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const status = $("teacher-exit-pin-check-status");
+    const errorTarget = $("teacher-exit-pin-check-error");
+    status.hidden = true;
+    errorTarget.hidden = true;
+    const button = $("teacher-exit-pin-check-submit");
+    button.disabled = true;
+    try {
+      const result = await api("/api/teacher/student-exit-pin/compare", {
+        method: "POST",
+        body: { pin: $("teacher-exit-pin-check").value }
+      });
+      status.textContent = !result.configured
+        ? "학교 게스트 PIN 또는 학생 앱 종료 PIN이 설정되지 않았습니다."
+        : result.matches
+          ? "일치합니다. 입력한 학교 게스트 PIN이 학생 앱 종료 PIN과 같습니다."
+          : "일치하지 않습니다. 입력값을 확인하거나 학교 중앙 관리자에게 문의하세요.";
+      status.hidden = false;
+      $("teacher-exit-pin-check").value = "";
+    } catch (error) {
+      errorTarget.textContent = error.message;
+      errorTarget.hidden = false;
+    } finally {
+      button.disabled = false;
+    }
   });
   $("landing-login-button").addEventListener("click", () => showAuth("school"));
   $("landing-student-installer-button").addEventListener("click", downloadStudentInstaller);
@@ -4005,6 +4403,7 @@
     document.querySelectorAll(".section-view").forEach((section) => { section.hidden = section.id !== `${button.dataset.section}-section`; });
     if (button.dataset.section === "student-codes") await loadStudentCodes().catch((error) => showToast(error.message));
     if (button.dataset.section === "admins") await loadAdminDirectory().catch((error) => showToast(error.message));
+    if (button.dataset.section === "developer") await loadDeveloperOverview().catch((error) => showToast(error.message));
   }));
   $("command-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -4128,7 +4527,7 @@
     const firebaseReady = window.ClassroomFirebaseAuth?.isConfigured() === true;
     $("google-login-button").disabled = !firebaseReady;
     $("school-login-button").disabled = false;
-    setSchoolLoginStatus("학교 선택과 학교 비밀번호로 안전하게 연결합니다.");
+    setSchoolLoginStatus("학교를 선택하고 관리자가 설정한 PIN으로 연결합니다.");
     setFirebaseStatus(firebaseReady
       ? "관리자용 Google 로그인과 이메일 회원가입을 사용할 수 있습니다."
       : "관리자용 인증은 Firebase 설정 후 사용할 수 있습니다.");

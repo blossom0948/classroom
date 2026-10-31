@@ -67,43 +67,53 @@
     <div class="auth-layout">
       <div class="auth-copy"><div class="eyebrow">WELCOME TO CLASSROOM</div><h1>교실을 연결하는<br><em>첫 번째 단계</em></h1><p>교사 계정을 만들고 학급을 설정하면 학생 PC를 안전하게 등록할 수 있습니다.</p><div class="auth-benefits"><span>✓ 학급별 장치 상태</span><span>✓ 수업 명령과 감사 기록</span><span>✓ 안전한 학생용 연결</span></div></div>
       <div class="login-card auth-card">
-        <div class="auth-card-heading"><div><span class="eyebrow">TEACHER ACCOUNT</span><h2>반가워요.</h2></div><span class="auth-lock">✦</span></div>
+        <div class="auth-card-heading"><div><span class="eyebrow">TEACHER ACCOUNT</span><h2>반가워요.</h2></div><div class="auth-heading-actions"><button id="auth-help-button" class="auth-help-button" type="button" aria-label="도움말 및 고객지원" title="도움말 및 고객지원">?</button><span class="auth-lock">✦</span></div></div>
         <div id="school-login-panel" class="auth-panel school-login-panel">
-          <div class="school-login-copy"><span class="auth-panel-kicker">01 · 기본 로그인</span><h3>학교 로그인으로<br>바로 시작하세요.</h3><p>학교를 선택하고 관리자가 정한 학교 비밀번호를 입력하면 수업 현황을 바로 확인할 수 있습니다.</p></div>
-          <button id="school-login-button" class="primary wide school-login-button" type="button" aria-haspopup="dialog"><span class="school-login-symbol" aria-hidden="true">⌂</span><span>학교 로그인</span><span aria-hidden="true">→</span></button>
-          <div class="school-login-links"><button id="admin-login-choice" class="inline-link admin-login-choice" type="button">관리자 로그인</button><button id="school-student-installer-button" class="inline-link" type="button">학생용 앱 다운로드</button></div>
+          <div class="school-login-copy"><span class="auth-panel-kicker">학교 계정 없이 시작</span><h3>학교 게스트 로그인</h3><p>학교를 검색하고 학교 관리자가 설정한 PIN을 입력하면 수업 운영 기능을 사용할 수 있습니다. 학생 코드 발급과 학교 보안 설정은 중앙 관리자만 할 수 있습니다.</p></div>
+          <button id="school-login-button" class="primary wide school-login-button" type="button" aria-haspopup="dialog"><span class="school-login-symbol" aria-hidden="true">⌂</span><span>학교 게스트 로그인</span><span aria-hidden="true">→</span></button>
+          <div class="school-login-links"><button id="admin-login-choice" class="inline-link admin-login-choice" type="button">교사·학교 중앙 관리자 로그인</button><button id="school-student-installer-button" class="inline-link" type="button">학생용 앱 다운로드</button></div>
           <p id="school-login-error" class="error" hidden></p>
-          <p id="school-login-status" class="auth-footnote">학교 선택과 학교 비밀번호로 안전하게 연결합니다.</p>
+          <p id="school-login-status" class="auth-footnote">학교 선택과 관리자가 설정한 PIN으로 연결합니다.</p>
         </div>
         <div id="admin-auth-panel" data-auth-mode="login" hidden>
-          <div class="auth-mode-header"><div><span class="auth-panel-kicker">02 · 관리자 전용</span><strong>관리자 로그인</strong><p class="auth-mode-help">학급 설정과 권한 관리는 관리자 계정으로 진행합니다.</p></div><button id="school-login-back" class="inline-link" type="button">학교 로그인으로</button></div>
-          <div class="auth-tabs" role="tablist" aria-label="관리자 인증 방식"><button id="admin-login-tab" type="button" class="auth-tab active" data-auth-mode="login" role="tab" aria-controls="login-panel" aria-selected="true">아이디 로그인</button><button id="admin-signup-tab" type="button" class="auth-tab" data-auth-mode="signup" role="tab" aria-controls="signup-panel" aria-selected="false">회원가입</button></div>
+          <div class="auth-mode-header"><div><span class="auth-panel-kicker">교사 계정</span><strong>로그인 또는 가입</strong><p class="auth-mode-help">학교 중앙 관리자가 승인한 교사 계정으로 로그인합니다.</p></div><button id="school-login-back" class="inline-link" type="button">게스트 로그인으로</button></div>
+          <div class="auth-tabs" role="tablist" aria-label="로그인과 회원가입"><button id="admin-login-tab" type="button" class="auth-tab active" data-auth-mode="login" role="tab" aria-controls="login-panel" aria-selected="true">로그인</button><button id="admin-signup-tab" type="button" class="auth-tab" data-auth-mode="signup" role="tab" aria-controls="signup-panel" aria-selected="false">회원가입</button></div>
           <div id="login-panel" class="auth-panel" role="tabpanel" aria-labelledby="admin-login-tab">
-            <p class="auth-form-lead">등록된 관리자 계정으로 로그인합니다.</p>
+            <div class="login-role-picker" role="group" aria-label="로그인 계정 유형"><button id="teacher-login-choice" class="login-role-choice active" type="button" aria-pressed="true">선생님 로그인</button><button id="central-admin-login-choice" class="login-role-choice" type="button" aria-pressed="false">학교 중앙 관리자 로그인</button></div>
+            <div id="central-admin-login-notice" class="central-admin-login-notice" hidden>학교 중앙 관리자 계정은 창을 닫아도 자동 로그아웃되지 않습니다. 반에서 사용한 뒤에는 꼭 로그아웃해 주세요.</div>
+            <button id="admin-one-time-button" class="admin-one-time-button" data-tooltip="반 컴퓨터에서 사용하고 창을 닫을 때 로그인 상태를 지우는 옵션입니다. 기본 중앙 관리자 로그인은 자동 로그아웃되지 않습니다." type="button" hidden title="반 컴퓨터에서 사용하고 창을 닫을 때 로그인 상태를 지우는 옵션">일회성 로그인 설정</button>
+            <div id="admin-one-time-options" class="admin-one-time-options" hidden><label class="consent-check" data-tooltip="체크하면 로그인 토큰을 이 브라우저 창에만 보관합니다."><input id="admin-one-time-checkbox" type="checkbox"><span>이 창에서만 로그인하고, 창을 닫으면 로그아웃</span></label><p class="auth-tooltip-copy">반 컴퓨터에서 사용할 때 선택하세요. 중앙 관리자 계정은 기본적으로 창을 닫아도 자동 로그아웃되지 않으므로, 일회성 로그인이 아닌 경우 반드시 직접 로그아웃해야 합니다.</p></div>
+            <p class="auth-form-lead">이메일 또는 교사 아이디로 로그인합니다.</p>
             <form id="login-form" class="stack">
               <label>이메일 또는 교사 아이디<input id="login-name" autocomplete="username" required placeholder="이메일 또는 교사 아이디"></label>
               <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" required></label>
               <div class="form-row"><button id="forgot-password-button" class="inline-link" type="button">비밀번호를 잊으셨나요?</button><button id="account-lookup-button" class="inline-link" type="button">계정 찾기</button></div>
-              <button class="primary wide" type="submit">관리자로 로그인 <span>→</span></button>
+              <button id="account-login-submit" class="primary wide" type="submit">선생님 로그인 <span>→</span></button>
               <p id="login-error" class="error" hidden></p>
             </form>
             <p id="dev-login-hint" class="login-hint" hidden></p>
           </div>
           <div id="signup-panel" class="auth-panel" role="tabpanel" aria-labelledby="admin-signup-tab" hidden>
-            <p class="auth-form-lead">처음 설정할 때만 관리자 계정을 만드세요.</p>
+            <p class="auth-form-lead">가입은 별도 신청으로 분리되어 있습니다. 학교 정보와 계정 유형을 선택해 주세요.</p>
             <form id="signup-form" class="stack" novalidate>
+              <div class="signup-role-picker" role="group" aria-label="가입 유형"><button id="signup-teacher-role" class="signup-role-choice active" type="button" data-signup-role="TEACHER" aria-pressed="true"><strong>선생님 계정</strong><small>중앙 관리자가 있는 학교는 승인 후 이용할 수 있습니다.</small></button><button id="signup-central-admin-role" class="signup-role-choice" type="button" data-signup-role="SCHOOL_ADMIN" aria-pressed="false"><strong>학교 중앙 관리자 신청</strong><small>개발자 확인·승인 후 관리자 권한이 부여됩니다.</small></button></div>
+              <label>이름<input id="signup-display-name" maxlength="80" autocomplete="name" required placeholder="홍길동"></label>
+              <label>담당 과목 <span class="optional-label">선택</span><input id="signup-subject" maxlength="128" placeholder="예: 정보, 영어"></label>
+              <div class="school-picker"><label>학교 검색<input id="signup-school-search" autocomplete="organization" placeholder="학교 이름 2글자 이상" required></label><input id="signup-school-id" type="hidden"><div id="signup-school-results" class="school-results" role="listbox" hidden></div></div>
               <label>이메일<input id="signup-email" type="email" autocomplete="email" required placeholder="teacher@school.ac.kr"></label>
               <label>비밀번호<input id="signup-password" type="password" autocomplete="new-password" minlength="6" required placeholder="6자 이상"></label>
               <label>비밀번호 확인<input id="signup-password-confirm" type="password" autocomplete="new-password" minlength="6" required></label>
               <label class="consent-check"><input id="signup-terms" type="checkbox" required><span><button type="button" class="inline-link" data-legal-document="terms">이용약관</button>에 동의합니다.</span></label>
               <label class="consent-check"><input id="signup-privacy" type="checkbox" required><span><button type="button" class="inline-link" data-legal-document="privacy">개인정보처리방침</button>에 동의합니다.</span></label>
-              <button class="primary wide" type="submit">관리자 계정 만들기 <span>→</span></button>
+              <button id="signup-submit" class="primary wide" type="submit">선생님 가입 신청 <span>→</span></button>
+              <button id="signup-verification-continue" class="secondary wide" type="button" hidden>이메일 인증을 마쳤어요 · 신청 계속</button>
+              <p id="signup-status" class="auth-footnote" hidden></p>
               <p id="signup-error" class="error" hidden></p>
             </form>
           </div>
           <div class="auth-divider"><span>또는</span></div>
           <button id="google-login-button" type="button" class="google-button"><span class="google-g">G</span> Google 계정으로 계속</button>
-          <p id="firebase-status" class="auth-footnote">관리자용 Google 로그인과 이메일 회원가입을 사용할 수 있습니다.</p>
+          <p id="firebase-status" class="auth-footnote">선생님과 중앙 관리자는 Google 또는 이메일·비밀번호로 로그인할 수 있습니다. 가입은 학교 유형에 따라 승인 후 활성화됩니다.</p>
         </div>
       </div>
     </div>
@@ -116,6 +126,7 @@
         <button class="nav-item active" data-section="class" aria-label="수업"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg></span><span class="nav-label">수업</span></button>
         <button id="student-codes-nav" class="nav-item" data-section="student-codes" aria-label="학생 코드"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5h16v9H4z"></path><path d="M8 10.5h5M8 13.5h3"></path><circle cx="17" cy="12" r="1.7"></circle></svg></span><span class="nav-label">학생 코드</span></button>
         <button id="admins-nav" class="nav-item" data-section="admins" aria-label="관리자" hidden><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.4-2.8 7.8-7 10-4.2-2.2-7-5.6-7-10V6z"></path><path d="M9.3 12.2l1.8 1.8 3.8-4"></path></svg></span><span class="nav-label">관리자</span></button>
+        <button id="developer-nav" class="nav-item" data-section="developer" aria-label="개발자 관리" hidden><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"></path><path d="M8 9h8M8 12h5M8 15h7"></path></svg></span><span class="nav-label">개발자 관리</span></button>
         <button id="settings-nav" class="nav-item" data-section="settings" aria-label="설정"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"></path><circle cx="14" cy="7" r="2"></circle><circle cx="6" cy="17" r="2"></circle></svg></span><span class="nav-label">설정</span></button>
       </nav>
       <div class="sidebar-bottom">
@@ -227,6 +238,7 @@
           </form>
           <div id="admin-list" class="admin-list"></div>
         </div>
+        <div id="teacher-access-requests" class="settings-card access-requests-card" hidden><div class="admin-list-heading"><div><h3>선생님 가입 승인</h3><p class="muted small">이 학교 가입 신청을 확인한 뒤 승인하거나 거절하세요.</p></div><button id="teacher-requests-refresh" class="secondary" type="button">새로고침</button></div><div id="teacher-requests-list" class="admin-list"></div></div>
         <form id="student-exit-pin-form" class="settings-card student-exit-pin-card">
           <div><span class="settings-icon">◈</span><h3>학생 앱 종료 비밀번호</h3><p>관리자만 설정할 수 있습니다. 학생 앱을 일반적으로 종료할 때 이 비밀번호를 학교 서버에서 확인합니다.</p></div>
           <label>종료 비밀번호<input id="student-exit-pin" type="password" minlength="6" maxlength="64" autocomplete="new-password" placeholder="6자 이상 입력" required></label>
@@ -236,12 +248,19 @@
           <p id="student-exit-pin-error" class="error" hidden></p>
         </form>
         <form id="guest-password-form" class="settings-card guest-password-card">
-          <div><span class="settings-icon">◉</span><h3>학교 게스트 비밀번호</h3><p>관리자가 정한 학교 공용 비밀번호로 수업 운영 화면에 로그인할 수 있습니다. 학생 코드 발급과 보안 설정은 관리자만 가능합니다.</p></div>
-          <div class="guest-password-fields"><label>게스트 비밀번호<input id="guest-password" type="password" minlength="6" maxlength="64" autocomplete="new-password" placeholder="6자 이상 입력" required></label><label>한 번 더 입력<input id="guest-password-confirm" type="password" minlength="6" maxlength="64" autocomplete="new-password" placeholder="같은 비밀번호 다시 입력" required></label></div>
-          <button class="primary" type="submit">게스트 비밀번호 저장</button>
+          <div><span class="settings-icon">◉</span><h3>학교 게스트 PIN</h3><p>학교 게스트 로그인에 사용할 공용 PIN입니다. 학생 코드 발급과 보안 설정은 학교 중앙 관리자만 가능합니다.</p></div>
+          <div class="guest-password-fields"><label>게스트 PIN<input id="guest-password" type="password" minlength="6" maxlength="64" autocomplete="new-password" placeholder="6자 이상 입력" required></label><label>한 번 더 입력<input id="guest-password-confirm" type="password" minlength="6" maxlength="64" autocomplete="new-password" placeholder="같은 PIN 다시 입력" required></label></div>
+          <button class="primary" type="submit">게스트 PIN 저장</button>
           <p id="guest-password-status" class="muted small" role="status">설정 상태를 확인하는 중입니다.</p>
           <p id="guest-password-error" class="error" hidden></p>
         </form>
+      </section>
+
+      <section id="developer-section" class="section-view" hidden>
+        <div class="hero-row"><div><div class="eyebrow">DEVELOPER CONSOLE</div><h2>개발자 관리</h2><p class="muted">중앙 관리자 신청, 학교 관리자 권한, 개발자 문의를 검토합니다. 학생 화면은 이 화면에서 열람하지 않습니다.</p></div><button id="developer-refresh" class="secondary" type="button">새로고침</button></div>
+        <section class="settings-card developer-panel"><div class="developer-panel-heading"><div><h3>중앙 관리자 신청</h3><p class="muted small">학교별 중앙 관리자 권한은 개발자 승인 후에만 활성화됩니다.</p></div><span id="developer-application-count" class="admin-badge">0</span></div><div id="developer-applications-list" class="developer-list"></div></section>
+        <section class="settings-card developer-panel"><div class="developer-panel-heading"><div><h3>학교 중앙 관리자 계정</h3><p class="muted small">학교·이메일을 확인하고 권한을 회수하거나 Classroom 접근을 차단·복구합니다. 접근 차단은 Firebase 계정과 감사 기록을 보존합니다.</p></div><span id="developer-admin-count" class="admin-badge">0</span></div><div id="developer-admins-list" class="developer-list"></div></section>
+        <section class="settings-card developer-panel"><div class="developer-panel-heading"><div><h3>도움 요청</h3><p class="muted small">교사 계정 인증을 거친 요청만 접수됩니다. 학생 앱은 직접 개발자 문의를 보낼 수 없습니다.</p></div><span id="developer-support-count" class="admin-badge">0</span></div><div id="developer-support-list" class="developer-list"></div></section>
       </section>
 
       <section id="settings-section" class="section-view" hidden>
@@ -252,6 +271,13 @@
           <div class="school-picker"><label>학교 <strong class="required-label">필수</strong><input id="profile-school-search" autocomplete="organization" placeholder="학교 이름으로 검색"></label><input id="profile-school-id" type="hidden"><div id="profile-school-results" class="school-results" role="listbox" hidden></div></div>
           <div id="profile-consent-fields" class="stack consent-stack" hidden><label class="consent-check"><input id="profile-terms" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="terms">이용약관</button>에 동의합니다.</span></label><label class="consent-check"><input id="profile-privacy" type="checkbox"><span><button type="button" class="inline-link" data-legal-document="privacy">개인정보처리방침</button>에 동의합니다.</span></label></div>
           <button class="primary" type="submit">프로필 저장</button><p id="profile-message" class="error" hidden></p>
+        </form>
+        <form id="teacher-exit-pin-check-form" class="settings-card teacher-exit-pin-check-card stack" hidden>
+          <div><span class="settings-icon">◈</span><h3>학생 앱 종료 PIN 확인</h3><p>학교 게스트 PIN을 입력하면 학생 앱 종료 PIN과 같은지 확인합니다. 실제 PIN은 서버에서 내려오거나 저장되지 않습니다.</p></div>
+          <label>학교 게스트 PIN<input id="teacher-exit-pin-check" type="password" minlength="6" maxlength="64" autocomplete="off" placeholder="학교 관리자가 설정한 PIN"></label>
+          <button id="teacher-exit-pin-check-submit" class="secondary" type="submit">일치 여부 확인</button>
+          <p id="teacher-exit-pin-check-status" class="muted small" role="status" hidden></p>
+          <p id="teacher-exit-pin-check-error" class="error" hidden></p>
         </form>
         <article class="settings-card password-card compact-setting">
           <div><span class="settings-icon">🔐</span><h3 id="password-card-title">교사 비밀번호</h3><p id="password-card-copy">이메일 확인 후 교사 아이디 로그인용 비밀번호를 관리합니다.</p></div>
@@ -416,14 +442,17 @@
   </dialog>
   <dialog id="guest-login-dialog" class="command-dialog guest-login-dialog">
     <form method="dialog" id="guest-login-form" class="stack">
-      <div class="dialog-heading"><span class="eyebrow">SCHOOL ACCESS</span><h2>학교 로그인</h2></div>
-      <p class="muted dialog-copy">학교를 선택하고 관리자가 설정한 학교 비밀번호를 입력하세요. 수업 시작·안내·집중·학생 화면 확인은 사용할 수 있으며, 학생 코드 발급과 보안 설정은 관리자만 가능합니다.</p>
+      <div class="dialog-heading"><span class="eyebrow">SCHOOL ACCESS</span><h2>학교 게스트 로그인</h2></div>
+      <p class="muted dialog-copy">학교를 검색하거나 즐겨찾기에서 선택한 뒤, 학교 관리자가 설정한 PIN을 입력하세요. 수업 운영 기능은 사용할 수 있지만 학생 코드 발급·PIN 관리 등 관리자 기능은 사용할 수 없습니다. 이 창을 닫으면 게스트 로그인은 종료됩니다.</p>
+      <div id="guest-favorite-schools" class="guest-favorite-schools" hidden></div>
       <div class="school-picker"><label>학교 검색<input id="guest-school-search" autocomplete="organization" placeholder="학교 이름을 2글자 이상 입력" required></label><input id="guest-school-id" type="hidden"><div id="guest-school-results" class="school-results" role="listbox" hidden></div></div>
-      <label>학교 비밀번호<input id="guest-login-password" type="password" autocomplete="current-password" minlength="6" maxlength="64" required placeholder="학교 관리자가 알려준 비밀번호"></label>
-      <div class="dialog-actions"><button class="secondary" type="button" data-dialog-cancel>취소</button><button id="guest-login-submit" class="primary" type="submit">학교 로그인</button></div>
+      <label>학교 PIN<input id="guest-login-password" type="password" autocomplete="current-password" minlength="6" maxlength="64" required placeholder="학교 관리자가 알려준 PIN"></label>
+      <div class="dialog-actions"><button class="secondary" type="button" data-dialog-cancel>취소</button><button id="guest-login-submit" class="primary" type="submit">게스트로 로그인</button></div>
       <p id="guest-login-error" class="error" hidden></p>
     </form>
   </dialog>
+  <dialog id="central-admin-login-dialog" class="command-dialog central-admin-login-dialog"><form method="dialog" class="stack"><div class="dialog-heading"><span class="eyebrow">ACCOUNT NOTICE</span><h2>중앙 관리자 계정 안내</h2></div><p id="central-admin-login-dialog-copy" class="muted dialog-copy">학교 중앙 관리자 계정은 창을 닫아도 자동 로그아웃되지 않습니다. 반에서 로그인했다면 반드시 로그아웃해 주세요.</p><div class="dialog-actions"><button id="central-admin-notice-logout" class="secondary" type="button">로그아웃</button><button class="primary" type="submit">확인</button></div></form></dialog>
+  <dialog id="auth-help-dialog" class="command-dialog auth-help-dialog"><form id="auth-help-form" class="stack"><div class="dialog-heading"><span class="eyebrow">HELP & SUPPORT</span><h2>도움이 필요하신가요?</h2></div><div class="auth-faq-list"><details><summary>이미 학교 중앙 관리자 계정이 있다고 나와요.</summary><p>다른 계정이 학교를 먼저 신청했을 수 있습니다. 학교명을 확인해 개발자에게 도움을 요청해 주세요.</p></details><details><summary>중앙 관리자 신청이 승인 대기 중이에요.</summary><p>학교 소속과 신청 이메일을 확인한 뒤 개발자가 승인합니다. 승인 전에는 관리자 기능이 열리지 않습니다.</p></details><details><summary>선생님 가입이 승인 대기 중이에요.</summary><p>해당 학교 중앙 관리자가 가입을 확인해야 로그인할 수 있습니다. 학교 관리자에게 승인 여부를 문의해 주세요.</p></details></div><p class="support-safety-note">학생 이름·학생 코드·화면 캡처 등 학생 개인정보는 적지 마세요. 학생은 담당 선생님을 통해 도움을 요청해야 합니다.</p><div class="support-dev-contact">개발자: <a href="mailto:blossom0948@gmail.com">blossom0948@gmail.com</a></div><p class="muted small">문의는 이메일 인증을 마친 교사 계정이나 중앙 관리자 가입 검토 중인 계정에서 접수할 수 있습니다.</p><label>문의 유형<select id="auth-support-category"><option>가입</option><option>중앙 관리자</option><option>로그인</option><option>기능 오류</option><option>기타</option></select></label><label>상황 설명<textarea id="auth-support-message" maxlength="1200" rows="4" placeholder="학교명과 문제 상황을 간단히 적어 주세요. 학생 개인정보는 제외해 주세요."></textarea></label><p id="auth-support-status" class="muted small" role="status" hidden></p><p id="auth-support-error" class="error" hidden></p><div class="dialog-actions"><button class="secondary" type="button" data-dialog-cancel>닫기</button><button id="auth-support-submit" class="primary" type="submit">개발자에게 도움 요청</button></div></form></dialog>
   <dialog id="enrollment-dialog" class="command-dialog enrollment-dialog">
     <form method="dialog" id="enrollment-form" class="stack">
       <div class="dialog-heading"><span class="eyebrow">STUDENT DEVICE</span><h2>학생 PC 등록</h2></div>

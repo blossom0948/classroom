@@ -6,11 +6,11 @@ const ROOT_TEACHER_ID = "e55aeebb-7f43-4d38-9c4f-6361570afd11";
 const ROOT_CLASS_ID = "42ab8f3a-0e8a-47bc-a543-7b7892fa1e00";
 const ROOT_LOGIN = "blossom0948";
 const ROOT_EMAIL = "blossom0948@gmail.com";
-// Teacher consoles are commonly left open for a full school day or longer.
-// Keep sessions persistent across routine browser restarts, while renewing an
-// active session before it reaches the final week of its lifetime.
+// Central-admin sessions can persist across routine browser restarts. Ordinary
+// teacher and one-time sessions are tab-scoped and use the shorter bound below.
 const SESSION_LIFETIME_MS = 1000 * 60 * 60 * 24 * 30;
 const SESSION_RENEW_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
+const GUEST_SESSION_LIFETIME_MS = 1000 * 60 * 60 * 12;
 const SESSION_COOKIE_NAME = "__Host-classroom-session";
 const SESSION_COOKIE_MAX_AGE_SECONDS = Math.floor(SESSION_LIFETIME_MS / 1000);
 const ONLINE_WINDOW_MS = 75 * 1000;
@@ -174,7 +174,8 @@ export class ClassroomState {
       teacher_id TEXT NOT NULL,
       expires_at_utc TEXT NOT NULL,
       created_at_utc TEXT NOT NULL,
-      revoked_at_utc TEXT
+      revoked_at_utc TEXT,
+      session_kind TEXT NOT NULL DEFAULT 'persistent'
     )`);
     this.exec(`CREATE TABLE IF NOT EXISTS GuestSessions (
       token_hash TEXT PRIMARY KEY,
@@ -356,6 +357,35 @@ export class ClassroomState {
       consumed_at_utc TEXT,
       created_at_utc TEXT NOT NULL
     )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS RegistrationRequests (
+      request_id TEXT PRIMARY KEY,
+      request_type TEXT NOT NULL,
+      firebase_uid TEXT NOT NULL,
+      firebase_email TEXT NOT NULL COLLATE NOCASE,
+      display_name TEXT NOT NULL,
+      subject TEXT NOT NULL DEFAULT '',
+      school_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      created_at_utc TEXT NOT NULL,
+      reviewed_at_utc TEXT,
+      reviewed_by_user_id TEXT,
+      UNIQUE(request_type, firebase_uid, school_id)
+    )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS SupportRequests (
+      request_id TEXT PRIMARY KEY,
+      firebase_uid TEXT NOT NULL,
+      firebase_email TEXT NOT NULL COLLATE NOCASE,
+      school_id TEXT,
+      category TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'OPEN',
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS SystemFlags (
+      flag_key TEXT PRIMARY KEY,
+      flag_value TEXT NOT NULL
+    )`);
     this.exec(`CREATE TABLE IF NOT EXISTS StudentExitPins (
       school_id TEXT PRIMARY KEY,
       pin_salt TEXT NOT NULL,
@@ -390,6 +420,10 @@ export class ClassroomState {
     // Existing Durable Object databases predate school and roster metadata.
     // Additive migrations keep already-enrolled devices and accounts intact.
     this.ensureColumn("Users", "school_selected", "INTEGER NOT NULL DEFAULT 0");
+    this.ensureColumn("Users", "is_developer_admin", "INTEGER NOT NULL DEFAULT 0");
+    this.ensureColumn("Users", "disabled_at_utc", "TEXT");
+    this.ensureColumn("Users", "disabled_by_user_id", "TEXT");
+    this.ensureColumn("TeacherSessions", "session_kind", "TEXT NOT NULL DEFAULT 'persistent'");
     this.ensureColumn("Classes", "grade", "INTEGER");
     this.ensureColumn("Classes", "class_number", "INTEGER");
     this.ensureColumn("StudentCodes", "grade", "INTEGER");
@@ -429,10 +463,29 @@ export class ClassroomState {
       ROOT_CLASS_ID, ROOT_SCHOOL_ID, "나의 첫 수업", ROOT_TEACHER_ID, now, now);
       this.exec("INSERT OR IGNORE INTO ClassTeachers (class_id, teacher_id) VALUES (?, ?)", ROOT_CLASS_ID, ROOT_TEACHER_ID);
     }
-    this.exec("UPDATE Users SET is_admin = 1, firebase_email = ? WHERE id = ?", ROOT_EMAIL, ROOT_TEACHER_ID);
+    this.exec("UPDATE Users SET is_admin = 1, is_developer_admin = 1, school_selected = 1, profile_completed = 1, firebase_email = ? WHERE id = ?", ROOT_EMAIL, ROOT_TEACHER_ID);
     this.exec(`INSERT OR IGNORE INTO AdministratorGrants (
       identifier, school_id, granted_by_teacher_id, created_at_utc, active
     ) VALUES (?, ?, ?, ?, 1)`, ROOT_EMAIL, ROOT_SCHOOL_ID, ROOT_TEACHER_ID, isoNow());
+    if (!this.one("SELECT flag_key FROM SystemFlags WHERE flag_key = 'teacher-sessions-one-time-v1'")) {
+      const oneTimeExpiry = new Date(Date.now() + GUEST_SESSION_LIFETIME_MS).toISOString();
+      this.exec(`UPDATE TeacherSessions SET
+        session_kind = 'one-time',
+        expires_at_utc = CASE WHEN expires_at_utc > ? THEN ? ELSE expires_at_utc END
+        WHERE revoked_at_utc IS NULL
+          AND teacher_id IN (SELECT id FROM Users WHERE is_admin = 0 AND is_developer_admin = 0)`, oneTimeExpiry, oneTimeExpiry);
+      this.exec(`UPDATE GuestSessions SET expires_at_utc = ?
+        WHERE revoked_at_utc IS NULL AND expires_at_utc > ?`, oneTimeExpiry, oneTimeExpiry);
+      this.exec("INSERT INTO SystemFlags (flag_key, flag_value) VALUES ('teacher-sessions-one-time-v1', ?)", isoNow());
+    }
+    if (!this.one("SELECT flag_key FROM SystemFlags WHERE flag_key = 'class-membership-v2'")) {
+      // Require explicit class membership at request time without revoking
+      // assignments teachers already had. Owners are always members; new
+      // accounts receive membership only through account creation/approval.
+      this.exec(`INSERT OR IGNORE INTO ClassTeachers (class_id, teacher_id)
+        SELECT id, owner_teacher_id FROM Classes`);
+      this.exec("INSERT INTO SystemFlags (flag_key, flag_value) VALUES ('class-membership-v2', ?)", isoNow());
+    }
   }
 
   async fetch(request) {
@@ -460,6 +513,8 @@ export class ClassroomState {
       if (path === "/auth/login" && request.method === "POST") return this.login(request, cors);
       if (path === "/auth/guest-login" && request.method === "POST") return this.guestLogin(request, cors);
       if (path === "/auth/firebase-login" && request.method === "POST") return this.firebaseLogin(request, cors);
+      if (path === "/auth/registration-request" && request.method === "POST") return this.submitRegistrationRequest(request, cors);
+      if (path === "/api/support-requests" && request.method === "POST") return this.createSupportRequest(request, cors);
       if (path === "/auth/me" && request.method === "GET") return this.getMe(request, cors);
       if (path === "/auth/logout" && request.method === "POST") return this.logout(request, cors);
       if (path === "/auth/profile" && request.method === "PUT") return this.updateProfile(request, cors);
@@ -477,8 +532,21 @@ export class ClassroomState {
       if (path === "/api/admin/student-codes/import" && request.method === "POST") return this.importStudentCodes(request, cors);
       if (path === "/api/admin/teachers" && request.method === "GET") return this.getAdministrators(request, cors);
       if (path === "/api/admin/teachers" && request.method === "POST") return this.setAdministrator(request, cors);
+      if (path === "/api/admin/teacher-requests" && request.method === "GET") return this.getTeacherRequests(request, cors);
+      const teacherRequestMatch = path.match(/^\/api\/admin\/teacher-requests\/([^/]+)$/);
+      if (teacherRequestMatch && request.method === "POST") return this.reviewTeacherRequest(request, teacherRequestMatch[1], cors);
+      if (path === "/api/developer/overview" && request.method === "GET") return this.getDeveloperOverview(request, cors);
+      const developerAdminApplicationMatch = path.match(/^\/api\/developer\/school-admin-applications\/([^/]+)$/);
+      if (developerAdminApplicationMatch && request.method === "POST") return this.reviewSchoolAdminApplication(request, developerAdminApplicationMatch[1], cors);
+      const developerAdminMatch = path.match(/^\/api\/developer\/school-admins\/([^/]+)$/);
+      if (developerAdminMatch && request.method === "DELETE") return this.removeSchoolAdministrator(request, developerAdminMatch[1], cors);
+      const developerAdminAccessMatch = path.match(/^\/api\/developer\/school-admins\/([^/]+)\/(disable|restore)$/);
+      if (developerAdminAccessMatch && request.method === "POST") return this.updateSchoolAdministratorAccess(request, developerAdminAccessMatch[1], developerAdminAccessMatch[2], cors);
+      const supportRequestMatch = path.match(/^\/api\/developer\/support-requests\/([^/]+)$/);
+      if (supportRequestMatch && request.method === "POST") return this.updateSupportRequest(request, supportRequestMatch[1], cors);
       if (path === "/api/admin/student-exit-pin" && request.method === "GET") return this.getStudentExitPinStatus(request, cors);
       if (path === "/api/admin/student-exit-pin" && request.method === "PUT") return this.setStudentExitPin(request, cors);
+      if (path === "/api/teacher/student-exit-pin/compare" && request.method === "POST") return this.compareTeacherStudentExitPin(request, cors);
       if (path === "/api/admin/guest-password" && request.method === "GET") return this.getGuestPasswordStatus(request, cors);
       if (path === "/api/admin/guest-password" && request.method === "PUT") return this.setGuestPassword(request, cors);
       if (path === "/api/devices/enroll-code" && request.method === "POST") return this.enrollByCode(request, cors);
@@ -552,7 +620,11 @@ export class ClassroomState {
         : "아이디 또는 비밀번호가 올바르지 않습니다.";
       return responseError("INVALID_CREDENTIALS", reason, 401, cors);
     }
-    const payload = await this.createSessionPayload(user);
+    if (user.disabled_at_utc) return responseError("ACCOUNT_DISABLED", "이 Classroom 계정은 개발자에 의해 접근이 차단되었습니다. 학교 관리자 또는 개발자에게 문의해 주세요.", 403, cors);
+    const expectedAccountType = text(body?.accountType, 32).toUpperCase();
+    if (expectedAccountType === "SCHOOL_ADMIN" && !user.is_admin && !user.is_developer_admin) return responseError("ACCOUNT_TYPE_MISMATCH", "학교 중앙 관리자 계정이 아닙니다. 선생님 로그인 또는 중앙 관리자 신청을 확인해 주세요.", 403, cors);
+    if (expectedAccountType === "TEACHER" && (user.is_admin || user.is_developer_admin)) return responseError("ACCOUNT_TYPE_MISMATCH", "학교 중앙 관리자 계정입니다. 중앙 관리자 로그인을 선택해 주세요.", 403, cors);
+    const payload = await this.createSessionPayload(user, body?.oneTimeLogin === true);
     return sessionResponse(payload, 200, cors, request, payload.accessToken);
   }
 
@@ -578,7 +650,7 @@ export class ClassroomState {
     }
 
     const token = await randomToken();
-    const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS).toISOString();
+    const expiresAt = new Date(Date.now() + GUEST_SESSION_LIFETIME_MS).toISOString();
     this.exec("INSERT INTO GuestSessions (token_hash, school_id, expires_at_utc, created_at_utc) VALUES (?, ?, ?, ?)", await sha256Text(token), schoolId, expiresAt, isoNow());
     const payload = this.serializeGuestSession(token, school, expiresAt);
     return sessionResponse(payload, 200, cors, request, token, true);
@@ -595,28 +667,25 @@ export class ClassroomState {
     if (!identity) return responseError("INVALID_FIREBASE_TOKEN", "Google 또는 Firebase 로그인을 확인하지 못했습니다.", 401, cors);
 
     const email = normalizeEmail(identity.email);
+    if (!identity.emailVerified) {
+      return responseError("EMAIL_VERIFICATION_REQUIRED", "계속하려면 이메일 주소를 먼저 인증해 주세요.", 403, cors);
+    }
     const now = isoNow();
     let user = this.one("SELECT * FROM Users WHERE firebase_uid = ?", identity.localId)
       || this.one("SELECT * FROM Users WHERE firebase_email = ?", email);
-    if (!user) {
-      const userId = crypto.randomUUID();
-      const isRoot = email === ROOT_EMAIL;
-      const loginName = isRoot ? ROOT_LOGIN : email;
-      const displayName = text(identity.displayName, 80) || "새 선생님";
-      this.exec(`INSERT INTO Users (
-        id, school_id, login_name, display_name, subject, firebase_uid, firebase_email,
-        is_admin, profile_completed, school_selected, created_at_utc, updated_at_utc
-      ) VALUES (?, ?, ?, ?, '', ?, ?, ?, 0, 0, ?, ?)`,
-      userId, ROOT_SCHOOL_ID, loginName, displayName, identity.localId, email, isRoot ? 1 : 0, now, now);
-      this.createStarterClass(userId, ROOT_SCHOOL_ID, "나의 첫 수업", "");
-      user = this.one("SELECT * FROM Users WHERE id = ?", userId);
-    } else {
-      this.exec(`UPDATE Users SET firebase_uid = ?, firebase_email = ?, updated_at_utc = ? WHERE id = ?`, identity.localId, email, now, user.id);
+    if (!user) return responseError("ACCOUNT_NOT_APPROVED", "승인된 Classroom 계정을 찾지 못했습니다. 회원가입에서 학교와 계정 유형을 선택해 신청해 주세요.", 403, cors);
+    if (user.disabled_at_utc) return responseError("ACCOUNT_DISABLED", "이 Classroom 계정은 개발자에 의해 접근이 차단되었습니다. 학교 관리자 또는 개발자에게 문의해 주세요.", 403, cors);
+    const expectedAccountType = text(body?.accountType, 32).toUpperCase();
+    if (expectedAccountType === "SCHOOL_ADMIN" && !user.is_admin && !user.is_developer_admin) return responseError("ACCOUNT_TYPE_MISMATCH", "학교 중앙 관리자 계정이 아닙니다. 선생님 로그인 또는 중앙 관리자 신청을 확인해 주세요.", 403, cors);
+    if (expectedAccountType === "TEACHER" && (user.is_admin || user.is_developer_admin)) return responseError("ACCOUNT_TYPE_MISMATCH", "학교 중앙 관리자 계정입니다. 중앙 관리자 로그인을 선택해 주세요.", 403, cors);
+    this.exec(`UPDATE Users SET firebase_uid = ?, firebase_email = ?, updated_at_utc = ? WHERE id = ?`, identity.localId, email, now, user.id);
+    user = this.one("SELECT * FROM Users WHERE id = ?", user.id);
+    if (email === ROOT_EMAIL) {
+      this.exec("UPDATE Users SET is_developer_admin = 1 WHERE id = ?", user.id);
       user = this.one("SELECT * FROM Users WHERE id = ?", user.id);
     }
-
     const grant = this.one("SELECT identifier FROM AdministratorGrants WHERE active = 1 AND school_id = ? AND identifier IN (?, ?)", user.school_id, email, normalizeIdentifier(user.login_name));
-    if (email === ROOT_EMAIL || grant) {
+    if (grant) {
       this.exec("UPDATE Users SET is_admin = 1 WHERE id = ?", user.id);
       user = this.one("SELECT * FROM Users WHERE id = ?", user.id);
     }
@@ -625,8 +694,97 @@ export class ClassroomState {
       this.recordLegalConsent(user.id);
       user = this.one("SELECT * FROM Users WHERE id = ?", user.id);
     }
-    const payload = await this.createSessionPayload(user);
+    const payload = await this.createSessionPayload(user, body?.oneTimeLogin === true);
     return sessionResponse(payload, 200, cors, request, payload.accessToken);
+  }
+
+  async submitRegistrationRequest(request, cors) {
+    const body = await readJson(request);
+    const idToken = text(body?.idToken, 16_384);
+    if (!idToken) return responseError("INVALID_FIREBASE_TOKEN", "Firebase 인증 정보가 필요합니다.", 400, cors);
+    if (!this.consumeRateLimit(`${clientIp(request)}|registration`, 5, 60 * 60_000)) {
+      return responseError("REGISTRATION_RATE_LIMITED", "가입 신청이 많습니다. 잠시 후 다시 시도해 주세요.", 429, cors, { "Retry-After": "3600" });
+    }
+    const identity = await this.verifyFirebaseToken(idToken);
+    if (!identity) return responseError("INVALID_FIREBASE_TOKEN", "Firebase 인증을 확인하지 못했습니다.", 401, cors);
+    if (!identity.emailVerified) return responseError("EMAIL_VERIFICATION_REQUIRED", "가입 신청 전에 이메일 인증을 완료해 주세요.", 403, cors);
+    const role = text(body?.role, 32).toUpperCase();
+    if (role !== "TEACHER" && role !== "SCHOOL_ADMIN") return responseError("INVALID_REGISTRATION_ROLE", "가입 유형을 선택해 주세요.", 400, cors);
+    const schoolId = normalizeSchoolId(body?.schoolId);
+    const school = schoolId ? this.one("SELECT * FROM Schools WHERE id = ?", schoolId) : null;
+    const displayName = text(body?.displayName, 80);
+    const subject = text(body?.subject, 128);
+    if (!school || !displayName || displayName.length < 2) return responseError("REGISTRATION_DETAILS_REQUIRED", "학교와 이름을 확인해 주세요.", 400, cors);
+    if (body?.termsAccepted !== true || body?.privacyAccepted !== true) return responseError("LEGAL_CONSENT_REQUIRED", "이용약관과 개인정보처리방침 동의가 필요합니다.", 400, cors);
+    const email = normalizeEmail(identity.email);
+    if (email === ROOT_EMAIL) return responseError("DEVELOPER_ACCOUNT_RESERVED", "개발자 계정은 별도 가입할 수 없습니다. 로그인해 주세요.", 409, cors);
+    const existingUser = this.one("SELECT * FROM Users WHERE firebase_uid = ? OR firebase_email = ?", identity.localId, email);
+    if (existingUser?.disabled_at_utc) return responseError("ACCOUNT_DISABLED", "이 Classroom 계정은 개발자에 의해 접근이 차단되었습니다. 개발자에게 문의해 주세요.", 403, cors);
+    if (existingUser?.school_selected && existingUser.school_id !== schoolId) {
+      return responseError("ACCOUNT_SCHOOL_MISMATCH", "이 계정은 이미 다른 학교에 등록되어 있습니다. 기존 학교 관리자에게 계정 이전을 요청해 주세요.", 409, cors);
+    }
+    if (role === "TEACHER" && existingUser?.school_selected && existingUser.school_id === schoolId) {
+      return responseError("ACCOUNT_EXISTS", "이미 이 학교에 등록된 계정입니다. 로그인해 주세요.", 409, cors);
+    }
+
+    const now = isoNow();
+    if (role === "SCHOOL_ADMIN") {
+      if (this.one("SELECT id FROM Users WHERE school_id = ? AND is_admin = 1 AND is_developer_admin = 0", schoolId)) {
+        const requestId = crypto.randomUUID();
+        this.exec(`INSERT INTO RegistrationRequests (request_id, request_type, firebase_uid, firebase_email, display_name, subject, school_id, status, created_at_utc)
+          VALUES (?, 'SCHOOL_ADMIN', ?, ?, ?, ?, ?, 'SUPPORT_REQUIRED', ?)
+          ON CONFLICT(request_type, firebase_uid, school_id) DO UPDATE SET firebase_email = excluded.firebase_email, display_name = excluded.display_name, subject = excluded.subject, status = 'SUPPORT_REQUIRED', created_at_utc = excluded.created_at_utc, reviewed_at_utc = NULL, reviewed_by_user_id = NULL`,
+        requestId, identity.localId, email, displayName, subject, schoolId, now);
+        return responseError("SCHOOL_ADMIN_EXISTS", "이 학교에는 이미 중앙 관리자가 있습니다. 도움말에서 계정 확인을 요청하거나 개발자에게 문의해 주세요.", 409, cors);
+      }
+      const existing = this.one("SELECT * FROM RegistrationRequests WHERE request_type = 'SCHOOL_ADMIN' AND school_id = ? AND status = 'PENDING'", schoolId);
+      if (existing) {
+        const requestId = crypto.randomUUID();
+        this.exec(`INSERT INTO RegistrationRequests (request_id, request_type, firebase_uid, firebase_email, display_name, subject, school_id, status, created_at_utc)
+          VALUES (?, 'SCHOOL_ADMIN', ?, ?, ?, ?, ?, 'SUPPORT_REQUIRED', ?)
+          ON CONFLICT(request_type, firebase_uid, school_id) DO UPDATE SET firebase_email = excluded.firebase_email, display_name = excluded.display_name, subject = excluded.subject, status = 'SUPPORT_REQUIRED', created_at_utc = excluded.created_at_utc, reviewed_at_utc = NULL, reviewed_by_user_id = NULL`,
+        requestId, identity.localId, email, displayName, subject, schoolId, now);
+        return responseError("SCHOOL_ADMIN_APPLICATION_PENDING", "이 학교의 중앙 관리자 신청이 이미 검토 대기 중입니다. 도움말에서 본인 확인을 요청해 주세요.", 409, cors);
+      }
+      const requestId = crypto.randomUUID();
+      this.exec(`INSERT INTO RegistrationRequests (request_id, request_type, firebase_uid, firebase_email, display_name, subject, school_id, status, created_at_utc)
+        VALUES (?, 'SCHOOL_ADMIN', ?, ?, ?, ?, ?, 'PENDING', ?)
+        ON CONFLICT(request_type, firebase_uid, school_id) DO UPDATE SET firebase_email = excluded.firebase_email, display_name = excluded.display_name, subject = excluded.subject, status = 'PENDING', created_at_utc = excluded.created_at_utc, reviewed_at_utc = NULL, reviewed_by_user_id = NULL`,
+      requestId, identity.localId, email, displayName, subject, schoolId, now);
+      this.audit({ schoolId, action: "SCHOOL_ADMIN_APPLICATION", result: "PENDING", reason: email });
+      return responseJson({ status: "pending", requestType: "school-admin", schoolName: school.name, developerEmail: ROOT_EMAIL }, 202, cors);
+    }
+
+    const centralAdminExists = Boolean(this.one("SELECT id FROM Users WHERE school_id = ? AND is_admin = 1 AND is_developer_admin = 0", schoolId));
+    if (centralAdminExists) {
+      const existing = this.one("SELECT * FROM RegistrationRequests WHERE request_type = 'TEACHER' AND firebase_uid = ? AND school_id = ? AND status = 'PENDING'", identity.localId, schoolId);
+      if (existing) return responseJson({ status: "pending", requestType: "teacher", schoolName: school.name }, 202, cors);
+      const requestId = crypto.randomUUID();
+      this.exec(`INSERT INTO RegistrationRequests (request_id, request_type, firebase_uid, firebase_email, display_name, subject, school_id, status, created_at_utc)
+        VALUES (?, 'TEACHER', ?, ?, ?, ?, ?, 'PENDING', ?)
+        ON CONFLICT(request_type, firebase_uid, school_id) DO UPDATE SET firebase_email = excluded.firebase_email, display_name = excluded.display_name, subject = excluded.subject, status = 'PENDING', created_at_utc = excluded.created_at_utc, reviewed_at_utc = NULL, reviewed_by_user_id = NULL`,
+      requestId, identity.localId, email, displayName, subject, schoolId, now);
+      this.audit({ schoolId, action: "TEACHER_APPLICATION", result: "PENDING", reason: email });
+      return responseJson({ status: "pending", requestType: "teacher", schoolName: school.name }, 202, cors);
+    }
+
+    const userId = existingUser?.id || crypto.randomUUID();
+    if (existingUser) {
+      if (existingUser.school_id !== schoolId) {
+        this.exec("UPDATE Classes SET school_id = ? WHERE owner_teacher_id = ?", schoolId, userId);
+        this.exec("UPDATE StudentCodes SET school_id = ? WHERE class_id IN (SELECT id FROM Classes WHERE owner_teacher_id = ?)", schoolId, userId);
+        this.exec("UPDATE Devices SET school_id = ? WHERE class_id IN (SELECT id FROM Classes WHERE owner_teacher_id = ?)", schoolId, userId);
+      }
+      this.exec(`UPDATE Users SET school_id = ?, login_name = ?, display_name = ?, subject = ?, firebase_uid = ?, firebase_email = ?, profile_completed = 1, school_selected = 1, legal_accepted_at_utc = COALESCE(legal_accepted_at_utc, ?), terms_version = ?, privacy_version = ?, updated_at_utc = ? WHERE id = ?`, schoolId, email, displayName, subject, identity.localId, email, now, TERMS_VERSION, PRIVACY_VERSION, now, userId);
+    } else {
+      this.exec(`INSERT INTO Users (id, school_id, login_name, display_name, subject, firebase_uid, firebase_email, is_admin, profile_completed, school_selected, legal_accepted_at_utc, terms_version, privacy_version, created_at_utc, updated_at_utc)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, 1, ?, ?, ?, ?, ?)`, userId, schoolId, email, displayName, subject, identity.localId, email, now, TERMS_VERSION, PRIVACY_VERSION, now, now);
+    }
+    if (!this.one("SELECT id FROM Classes WHERE owner_teacher_id = ?", userId)) this.createStarterClass(userId, schoolId, `${school.name} 수업`, subject);
+    const user = this.one("SELECT * FROM Users WHERE id = ?", userId);
+    this.audit({ schoolId, teacherId: userId, action: "TEACHER_ACCOUNT", result: "CREATED", reason: email });
+    const payload = await this.createSessionPayload(user);
+    return sessionResponse(payload, 201, cors, request, payload.accessToken);
   }
 
   async getMe(request, cors) {
@@ -660,8 +818,21 @@ export class ClassroomState {
     const schoolId = requestedSchoolId || (user.school_selected ? user.school_id : "");
     const school = schoolId ? this.one("SELECT * FROM Schools WHERE id = ?", schoolId) : null;
     if (!school) return responseError("SCHOOL_REQUIRED", "학교 검색 결과에서 학교를 선택해 주세요.", 400, cors);
+    if (user.is_developer_admin && school.id !== user.school_id) return responseError("SCHOOL_CHANGE_REQUIRES_APPROVAL", "개발자 계정의 학교 정보는 변경할 수 없습니다.", 403, cors);
+    if (user.school_selected && school.id !== user.school_id) return responseError("SCHOOL_CHANGE_REQUIRES_APPROVAL", "학교를 바꾸려면 기존 학교 관리자 또는 개발자에게 계정 이전을 요청해 주세요.", 403, cors);
+    if (user.is_admin && school.id !== user.school_id) return responseError("SCHOOL_CHANGE_REQUIRES_APPROVAL", "관리자 계정의 학교를 변경할 수 없습니다.", 403, cors);
     if (body?.termsAccepted !== true || body?.privacyAccepted !== true) {
       if (!user.legal_accepted_at_utc) return responseError("LEGAL_CONSENT_REQUIRED", "이용약관과 개인정보처리방침 동의가 필요합니다.", 400, cors);
+    }
+    if (!user.school_selected && !user.is_admin && this.one("SELECT id FROM Users WHERE school_id = ? AND is_admin = 1 AND is_developer_admin = 0", school.id)) {
+      if (user.firebase_uid && user.firebase_email) {
+        const nowPending = isoNow();
+        const existingRequest = this.one("SELECT request_id FROM RegistrationRequests WHERE request_type = 'TEACHER' AND firebase_uid = ? AND school_id = ? AND status = 'PENDING'", user.firebase_uid, school.id);
+        if (!existingRequest) this.exec(`INSERT INTO RegistrationRequests (request_id, request_type, firebase_uid, firebase_email, display_name, subject, school_id, status, created_at_utc)
+          VALUES (?, 'TEACHER', ?, ?, ?, ?, ?, 'PENDING', ?)
+          ON CONFLICT(request_type, firebase_uid, school_id) DO UPDATE SET status = 'PENDING', display_name = excluded.display_name, subject = excluded.subject, created_at_utc = excluded.created_at_utc`, crypto.randomUUID(), user.firebase_uid, user.firebase_email, displayName, subject, school.id, nowPending);
+      }
+      return responseJson({ status: "pending", message: "학교 중앙 관리자의 가입 승인을 기다리고 있습니다." }, 202, cors);
     }
     const now = isoNow();
     if (user.school_id !== school.id) {
@@ -891,7 +1062,7 @@ export class ClassroomState {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, classId, user.school_id, name, subject, grade, classNumber, user.id, now, now);
       // A school admin-created class is visible to every teacher in that school;
       // every API request remains school-scoped and audited.
-      const teachers = this.all("SELECT id FROM Users WHERE school_id = ?", user.school_id);
+      const teachers = this.all("SELECT id FROM Users WHERE school_id = ? AND school_selected = 1", user.school_id);
       for (const teacher of teachers) this.exec("INSERT OR IGNORE INTO ClassTeachers (class_id, teacher_id) VALUES (?, ?)", classId, teacher.id);
       classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
     }
@@ -1278,12 +1449,17 @@ export class ClassroomState {
   async getStudentCodes(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_guest && !user.school_selected) return responseError("SCHOOL_APPROVAL_REQUIRED", "학교 등록 또는 가입 승인이 완료된 계정만 학생 코드를 볼 수 있습니다.", 403, cors);
+    const teacherClassFilter = user.is_guest || (user.is_admin && !user.is_developer_admin)
+      ? ""
+      : " AND sc.class_id IN (SELECT class_id FROM ClassTeachers WHERE teacher_id = ?)";
+    const parameters = teacherClassFilter ? [user.school_id, user.id] : [user.school_id];
     const rows = this.all(`SELECT sc.*, c.name AS class_name, c.default_subject AS class_subject, c.grade AS class_grade, c.class_number AS class_class_number, u.display_name AS created_by_display_name
       FROM StudentCodes sc
       JOIN Classes c ON c.id = sc.class_id
       JOIN Users u ON u.id = sc.created_by_teacher_id
-      WHERE sc.school_id = ? AND sc.revoked_at_utc IS NULL
-      ORDER BY COALESCE(c.grade, 999), COALESCE(c.class_number, 999), COALESCE(sc.student_number, 999), sc.student_display_name COLLATE NOCASE`, user.school_id);
+      WHERE sc.school_id = ? AND sc.revoked_at_utc IS NULL${teacherClassFilter}
+      ORDER BY COALESCE(c.grade, 999), COALESCE(c.class_number, 999), COALESCE(sc.student_number, 999), sc.student_display_name COLLATE NOCASE`, ...parameters);
     return responseJson(rows.map((row) => ({
       deviceId: row.device_id,
       schoolId: row.school_id,
@@ -1898,6 +2074,29 @@ export class ClassroomState {
     return responseJson({ configured: true, updatedAtUtc: now }, 200, cors);
   }
 
+  async compareTeacherStudentExitPin(request, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (user.is_guest || user.is_developer_admin || !user.school_selected) {
+      return responseError("TEACHER_ACCOUNT_REQUIRED", "승인된 교사 계정으로 로그인해 주세요.", 403, cors);
+    }
+    if (!this.consumeRateLimit(`${user.id}|exit-pin-compare`, 5, 10 * 60_000)) {
+      return responseError("PIN_CHECK_RATE_LIMITED", "확인 시도가 많습니다. 10분 뒤 다시 시도해 주세요.", 429, cors, { "Retry-After": "600" });
+    }
+    const body = await readJson(request);
+    const candidate = normalizeStudentExitPin(body?.pin);
+    if (!candidate) return responseError("INVALID_EXIT_PIN", "학교 게스트 PIN을 6~64자로 입력해 주세요.", 400, cors);
+    const guestPin = this.one("SELECT * FROM GuestPasswords WHERE school_id = ?", user.school_id);
+    const exitPin = this.one("SELECT * FROM StudentExitPins WHERE school_id = ?", user.school_id);
+    const matches = Boolean(
+      guestPin && exitPin
+      && await verifyPassword(candidate, guestPin.password_salt, guestPin.password_hash, guestPin.password_iterations)
+      && await verifyPassword(candidate, exitPin.pin_salt, exitPin.pin_hash, exitPin.pin_iterations)
+    );
+    this.audit({ schoolId: user.school_id, teacherId: user.id, action: "STUDENT_EXIT_PIN_CHECK", result: matches ? "MATCH" : "NO_MATCH" });
+    return responseJson({ matches, configured: Boolean(guestPin && exitPin) }, 200, cors);
+  }
+
   async getGuestPasswordStatus(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
@@ -1959,6 +2158,216 @@ export class ClassroomState {
     }
     this.audit({ schoolId: user.school_id, teacherId: user.id, action: "ADMIN_ACCESS", result: isAdmin ? "GRANTED" : "REVOKED", reason: identifier });
     return responseJson({ identifier, isAdmin, accountFound: Boolean(target) }, 200, cors);
+  }
+
+  async getTeacherRequests(request, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_admin || user.is_developer_admin) return responseError("ADMIN_REQUIRED", "학교 중앙 관리자만 가입 신청을 검토할 수 있습니다.", 403, cors);
+    const rows = this.all(`SELECT request_id, firebase_email, display_name, subject, school_id, created_at_utc
+      FROM RegistrationRequests WHERE request_type = 'TEACHER' AND school_id = ? AND status = 'PENDING'
+      ORDER BY created_at_utc`, user.school_id);
+    return responseJson(rows.map((row) => ({ requestId: row.request_id, email: row.firebase_email, displayName: row.display_name, subject: row.subject, schoolId: row.school_id, createdAtUtc: row.created_at_utc })), 200, cors);
+  }
+
+  async reviewTeacherRequest(request, requestId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_admin || user.is_developer_admin) return responseError("ADMIN_REQUIRED", "학교 중앙 관리자만 가입 신청을 검토할 수 있습니다.", 403, cors);
+    const body = await readJson(request);
+    const approve = body?.approve === true;
+    const application = this.one("SELECT * FROM RegistrationRequests WHERE request_id = ? AND request_type = 'TEACHER' AND school_id = ? AND status = 'PENDING'", requestId, user.school_id);
+    if (!application) return responseError("REQUEST_NOT_FOUND", "가입 신청을 찾지 못했거나 이미 처리했습니다.", 404, cors);
+    const now = isoNow();
+    if (approve) {
+      const existing = this.one("SELECT id FROM Users WHERE firebase_uid = ? OR firebase_email = ?", application.firebase_uid, application.firebase_email);
+      let teacherId = existing?.id || crypto.randomUUID();
+      if (existing) {
+        const existingUser = this.one("SELECT * FROM Users WHERE id = ?", teacherId);
+        if (existingUser.school_selected && existingUser.school_id !== user.school_id) return responseError("ACCOUNT_SCHOOL_MISMATCH", "이미 다른 학교에 등록된 계정입니다. 개발자에게 문의해 주세요.", 409, cors);
+        if (existingUser.school_id !== user.school_id) {
+          this.exec("UPDATE Classes SET school_id = ? WHERE owner_teacher_id = ?", user.school_id, teacherId);
+          this.exec("UPDATE StudentCodes SET school_id = ? WHERE class_id IN (SELECT id FROM Classes WHERE owner_teacher_id = ?)", user.school_id, teacherId);
+          this.exec("UPDATE Devices SET school_id = ? WHERE class_id IN (SELECT id FROM Classes WHERE owner_teacher_id = ?)", user.school_id, teacherId);
+        }
+        this.exec(`UPDATE Users SET school_id = ?, login_name = ?, display_name = ?, subject = ?, firebase_uid = ?, firebase_email = ?, is_admin = 0, profile_completed = 1, school_selected = 1, legal_accepted_at_utc = COALESCE(legal_accepted_at_utc, ?), terms_version = ?, privacy_version = ?, updated_at_utc = ? WHERE id = ?`, user.school_id, application.firebase_email, application.display_name, application.subject, application.firebase_uid, application.firebase_email, now, TERMS_VERSION, PRIVACY_VERSION, now, teacherId);
+      } else {
+        this.exec(`INSERT INTO Users (id, school_id, login_name, display_name, subject, firebase_uid, firebase_email, is_admin, profile_completed, school_selected, legal_accepted_at_utc, terms_version, privacy_version, created_at_utc, updated_at_utc)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, 1, ?, ?, ?, ?, ?)`, teacherId, user.school_id, application.firebase_email, application.display_name, application.subject, application.firebase_uid, application.firebase_email, now, TERMS_VERSION, PRIVACY_VERSION, now, now);
+      }
+      const classes = this.all("SELECT id FROM Classes WHERE school_id = ?", user.school_id);
+      if (classes.length) {
+        for (const classItem of classes) this.exec("INSERT OR IGNORE INTO ClassTeachers (class_id, teacher_id) VALUES (?, ?)", classItem.id, teacherId);
+      } else {
+        this.createStarterClass(teacherId, user.school_id, "나의 첫 수업", application.subject);
+      }
+    }
+    this.exec("UPDATE RegistrationRequests SET status = ?, reviewed_at_utc = ?, reviewed_by_user_id = ? WHERE request_id = ?", approve ? "APPROVED" : "REJECTED", now, user.id, requestId);
+    this.audit({ schoolId: user.school_id, teacherId: user.id, action: "TEACHER_APPLICATION", result: approve ? "APPROVED" : "REJECTED", reason: application.firebase_email });
+    return responseJson({ requestId, status: approve ? "approved" : "rejected" }, 200, cors);
+  }
+
+  async getDeveloperOverview(request, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_developer_admin) return responseError("DEVELOPER_REQUIRED", "개발자 계정만 사용할 수 있습니다.", 403, cors);
+    const schoolAdmins = this.all(`SELECT u.id, u.firebase_email, u.display_name, u.school_id, s.name AS school_name, u.created_at_utc, u.disabled_at_utc
+      FROM Users u LEFT JOIN Schools s ON s.id = u.school_id
+      WHERE (u.is_admin = 1 AND u.is_developer_admin = 0) OR (u.disabled_at_utc IS NOT NULL AND u.is_developer_admin = 0)
+      ORDER BY s.name COLLATE NOCASE, u.firebase_email COLLATE NOCASE`)
+      .map((row) => ({ userId: row.id, email: row.firebase_email, displayName: row.display_name, schoolId: row.school_id, schoolName: row.school_name || "학교 정보 없음", createdAtUtc: row.created_at_utc, disabledAtUtc: row.disabled_at_utc }));
+    const applications = this.all(`SELECT r.request_id, r.firebase_email, r.display_name, r.school_id, s.name AS school_name, r.created_at_utc
+      FROM RegistrationRequests r LEFT JOIN Schools s ON s.id = r.school_id
+      WHERE r.request_type = 'SCHOOL_ADMIN' AND r.status = 'PENDING'
+      ORDER BY r.created_at_utc`)
+      .map((row) => ({ requestId: row.request_id, email: row.firebase_email, displayName: row.display_name, schoolId: row.school_id, schoolName: row.school_name || "학교 정보 없음", createdAtUtc: row.created_at_utc }));
+    const supportRequests = this.all(`SELECT r.request_id, r.firebase_email, r.school_id, s.name AS school_name, r.category, r.message, r.status, r.created_at_utc
+      FROM SupportRequests r LEFT JOIN Schools s ON s.id = r.school_id
+      ORDER BY CASE r.status WHEN 'OPEN' THEN 0 ELSE 1 END, r.created_at_utc DESC LIMIT 100`)
+      .map((row) => ({ requestId: row.request_id, email: row.firebase_email, schoolName: row.school_name || "학교 미선택", category: row.category, message: row.message, status: row.status, createdAtUtc: row.created_at_utc }));
+    return responseJson({ developerEmail: ROOT_EMAIL, schoolAdmins, applications, supportRequests }, 200, cors);
+  }
+
+  async reviewSchoolAdminApplication(request, requestId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_developer_admin) return responseError("DEVELOPER_REQUIRED", "개발자 계정만 사용할 수 있습니다.", 403, cors);
+    const body = await readJson(request);
+    const approve = body?.approve === true;
+    const application = this.one("SELECT * FROM RegistrationRequests WHERE request_id = ? AND request_type = 'SCHOOL_ADMIN' AND status = 'PENDING'", requestId);
+    if (!application) return responseError("REQUEST_NOT_FOUND", "중앙 관리자 신청을 찾지 못했거나 이미 처리했습니다.", 404, cors);
+    const now = isoNow();
+    if (approve) {
+      if (this.one("SELECT id FROM Users WHERE school_id = ? AND is_admin = 1 AND is_developer_admin = 0", application.school_id)) {
+        return responseError("SCHOOL_ADMIN_EXISTS", "이 학교에는 이미 중앙 관리자가 있습니다. 기존 계정을 먼저 확인해 주세요.", 409, cors);
+      }
+      const existing = this.one("SELECT * FROM Users WHERE firebase_uid = ? OR firebase_email = ?", application.firebase_uid, application.firebase_email);
+      const adminId = existing?.id || crypto.randomUUID();
+      if (existing) {
+        if (existing.school_selected && existing.school_id !== application.school_id) return responseError("ACCOUNT_SCHOOL_MISMATCH", "이미 다른 학교에 등록된 계정입니다. 승인 전에 계정 학교를 확인해 주세요.", 409, cors);
+        if (existing.school_id !== application.school_id) {
+          this.exec("UPDATE Classes SET school_id = ? WHERE owner_teacher_id = ?", application.school_id, adminId);
+          this.exec("UPDATE StudentCodes SET school_id = ? WHERE class_id IN (SELECT id FROM Classes WHERE owner_teacher_id = ?)", application.school_id, adminId);
+          this.exec("UPDATE Devices SET school_id = ? WHERE class_id IN (SELECT id FROM Classes WHERE owner_teacher_id = ?)", application.school_id, adminId);
+        }
+        this.exec(`UPDATE Users SET school_id = ?, login_name = ?, display_name = ?, subject = ?, firebase_uid = ?, firebase_email = ?, is_admin = 1, is_developer_admin = 0, profile_completed = 1, school_selected = 1, legal_accepted_at_utc = COALESCE(legal_accepted_at_utc, ?), terms_version = ?, privacy_version = ?, updated_at_utc = ? WHERE id = ?`, application.school_id, application.firebase_email, application.display_name, application.subject, application.firebase_uid, application.firebase_email, now, TERMS_VERSION, PRIVACY_VERSION, now, adminId);
+      } else {
+        this.exec(`INSERT INTO Users (id, school_id, login_name, display_name, subject, firebase_uid, firebase_email, is_admin, profile_completed, school_selected, legal_accepted_at_utc, terms_version, privacy_version, created_at_utc, updated_at_utc)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, 1, ?, ?, ?, ?, ?)`, adminId, application.school_id, application.firebase_email, application.display_name, application.subject, application.firebase_uid, application.firebase_email, now, TERMS_VERSION, PRIVACY_VERSION, now, now);
+      }
+      if (!this.one("SELECT id FROM Classes WHERE owner_teacher_id = ?", adminId)) this.createStarterClass(adminId, application.school_id, "학교 수업", application.subject);
+    }
+    this.exec("UPDATE RegistrationRequests SET status = ?, reviewed_at_utc = ?, reviewed_by_user_id = ? WHERE request_id = ?", approve ? "APPROVED" : "REJECTED", now, user.id, requestId);
+    this.audit({ schoolId: application.school_id, teacherId: user.id, action: "SCHOOL_ADMIN_APPLICATION", result: approve ? "APPROVED" : "REJECTED", reason: application.firebase_email });
+    return responseJson({ requestId, status: approve ? "approved" : "rejected" }, 200, cors);
+  }
+
+  async removeSchoolAdministrator(request, userId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_developer_admin) return responseError("DEVELOPER_REQUIRED", "개발자 계정만 사용할 수 있습니다.", 403, cors);
+    const target = this.one("SELECT * FROM Users WHERE id = ? AND is_admin = 1 AND is_developer_admin = 0", userId);
+    if (!target) return responseError("SCHOOL_ADMIN_NOT_FOUND", "학교 중앙 관리자 계정을 찾지 못했습니다.", 404, cors);
+    const now = isoNow();
+    this.exec("UPDATE Users SET is_admin = 0, school_selected = 0, updated_at_utc = ? WHERE id = ?", now, userId);
+    this.exec("DELETE FROM ClassTeachers WHERE teacher_id = ?", userId);
+    this.exec("UPDATE TeacherSessions SET revoked_at_utc = ? WHERE teacher_id = ? AND revoked_at_utc IS NULL", now, userId);
+    this.exec("UPDATE AdministratorGrants SET active = 0 WHERE school_id = ? AND identifier IN (?, ?)", target.school_id, target.firebase_email, target.login_name);
+    this.audit({ schoolId: target.school_id, teacherId: user.id, action: "SCHOOL_ADMIN_ACCESS", result: "REVOKED", reason: target.firebase_email });
+    return responseJson({ userId, status: "revoked" }, 200, cors);
+  }
+
+  async updateSchoolAdministratorAccess(request, userId, action, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_developer_admin) return responseError("DEVELOPER_REQUIRED", "개발자 계정만 사용할 수 있습니다.", 403, cors);
+    const target = this.one("SELECT * FROM Users WHERE id = ? AND is_developer_admin = 0 AND ((is_admin = 1) OR disabled_at_utc IS NOT NULL)", userId);
+    if (!target) return responseError("SCHOOL_ADMIN_NOT_FOUND", "학교 중앙 관리자 계정을 찾지 못했습니다.", 404, cors);
+    const now = isoNow();
+    if (action === "disable") {
+      if (target.disabled_at_utc) return responseError("ACCOUNT_ALREADY_DISABLED", "이미 접근이 차단된 계정입니다.", 409, cors);
+      this.exec("UPDATE Users SET is_admin = 0, school_selected = 0, disabled_at_utc = ?, disabled_by_user_id = ?, updated_at_utc = ? WHERE id = ?", now, user.id, now, target.id);
+      this.exec("DELETE FROM ClassTeachers WHERE teacher_id = ?", target.id);
+      this.exec("UPDATE TeacherSessions SET revoked_at_utc = ? WHERE teacher_id = ? AND revoked_at_utc IS NULL", now, target.id);
+      this.exec("UPDATE AdministratorGrants SET active = 0 WHERE school_id = ? AND identifier IN (?, ?)", target.school_id, target.firebase_email, target.login_name);
+      this.audit({ schoolId: target.school_id, teacherId: user.id, action: "SCHOOL_ADMIN_ACCOUNT", result: "ACCESS_DISABLED", reason: target.firebase_email });
+      return responseJson({ userId: target.id, status: "disabled", disabledAtUtc: now }, 200, cors);
+    }
+    if (action === "restore") {
+      if (!target.disabled_at_utc) return responseError("ACCOUNT_NOT_DISABLED", "접근이 차단된 계정이 아닙니다.", 409, cors);
+      if (this.one("SELECT id FROM Users WHERE school_id = ? AND is_admin = 1 AND is_developer_admin = 0 AND id <> ?", target.school_id, target.id)) {
+        return responseError("SCHOOL_ADMIN_EXISTS", "해당 학교에 다른 중앙 관리자가 있어 접근을 복구할 수 없습니다.", 409, cors);
+      }
+      this.exec("UPDATE Users SET is_admin = 1, school_selected = 1, disabled_at_utc = NULL, disabled_by_user_id = NULL, updated_at_utc = ? WHERE id = ?", now, target.id);
+      this.audit({ schoolId: target.school_id, teacherId: user.id, action: "SCHOOL_ADMIN_ACCOUNT", result: "ACCESS_RESTORED", reason: target.firebase_email });
+      return responseJson({ userId: target.id, status: "restored" }, 200, cors);
+    }
+    return responseError("INVALID_ACCESS_ACTION", "계정 조치를 확인해 주세요.", 400, cors);
+  }
+
+  async createSupportRequest(request, cors) {
+    const body = await readJson(request);
+    const identity = await this.verifyFirebaseToken(text(body?.idToken, 16_384));
+    if (!identity || !identity.emailVerified) return responseError("VERIFIED_ACCOUNT_REQUIRED", "이메일 인증을 마친 교사 계정으로만 도움을 요청할 수 있습니다.", 401, cors);
+    const uid = text(identity.localId, 128);
+    const email = normalizeEmail(identity.email);
+    const account = this.one("SELECT id, school_id FROM Users WHERE firebase_uid = ? OR firebase_email = ?", uid, email);
+    const pendingApplications = this.all("SELECT school_id FROM RegistrationRequests WHERE firebase_uid = ? AND status IN ('PENDING', 'SUPPORT_REQUIRED')", uid);
+    if (!account && !pendingApplications.length) {
+      return responseError("SUPPORT_ACCOUNT_NOT_ELIGIBLE", `도움 요청은 등록된 교사 또는 가입 검토 중인 계정에서만 접수할 수 있습니다. 학생 계정은 학교 선생님께 문의해 주세요. 가입 관련 문제는 ${ROOT_EMAIL}로 직접 문의해 주세요.`, 403, cors);
+    }
+    if (!this.consumeRateLimit(`${clientIp(request)}|support-ip`, 3, 24 * 60 * 60_000)
+      || !this.consumeRateLimit(`${uid}|support-user`, 2, 24 * 60 * 60_000)) {
+      return responseError("SUPPORT_RATE_LIMITED", "하루 도움 요청 한도를 넘었습니다. 개발자 이메일로 문의해 주세요.", 429, cors, { "Retry-After": "86400" });
+    }
+    const category = text(body?.category, 40);
+    const allowedCategories = new Set(["가입", "중앙 관리자", "로그인", "기능 오류", "기타"]);
+    const message = text(body?.message, 1200);
+    const eligibleSchoolIds = new Set([
+      account?.school_id,
+      ...pendingApplications.map((application) => application.school_id)
+    ].filter(Boolean));
+    const requestedSchoolId = normalizeSchoolId(body?.schoolId);
+    if (requestedSchoolId && !eligibleSchoolIds.has(requestedSchoolId)) {
+      return responseError("SUPPORT_SCHOOL_MISMATCH", "문의에 선택한 학교가 이 계정의 가입 학교와 일치하지 않습니다.", 403, cors);
+    }
+    const schoolId = requestedSchoolId || [...eligibleSchoolIds][0] || null;
+    if (!allowedCategories.has(category) || message.length < 10) return responseError("SUPPORT_DETAILS_REQUIRED", "문의 유형과 10자 이상의 설명을 입력해 주세요.", 400, cors);
+    const requestId = crypto.randomUUID();
+    const now = isoNow();
+    this.exec(`INSERT INTO SupportRequests (request_id, firebase_uid, firebase_email, school_id, category, message, status, created_at_utc, updated_at_utc)
+      VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)`, requestId, uid, email, schoolId, category, message, now, now);
+    let notificationSent = false;
+    const emailApiKey = String(this.env.RESEND_API_KEY || "").trim();
+    const emailFrom = String(this.env.CLASSROOM_EMAIL_FROM || "").trim();
+    if (emailApiKey && emailFrom) {
+      try {
+        const response = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${emailApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: emailFrom,
+            to: [ROOT_EMAIL],
+            subject: `[Classroom 문의] ${category} · ${requestId.slice(0, 8)}`,
+            text: `요청 ID: ${requestId}\n요청자: ${email}\n학교 ID: ${schoolId || "미선택"}\n유형: ${category}\n접수 시각: ${now}\n\n${message}`
+          })
+        });
+        notificationSent = response.ok;
+      } catch (_) { notificationSent = false; }
+    }
+    return responseJson({ requestId, status: "received", notificationSent, developerEmail: ROOT_EMAIL }, 201, cors);
+  }
+
+  async updateSupportRequest(request, requestId, cors) {
+    const user = await this.authenticate(request);
+    if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (!user.is_developer_admin) return responseError("DEVELOPER_REQUIRED", "개발자 계정만 사용할 수 있습니다.", 403, cors);
+    const body = await readJson(request);
+    const status = body?.status === "CLOSED" ? "CLOSED" : body?.status === "OPEN" ? "OPEN" : "";
+    if (!status) return responseError("INVALID_STATUS", "문의 상태를 확인해 주세요.", 400, cors);
+    const result = this.exec("UPDATE SupportRequests SET status = ?, updated_at_utc = ? WHERE request_id = ?", status, isoNow(), requestId);
+    if (!result?.rowsWritten) return responseError("REQUEST_NOT_FOUND", "도움 요청을 찾지 못했습니다.", 404, cors);
+    return responseJson({ requestId, status }, 200, cors);
   }
 
   async setStudentAdministrator(user, body, cors) {
@@ -2348,14 +2757,13 @@ export class ClassroomState {
     const now = isoNow();
     const tokenHash = await sha256Text(token);
     const row = this.one(`SELECT u.*, s.expires_at_utc AS session_expires_at_utc FROM TeacherSessions s JOIN Users u ON u.id = s.teacher_id
-      WHERE s.token_hash = ? AND s.revoked_at_utc IS NULL AND s.expires_at_utc > ?`, tokenHash, now);
+      WHERE s.token_hash = ? AND s.revoked_at_utc IS NULL AND s.expires_at_utc > ? AND u.disabled_at_utc IS NULL`, tokenHash, now);
     if (row) {
-      this.renewTeacherSession(tokenHash, row.session_expires_at_utc);
+      if (row.session_kind !== "one-time") this.renewTeacherSession(tokenHash, row.session_expires_at_utc);
       return row;
     }
     const guest = this.one("SELECT token_hash, school_id, expires_at_utc FROM GuestSessions WHERE token_hash = ? AND revoked_at_utc IS NULL AND expires_at_utc > ?", tokenHash, now);
     if (!guest || !this.one("SELECT id FROM Schools WHERE id = ?", guest.school_id)) return null;
-    this.renewGuestSession(tokenHash, guest.expires_at_utc);
     return {
       id: `guest:${guest.token_hash}`,
       school_id: guest.school_id,
@@ -2382,12 +2790,13 @@ export class ClassroomState {
     this.exec("UPDATE GuestSessions SET expires_at_utc = ? WHERE token_hash = ? AND revoked_at_utc IS NULL", new Date(Date.now() + SESSION_LIFETIME_MS).toISOString(), tokenHash);
   }
 
-  async createSessionPayload(user) {
+  async createSessionPayload(user, forceOneTime = false) {
     const token = await randomToken();
-    const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS).toISOString();
-    this.exec("INSERT INTO TeacherSessions (token_hash, teacher_id, expires_at_utc, created_at_utc) VALUES (?, ?, ?, ?)", await sha256Text(token), user.id, expiresAt, isoNow());
+    const sessionOnly = forceOneTime || (!user.is_admin && !user.is_developer_admin);
+    const expiresAt = new Date(Date.now() + (sessionOnly ? GUEST_SESSION_LIFETIME_MS : SESSION_LIFETIME_MS)).toISOString();
+    this.exec("INSERT INTO TeacherSessions (token_hash, teacher_id, expires_at_utc, created_at_utc, session_kind) VALUES (?, ?, ?, ?, ?)", await sha256Text(token), user.id, expiresAt, isoNow(), sessionOnly ? "one-time" : "persistent");
     const session = this.serializeTeacherSession(user);
-    return { accessToken: token, expiresAtUtc: expiresAt, teacherId: user.id, displayName: user.display_name, loginName: user.login_name, email: user.firebase_email || "", classes: session.classes, isAdmin: Boolean(user.is_admin), isGuest: false, profileCompleted: Boolean(user.profile_completed), schoolSelected: session.schoolSelected, school: session.school, subject: user.subject || "", hasPassword: Boolean(user.password_hash), legalAccepted: Boolean(user.legal_accepted_at_utc) };
+    return { accessToken: token, expiresAtUtc: expiresAt, sessionOnly, teacherId: user.id, displayName: user.display_name, loginName: user.login_name, email: user.firebase_email || "", classes: session.classes, isAdmin: Boolean(user.is_admin && !user.is_developer_admin), isDeveloperAdmin: Boolean(user.is_developer_admin), isGuest: false, profileCompleted: Boolean(user.profile_completed), schoolSelected: session.schoolSelected, school: session.school, subject: user.subject || "", hasPassword: Boolean(user.password_hash), legalAccepted: Boolean(user.legal_accepted_at_utc) };
   }
 
   serializeGuestSession(token, school, expiresAtUtc) {
@@ -2401,6 +2810,7 @@ export class ClassroomState {
       classes: this.classesForTeacher({ school_id: school.id, school_selected: 1, is_admin: 0, id: "guest" }),
       isAdmin: false,
       isGuest: true,
+      sessionOnly: true,
       profileCompleted: true,
       schoolSelected: true,
       school: { id: school.id, name: school.name, address: school.address || "", schoolType: school.school_type || "" },
@@ -2418,8 +2828,10 @@ export class ClassroomState {
       loginName: user.login_name,
       email: user.firebase_email || "",
       classes: this.classesForTeacher(user),
-      isAdmin: Boolean(user.is_admin),
+      isAdmin: Boolean(user.is_admin && !user.is_developer_admin),
+      isDeveloperAdmin: Boolean(user.is_developer_admin),
       isGuest: Boolean(user.is_guest),
+      sessionOnly: user.session_kind === "one-time",
       profileCompleted: Boolean(user.profile_completed),
       schoolSelected: Boolean(user.school_selected && school),
       school: school ? { id: school.id, name: school.name, address: school.address || "", schoolType: school.school_type || "" } : null,
@@ -2430,18 +2842,23 @@ export class ClassroomState {
   }
 
   classesForTeacher(user) {
-    const rows = this.all("SELECT * FROM Classes WHERE school_id = ? ORDER BY COALESCE(grade, 999), COALESCE(class_number, 999), name COLLATE NOCASE", user.school_id);
+    if (user.is_guest || (user.is_admin && !user.is_developer_admin)) {
+      return this.all("SELECT * FROM Classes WHERE school_id = ? ORDER BY COALESCE(grade, 999), COALESCE(class_number, 999), name COLLATE NOCASE", user.school_id).map(serializeClass);
+    }
+    if (!user.school_selected) return [];
+    const rows = this.all(`SELECT c.* FROM Classes c JOIN ClassTeachers ct ON ct.class_id = c.id
+      WHERE c.school_id = ? AND ct.teacher_id = ?
+      ORDER BY COALESCE(c.grade, 999), COALESCE(c.class_number, 999), c.name COLLATE NOCASE`, user.school_id, user.id);
     return rows.map(serializeClass);
   }
 
   canAccessClass(user, classId) {
     const classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
     if (!classItem || classItem.school_id !== user.school_id) return false;
-    if (user.is_admin) return true;
-    // Teachers can switch between classes registered in their selected school.
-    // The school boundary is still enforced server-side for every read/write.
-    return Boolean(this.one("SELECT class_id FROM ClassTeachers WHERE class_id = ? AND teacher_id = ?", classId, user.id))
-      || Boolean(user.school_selected);
+    if (user.is_guest) return true;
+    if (user.is_admin && !user.is_developer_admin) return true;
+    if (!user.school_selected) return false;
+    return Boolean(this.one("SELECT class_id FROM ClassTeachers WHERE class_id = ? AND teacher_id = ?", classId, user.id));
   }
 
   createStarterClass(teacherId, schoolId, className, subject, grade = null, classNumber = null) {
@@ -2471,7 +2888,7 @@ export class ClassroomState {
     const result = await response.json().catch(() => null);
     const user = result?.users?.[0];
     if (!user?.localId || !user?.email) return null;
-    return { localId: user.localId, email: user.email, displayName: user.displayName || "" };
+    return { localId: user.localId, email: user.email, displayName: user.displayName || "", emailVerified: user.emailVerified === true };
   }
 
   async createUniqueJoinCode() {
@@ -2567,7 +2984,7 @@ function sessionResponse(payload, status, cors, request, token, isGuest = false)
     safePayload,
     status,
     cors,
-    { "Set-Cookie": sessionCookie(token, isGuest) }
+    { "Set-Cookie": sessionCookie(token, isGuest || payload?.sessionOnly === true) }
   );
 }
 

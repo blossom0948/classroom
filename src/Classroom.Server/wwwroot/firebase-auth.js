@@ -60,14 +60,15 @@
     return friendly;
   }
 
-  async function toSessionPayload(user) {
+  async function toSessionPayload(user, forceRefresh = false) {
     return {
       // A freshly completed OAuth flow already has a valid token. Forcing a
       // refresh here adds an unnecessary network dependency and can turn a
       // successful popup into auth/internal-error on managed school networks.
-      idToken: await user.getIdToken(),
+      idToken: await user.getIdToken(forceRefresh),
       email: user.email || "",
-      displayName: user.displayName || ""
+      displayName: user.displayName || "",
+      emailVerified: user.emailVerified === true
     };
   }
 
@@ -161,7 +162,7 @@
     const redirectPending = hasRedirectPending();
     try {
       const result = await auth.getRedirectResult();
-      const user = result?.user || auth.currentUser || (redirectPending ? await waitForRedirectUser(auth) : null);
+      const user = result?.user || (redirectPending ? await waitForRedirectUser(auth) : null);
       setRedirectPending(false);
       return user ? toSessionPayload(user) : null;
     } catch (error) {
@@ -174,6 +175,37 @@
   async function sendPasswordReset(email) {
     try {
       await getAuth().sendPasswordResetEmail(email.trim());
+    } catch (error) {
+      throw friendlyError(error);
+    }
+  }
+
+  async function sendEmailVerification() {
+    try {
+      const user = getAuth().currentUser;
+      if (!user) throw new Error("이메일 인증 계정이 없습니다. 회원가입을 다시 시작해 주세요.");
+      await user.sendEmailVerification();
+    } catch (error) {
+      throw friendlyError(error);
+    }
+  }
+
+  async function refreshCurrentCredentials() {
+    try {
+      const user = getAuth().currentUser;
+      if (!user) throw new Error("회원가입한 계정이 없습니다. 다시 가입을 시작해 주세요.");
+      await user.reload();
+      return toSessionPayload(user, true);
+    } catch (error) {
+      throw friendlyError(error);
+    }
+  }
+
+  async function currentCredentials() {
+    try {
+      const user = getAuth().currentUser;
+      if (!user) throw new Error("도움 요청은 이메일 인증된 교사 계정으로만 접수할 수 있습니다. 학생은 담당 선생님께 문의해 주세요.");
+      return toSessionPayload(user);
     } catch (error) {
       throw friendlyError(error);
     }
@@ -195,6 +227,9 @@
     signInGoogle,
     consumeRedirectResult,
     sendPasswordReset,
+    sendEmailVerification,
+    refreshCurrentCredentials,
+    currentCredentials,
     lookupAccount,
     signOut: () => getAuth().signOut()
   });

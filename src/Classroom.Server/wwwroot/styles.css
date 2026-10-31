@@ -360,6 +360,140 @@ body { min-width: 320px; }
   .easter-egg-confetti { display: none; }
 }
 
+/* Identity, approval and support surfaces — compact, predictable, and
+   keyboard/touch friendly. These layers keep signup flows from clipping. */
+.auth-shell { overflow-x: hidden; overflow-y: auto; }
+.auth-layout { align-items: center; min-height: 0; }
+.auth-heading-actions { align-items: center; display: flex; gap: 9px; }
+.auth-help-button {
+  align-items: center; background: rgba(255,255,255,.72); border: 1px solid rgba(129,151,197,.5);
+  border-radius: 50%; color: #435c93; display: inline-flex; font-size: 18px; font-weight: 850;
+  height: 40px; justify-content: center; padding: 0; width: 40px;
+  box-shadow: 0 2px 6px rgba(28,48,85,.08), 0 8px 16px rgba(28,48,85,.12);
+}
+.login-role-picker { background: rgba(226,234,248,.76); border: 1px solid rgba(142,161,198,.36); border-radius: 13px; display: grid; gap: 4px; grid-template-columns: 1fr 1.3fr; margin: 4px 0 12px; padding: 4px; }
+.login-role-choice { background: transparent; border: 0; border-radius: 9px; color: #62738e; font-size: 12px; font-weight: 800; min-height: 42px; padding: 9px 8px; }
+.login-role-choice.active { background: #fff; box-shadow: 0 1px 3px rgba(23,39,69,.08), 0 5px 12px rgba(23,39,69,.09); color: #294b91; }
+.central-admin-login-notice { background: #fff8e8; border: 1px solid #edd9a7; border-radius: 12px; color: #73561b; font-size: 11px; line-height: 1.55; margin: 9px 0; padding: 11px 12px; }
+.admin-one-time-button { background: transparent; border: 0; color: #435fc3; font-size: 12px; font-weight: 820; min-height: 38px; padding: 6px 4px; text-align: left; }
+.admin-one-time-options { background: rgba(239,244,255,.86); border: 1px solid rgba(132,153,205,.4); border-radius: 12px; padding: 11px 12px; }
+.admin-one-time-options .consent-check { align-items: center; color: #2f4264; display: flex; font-size: 12px; gap: 8px; }
+.admin-one-time-options input[type="checkbox"] { accent-color: #526fda; height: 17px; margin: 0; min-height: 17px; width: 17px; }
+.auth-tooltip-copy { color: #64748b; font-size: 10px; line-height: 1.5; margin: 8px 0 0; }
+[data-tooltip] { position: relative; }
+[data-tooltip]::after {
+  background: #1e2b43; border: 1px solid rgba(255,255,255,.12); border-radius: 9px;
+  bottom: calc(100% + 8px); box-shadow: 0 3px 9px rgba(10,20,38,.12), 0 10px 24px rgba(10,20,38,.22);
+  color: #f6f8fc; content: attr(data-tooltip); font-size: 10px; font-weight: 650;
+  left: 0; line-height: 1.5; max-width: min(290px, calc(100vw - 44px)); opacity: 0;
+  padding: 9px 11px; pointer-events: none; position: absolute; transform: translateY(4px);
+  transition: opacity 180ms cubic-bezier(.2,.8,.2,1), transform 220ms cubic-bezier(.2,.8,.2,1);
+  visibility: hidden; width: max-content; z-index: 20;
+}
+[data-tooltip]:hover::after, [data-tooltip]:focus-visible::after { opacity: 1; transform: translateY(0); visibility: visible; }
+.signup-role-picker { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0,1fr)); }
+.signup-role-choice { background: rgba(255,255,255,.56); border: 1px solid rgba(146,164,200,.48); border-radius: 13px; color: #344663; display: grid; gap: 5px; min-height: 78px; padding: 11px 12px; text-align: left; }
+.signup-role-choice strong { font-size: 12px; letter-spacing: -.02em; }
+.signup-role-choice small { color: #71809a; font-size: 10px; font-weight: 550; line-height: 1.4; }
+.signup-role-choice.active { background: #fff; border-color: #849be1; box-shadow: 0 1px 4px rgba(32,57,106,.08), 0 7px 17px rgba(42,68,125,.11); color: #29478a; }
+.signup-role-choice.active small { color: #5f7090; }
+.auth-card #signup-panel .stack { gap: 12px; }
+.auth-card #signup-panel .auth-form-lead { margin: 0 0 12px; }
+.auth-card #signup-panel .consent-check { align-items: center; display: flex; gap: 8px; }
+.auth-card #signup-panel .consent-check input { min-height: 16px; width: 16px; }
+.school-result-row { align-items: stretch; border-bottom: 1px solid var(--line); display: flex; }
+.school-result-row:last-child { border-bottom: 0; }
+.school-result-row .school-result { border: 0; flex: 1 1 auto; min-width: 0; }
+.school-favorite-toggle,
+.favorite-school-star { align-items: center; background: transparent; border: 0; color: #7d8ca5; display: inline-flex; flex: 0 0 42px; font-size: 20px; justify-content: center; min-height: 44px; padding: 0; }
+.school-favorite-toggle.is-favorite,
+.favorite-school-star.is-favorite { color: #d6a11c; }
+.guest-favorite-schools { background: rgba(239,244,255,.78); border: 1px solid rgba(139,158,203,.36); border-radius: 12px; padding: 10px 11px; }
+.favorite-schools-label { color: #71809a; display: block; font-size: 10px; font-weight: 850; letter-spacing: .06em; margin: 0 0 7px 2px; text-transform: uppercase; }
+.favorite-school-list { display: flex; flex-wrap: wrap; gap: 7px; }
+.favorite-school-item { align-items: center; background: #fff; border: 1px solid rgba(143,161,198,.4); border-radius: 10px; display: inline-flex; overflow: hidden; }
+.favorite-school-select { background: transparent; border: 0; color: #344663; font-size: 11px; font-weight: 760; min-height: 40px; padding: 8px 10px; }
+.favorite-school-item .favorite-school-star { flex-basis: 36px; min-height: 40px; }
+.developer-panel { margin-top: 14px; }
+.developer-panel-heading { align-items: center; display: flex; justify-content: space-between; }
+.developer-panel-heading h3 { color: var(--ink); margin: 0; }
+.developer-panel-heading p { margin: 4px 0 0; }
+.developer-list { display: grid; gap: 8px; margin-top: 12px; }
+.developer-row,
+.access-request-row { align-items: center; background: var(--soft); border: 1px solid var(--line); border-radius: 12px; display: flex; gap: 12px; justify-content: space-between; padding: 12px 13px; }
+.developer-row > div:first-child,
+.access-request-row > div:first-child { display: grid; gap: 4px; min-width: 0; }
+.developer-row strong,
+.access-request-row strong { color: var(--ink); font-size: 12px; }
+.developer-row small,
+.access-request-row small { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.access-request-actions { display: flex; flex: 0 0 auto; gap: 6px; }
+.access-request-actions button { min-height: 40px; }
+.developer-support-item { background: var(--soft); border: 1px solid var(--line); border-radius: 14px; padding: 9px; }
+.developer-support-item > p { color: var(--ink); font-size: 12px; line-height: 1.6; margin: 9px 4px 4px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.developer-support-item.is-closed { opacity: .72; }
+.access-requests-card { margin-top: 14px; }
+.access-requests-card .admin-list-heading { align-items: center; }
+.auth-faq-list { display: grid; gap: 6px; }
+.auth-faq-list details { background: rgba(239,244,255,.74); border: 1px solid rgba(139,158,203,.34); border-radius: 11px; padding: 10px 12px; }
+.auth-faq-list summary { color: #344663; cursor: pointer; font-size: 11px; font-weight: 820; }
+.auth-faq-list details p { color: #64748b; font-size: 10px; line-height: 1.55; margin: 8px 0 1px; }
+.support-safety-note { background: #fff8e8; border-radius: 10px; color: #73561b; font-size: 10px; line-height: 1.5; margin: 0; padding: 10px 11px; }
+.support-dev-contact { color: #5f6f89; font-size: 11px; }
+.support-dev-contact a { color: #435fc3; font-weight: 780; }
+.auth-help-dialog { max-height: min(88dvh, 760px); }
+.auth-help-dialog textarea { min-height: 90px; resize: vertical; }
+.teacher-exit-pin-check-card { align-items: start; margin: 14px 0; max-width: 600px; }
+.teacher-exit-pin-check-card > div:first-child { display: grid; gap: 4px; }
+.teacher-exit-pin-check-card h3 { color: var(--ink); margin: 0; }
+.teacher-exit-pin-check-card p { margin: 0; }
+.teacher-exit-pin-check-card label { width: 100%; }
+.teacher-exit-pin-check-card .secondary { min-height: 44px; }
+
+html[data-theme="dark"] .login-role-picker,
+html[data-theme="dark"] .admin-one-time-options,
+html[data-theme="dark"] .guest-favorite-schools,
+html[data-theme="dark"] .auth-faq-list details { background: #17243a; border-color: #354966; }
+html[data-theme="dark"] .login-role-choice { color: #bdc8da; }
+html[data-theme="dark"] .login-role-choice.active,
+html[data-theme="dark"] .signup-role-choice.active,
+html[data-theme="dark"] .favorite-school-item { background: #243551; color: #eff4fb; }
+html[data-theme="dark"] .signup-role-choice { background: #1a2941; border-color: #3c4e6c; color: #eaf0f9; }
+html[data-theme="dark"] .signup-role-choice small,
+html[data-theme="dark"] .auth-tooltip-copy,
+html[data-theme="dark"] .auth-faq-list details p { color: #b3c0d4; }
+html[data-theme="dark"] .central-admin-login-notice,
+html[data-theme="dark"] .support-safety-note { background: #332b1c; border-color: #65512b; color: #f1d28f; }
+html[data-theme="dark"] .auth-card .admin-one-time-options .consent-check,
+html[data-theme="dark"] .favorite-school-select,
+html[data-theme="dark"] .auth-faq-list summary { color: #e4eaf4; }
+html[data-theme="dark"] .school-favorite-toggle,
+html[data-theme="dark"] .favorite-school-star { color: #c0cada; }
+html[data-theme="dark"] .school-favorite-toggle.is-favorite,
+html[data-theme="dark"] .favorite-school-star.is-favorite { color: #f0c34c; }
+html[data-theme="dark"] .auth-help-button { background: #243551; border-color: #4a5f80; color: #e3eaf7; }
+html[data-theme="dark"] .auth-shell { overflow-x: hidden; overflow-y: auto; }
+html[data-theme="dark"] .developer-row,
+html[data-theme="dark"] .access-request-row,
+html[data-theme="dark"] .developer-support-item { background: #17243a; border-color: #344761; }
+
+@media (max-width: 620px) {
+  .auth-layout { align-items: start; gap: 28px; grid-template-columns: minmax(0,1fr); padding: 30px 16px 46px; }
+  .auth-copy { display: none; }
+  .auth-card { margin: 0 auto; max-width: 480px; padding: 22px 18px; }
+  .signup-role-picker { grid-template-columns: 1fr; }
+  .signup-role-choice { min-height: 66px; }
+  .auth-help-dialog { width: min(540px, calc(100vw - 24px)); }
+  .developer-row,
+  .access-request-row { align-items: stretch; flex-direction: column; }
+  .developer-row > button,
+  .access-request-actions { justify-content: flex-start; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-tooltip]::after { transition: none; }
+}
+
 /* Explicit dark palette keeps every authenticated view readable. */
 html[data-theme="dark"] body { background: #111827; }
 html[data-theme="dark"] .main-content { background: #111827; }
@@ -6344,3 +6478,7 @@ html[data-theme="dark"] #app-view #bulk-actions .mobile-command-close { backgrou
   #app-view #bulk-actions,
   #class-section > .class-metrics .metric-card { animation: none !important; transition-duration: .01ms !important; }
 }
+
+/* Keep longer verification forms scrollable on short classroom displays. */
+.auth-shell { overflow-x: hidden; overflow-y: auto; }
+.auth-layout { min-height: 0; }
