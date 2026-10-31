@@ -84,6 +84,13 @@ assert.ok(landingInk && contrastRatio(landingInk, "#edf1f6") >= 4.5, "Landing-pa
 assert.ok(landingAccent && contrastRatio(landingAccent, "#edf1f6") >= 4.5, "Landing-page accent text must remain readable when the saved console preference is dark mode.");
 assert.match(styles, /#landing-view \.preview-toolbar \{ font-size: 11px; \}[\s\S]*#landing-view \.preview-student b \{ font-size: 12px; \}[\s\S]*#landing-view \.preview-status \{ color: #53627a; font-size: 9px; \}/, "The landing-page product preview must keep its useful labels legible instead of using tiny, faded text.");
 assert.match(styles, /#landing-view \.muted-card \{ background: rgba\(242, 245, 250, \.88\); opacity: 1; \}/, "Offline preview cards must use a muted surface, not reduced opacity that washes out all text.");
+assert.match(styles, /html\[data-theme="dark"\] #login-view \.auth-card-heading h2 \{ color: #edf3ff; \}/, "The dark login card heading must remain readable after the login view's high-specificity light styles.");
+assert.match(styles, /html\[data-theme="dark"\] #login-view \.auth-card input,[\s\S]*?color: #edf3ff;/, "Dark-mode login fields must pair a dark surface with readable light text.");
+assert.match(styles, /html\[data-theme="dark"\] #login-view\[data-auth-entry="school"\] \.school-login-copy \{[\s\S]*?background:[\s\S]*?#203553/, "The school guest-login panel must not remain a white card inside the dark login view.");
+assert.match(styles, /html\[data-theme="dark"\] #login-view \.auth-card \.auth-footnote \{ color: #bfcee4; \}/, "Dark-mode login guidance must not inherit low-contrast light-mode footnote colors.");
+assert.match(styles, /html\[data-theme="dark"\] #login-view \.auth-form-lead \{ background: #203553; border-left-color: #8fa8ff; color: #d7e2f2; \}/, "Login-form guidance must use a dark, legible surface instead of a white strip in dark mode.");
+assert.match(styles, /\.signup-role-choice small \{[^}]*min-width: 0; white-space: normal; \}/, "Signup role explanations must wrap inside their cards instead of overflowing horizontally.");
+assert.match(styles, /#login-view\[data-auth-mode="signup"\] \.auth-layout \{ align-items: start; \}[\s\S]*#login-view\[data-auth-mode="signup"\] \.auth-copy \{ margin-top: clamp\(78px, 13vh, 136px\); \}/, "Long signup forms must not vertically push the welcome content below the first viewport.");
 assert.match(script, /function startClassPolling\(\)/, "Class refresh must use a single scheduled polling loop.");
 assert.match(script, /function storageSet\(storageName, key, value\)[\s\S]*?return storage\.getItem\(key\) === String\(value\);/, "Stored login tokens must verify that browser storage actually accepted the write.");
 assert.match(script, /if \(storageSet\("localStorage", TEACHER_TOKEN_KEY, token\)\) \{[\s\S]*?\} else \{\s*\/\/ Some managed\/private browser contexts deny persistent storage\.[\s\S]*?storageSet\("sessionStorage", TEACHER_TOKEN_KEY, token\);/, "A denied persistent-storage write must fall back to a tab-scoped token so reloads do not lose a valid login.");
@@ -278,9 +285,9 @@ assert.match(cloudflareWorker, /support-user.{0,12}2, 24 \* 60 \* 60_000/, "Supp
 assert.match(cloudflareWorker, /SUPPORT_ACCOUNT_NOT_ELIGIBLE[\s\S]{0,220}학생 계정은 학교 선생님께 문의해 주세요/, "Student sessions and unrelated Firebase accounts must not use teacher developer support.");
 assert.match(cloudflareWorker, /session_kind TEXT NOT NULL DEFAULT 'persistent'/, "Teacher sessions must record whether a login is one-time.");
 assert.match(cloudflareWorker, /GUEST_SESSION_LIFETIME_MS = 1000 \* 60 \* 60 \* 12/, "Guest and one-time sessions must have a bounded lifetime.");
-assert.match(script, /const APP_VERSION = "0\.9\.6"/, "The published UI needs a version change so existing installs detect this update.");
-assert.match(versionManifest, /"version":\s*"0\.9\.6"/, "The online version manifest must match the UI build version.");
-assert.match(serviceWorker, /classroom-console-v53[\s\S]*styles\.css\?v=0\.9\.6[\s\S]*app\.js\?v=0\.9\.6/, "The service-worker shell cache must rotate with the published assets.");
+assert.match(script, /const APP_VERSION = "0\.9\.7"/, "The published UI needs a version change so existing installs detect this update.");
+assert.match(versionManifest, /"version":\s*"0\.9\.7"/, "The online version manifest must match the UI build version.");
+assert.match(serviceWorker, /classroom-console-v54[\s\S]*styles\.css\?v=0\.9\.7[\s\S]*app\.js\?v=0\.9\.7/, "The service-worker shell cache must rotate with the published assets.");
 assert.match(cloudflareWorker, /if \(user\.is_admin && !user\.is_developer_admin\) return true;[\s\S]{0,220}ClassTeachers/, "Regular teachers must have explicit class membership rather than blanket school access.");
 assert.match(cloudflareWorker, /Require explicit class membership at request time without revoking[\s\S]{0,180}INSERT OR IGNORE INTO ClassTeachers/, "Class access hardening must preserve existing teacher assignments while ensuring class owners remain assigned.");
 assert.match(cloudflareWorker, /async compareTeacherStudentExitPin\(/, "Teachers must be able to verify whether their guest PIN matches the student-app exit PIN without receiving a stored secret.");
