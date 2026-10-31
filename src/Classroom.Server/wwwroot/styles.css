@@ -7049,3 +7049,26 @@ html[data-theme="dark"] #auth-help-dialog .support-dev-contact a { color: #c9baf
   #login-view .auth-card,
   html[data-theme="dark"] #login-view .auth-card { -webkit-backdrop-filter: none; backdrop-filter: none; background: #211d3a; }
 }
+
+/* 0.9.9 — keep login actions visible on short desktop viewports and use the
+   violet material palette for generic account lookup feedback. */
+#account-lookup-dialog { --dialog-accent: #8b73e4; }
+#account-lookup-result[data-state="error"] {
+  background: color-mix(in srgb, var(--ui-red) 10%, var(--ui-surface-solid));
+  border: 1px solid color-mix(in srgb, var(--ui-red) 24%, var(--ui-line));
+  color: var(--ui-red);
+}
+html[data-theme="dark"] #account-lookup-result[data-state="error"] {
+  background: color-mix(in srgb, var(--ui-red) 16%, var(--ui-surface-solid));
+  border-color: color-mix(in srgb, var(--ui-red) 38%, var(--ui-line));
+  color: #ffbac2;
+}
+
+@media (min-width: 821px) and (max-height: 780px) {
+  #login-view .auth-layout { padding-bottom: 24px; padding-top: 24px; }
+  #login-view[data-auth-mode="login"] .auth-card { padding-bottom: 18px; padding-top: 18px; }
+}
+
+@media (min-width: 821px) {
+  #login-view.auth-shell { height: 100dvh; max-height: 100dvh; min-height: 100dvh; }
+}

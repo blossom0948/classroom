@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.9.8";
+  const APP_VERSION = "0.9.9";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -141,6 +141,14 @@
   const appView = $("app-view");
   const loginError = $("login-error");
   const mobileCommandMedia = window.matchMedia("(max-width: 820px)");
+
+  document.querySelectorAll("dialog").forEach((dialog) => {
+    if (dialog.hasAttribute("aria-label") || dialog.hasAttribute("aria-labelledby")) return;
+    const heading = dialog.querySelector(".dialog-heading h2, h2");
+    if (!heading) return;
+    if (!heading.id) heading.id = `${dialog.id || "classroom-dialog"}-title`;
+    dialog.setAttribute("aria-labelledby", heading.id);
+  });
 
   function apiUrl(path) {
     return apiOrigin ? `${apiOrigin}${path}` : path;
@@ -3116,6 +3124,7 @@
   function showAuth(mode = "school") {
     setMobileCommandOpen(false);
     landingView.scrollTop = 0;
+    loginView.scrollTop = 0;
     const resolvedMode = mode === "signup"
       ? "signup"
       : mode === "admin" || mode === "login"
@@ -3133,16 +3142,19 @@
       setAuthEntry("admin");
       setAuthMode(resolvedMode);
     }
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
   }
 
   function showLanding() {
     setMobileCommandOpen(false);
     landingView.scrollTop = 0;
+    loginView.scrollTop = 0;
     landingView.hidden = false;
     loginView.hidden = true;
     appView.hidden = true;
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
   }
 
   async function finishConsoleExit(logout) {
@@ -3917,18 +3929,40 @@
   $("account-lookup-button").addEventListener("click", () => {
     $("account-lookup-form").reset();
     $("account-lookup-result").hidden = true;
-    $("account-lookup-dialog").showModal();
+    $("account-lookup-email").removeAttribute("aria-invalid");
+    const dialog = $("account-lookup-dialog");
+    const loginScrollTop = loginView.scrollTop;
+    const pageScrollTop = window.scrollY;
+    dialog.addEventListener("close", () => {
+      loginView.scrollTop = loginScrollTop;
+      document.documentElement.scrollTop = pageScrollTop;
+      document.body.scrollTop = pageScrollTop;
+    }, { once: true });
+    dialog.showModal();
+  });
+
+  $("account-lookup-email").addEventListener("input", () => {
+    const result = $("account-lookup-result");
+    result.hidden = true;
+    result.dataset.state = "";
+    $("account-lookup-email").removeAttribute("aria-invalid");
   });
 
   $("account-lookup-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const email = $("account-lookup-email").value.trim().toLowerCase();
+    const emailInput = $("account-lookup-email");
+    const email = emailInput.value.trim().toLowerCase();
     const result = $("account-lookup-result");
-    if (!email || !email.includes("@")) {
-      result.textContent = "가입 이메일을 입력해 주세요.";
+    emailInput.value = email;
+    result.dataset.state = "error";
+    if (!email || !emailInput.validity.valid) {
+      result.textContent = email ? "올바른 이메일 주소를 입력해 주세요." : "가입 이메일을 입력해 주세요.";
       result.hidden = false;
+      emailInput.setAttribute("aria-invalid", "true");
+      emailInput.focus();
       return;
     }
+    emailInput.removeAttribute("aria-invalid");
     try {
       const methods = await firebaseClient().lookupAccount(email);
       if (email === "blossom0948@gmail.com") {
@@ -3942,9 +3976,11 @@
       } else {
         result.textContent = "해당 이메일의 로그인 방법을 확인하지 못했습니다. 이메일 주소를 다시 확인해 주세요.";
       }
+      result.dataset.state = methods.length ? "success" : "error";
       result.hidden = false;
     } catch (error) {
       result.textContent = error.message;
+      result.dataset.state = "error";
       result.hidden = false;
     }
   });
