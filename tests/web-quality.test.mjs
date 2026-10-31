@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 
-const [html, script, styles, config, updater, helper, desktopProgram, desktopForm, focusOverlayController, watchdog, desktopOptions, desktopPipeClient, agentWorker, desktopBridge, diagnostics, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, desktopRecovery, desktopLauncher, cloudflareWorker, updateManifest] = await Promise.all([
+const [html, script, styles, config, updater, helper, desktopProgram, desktopForm, focusOverlayController, watchdog, desktopOptions, desktopPipeClient, agentWorker, desktopBridge, diagnostics, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, desktopRecovery, desktopLauncher, cloudflareWorker, updateManifest, serviceWorker, versionManifest] = await Promise.all([
   readFile(new URL("../src/Classroom.Server/wwwroot/index.html", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/app.js", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Server/wwwroot/styles.css", import.meta.url), "utf8"),
@@ -26,7 +26,9 @@ const [html, script, styles, config, updater, helper, desktopProgram, desktopFor
   readFile(new URL("../src/Classroom.Student.Service/StudentDesktopRecoveryWorker.cs", import.meta.url), "utf8"),
   readFile(new URL("../src/Classroom.Student.Service/StudentDesktopSessionLauncher.cs", import.meta.url), "utf8"),
   readFile(new URL("../cloudflare/worker.js", import.meta.url), "utf8"),
-  readFile(new URL("../src/Classroom.Server/wwwroot/classroom-update.json", import.meta.url), "utf8")
+  readFile(new URL("../src/Classroom.Server/wwwroot/classroom-update.json", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Server/wwwroot/sw.js", import.meta.url), "utf8"),
+  readFile(new URL("../src/Classroom.Server/wwwroot/version.json", import.meta.url), "utf8")
 ]);
 
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
@@ -236,6 +238,9 @@ assert.match(cloudflareWorker, /support-user.{0,12}2, 24 \* 60 \* 60_000/, "Supp
 assert.match(cloudflareWorker, /SUPPORT_ACCOUNT_NOT_ELIGIBLE[\s\S]{0,220}학생 계정은 학교 선생님께 문의해 주세요/, "Student sessions and unrelated Firebase accounts must not use teacher developer support.");
 assert.match(cloudflareWorker, /session_kind TEXT NOT NULL DEFAULT 'persistent'/, "Teacher sessions must record whether a login is one-time.");
 assert.match(cloudflareWorker, /GUEST_SESSION_LIFETIME_MS = 1000 \* 60 \* 60 \* 12/, "Guest and one-time sessions must have a bounded lifetime.");
+assert.match(script, /const APP_VERSION = "0\.9\.4"/, "The published UI needs a version change so existing installs detect this update.");
+assert.match(versionManifest, /"version":\s*"0\.9\.4"/, "The online version manifest must match the UI build version.");
+assert.match(serviceWorker, /classroom-console-v51[\s\S]*styles\.css\?v=0\.9\.4[\s\S]*app\.js\?v=0\.9\.4/, "The service-worker shell cache must rotate with the published assets.");
 assert.match(cloudflareWorker, /if \(user\.is_admin && !user\.is_developer_admin\) return true;[\s\S]{0,220}ClassTeachers/, "Regular teachers must have explicit class membership rather than blanket school access.");
 assert.match(cloudflareWorker, /Require explicit class membership at request time without revoking[\s\S]{0,180}INSERT OR IGNORE INTO ClassTeachers/, "Class access hardening must preserve existing teacher assignments while ensuring class owners remain assigned.");
 assert.match(cloudflareWorker, /async compareTeacherStudentExitPin\(/, "Teachers must be able to verify whether their guest PIN matches the student-app exit PIN without receiving a stored secret.");
