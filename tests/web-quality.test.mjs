@@ -50,7 +50,40 @@ const dynamicIds = new Set([
 const referencedIds = [...new Set([...script.matchAll(/\$\("([^"]+)"\)/g)].map((match) => match[1]))];
 const missing = referencedIds.filter((id) => !ids.has(id) && !dynamicIds.has(id));
 
+function relativeLuminance(hexColor) {
+  const channels = hexColor.match(/[a-f\d]{2}/gi).map((channel) => parseInt(channel, 16) / 255);
+  const linear = channels.map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+function contrastRatio(foreground, background) {
+  const first = relativeLuminance(foreground);
+  const second = relativeLuminance(background);
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
+
+const nativeTokens = styles.match(/\/\* 0\.7\.0 — native surface system[\s\S]*?:root \{([\s\S]*?)\n\}/)?.[1];
+const darkTokens = styles.match(/\/\* 0\.7\.0 — native surface system[\s\S]*?html\[data-theme="dark"\] \{([\s\S]*?)\n\}/)?.[1];
+const landingTokens = styles.match(/#landing-view\.landing-page \{([\s\S]*?)\n\}/)?.[1];
+const lightMuted = nativeTokens?.match(/--ui-muted:\s*(#[a-f\d]{6})/i)?.[1];
+const darkMuted = darkTokens?.match(/--ui-muted:\s*(#[a-f\d]{6})/i)?.[1];
+const landingInk = landingTokens?.match(/--ui-ink:\s*(#[a-f\d]{6})/i)?.[1];
+const landingAccent = landingTokens?.match(/--ui-blue-strong:\s*(#[a-f\d]{6})/i)?.[1];
+
 assert.deepEqual(missing, [], `Missing static DOM IDs: ${missing.join(", ")}`);
+assert.ok(lightMuted && contrastRatio(lightMuted, "#edf1f6") >= 4.5, "Small muted text must meet WCAG AA contrast against the light classroom canvas.");
+assert.ok(darkMuted && contrastRatio(darkMuted, "#142137") >= 4.5, "Small muted text must remain readable against dark classroom surfaces.");
+for (const token of ["--ui-blue-strong", "--ui-violet", "--ui-green", "--ui-amber", "--ui-red"]) {
+  const lightColor = nativeTokens?.match(new RegExp(`${token}:\\s*(#[a-f\\d]{6})`, "i"))?.[1];
+  const darkColor = darkTokens?.match(new RegExp(`${token}:\\s*(#[a-f\\d]{6})`, "i"))?.[1];
+  assert.ok(lightColor && contrastRatio(lightColor, "#edf1f6") >= 4.5, `${token} must remain readable on light classroom surfaces.`);
+  assert.ok(darkColor && contrastRatio(darkColor, "#142137") >= 4.5, `${token} must remain readable on dark classroom surfaces.`);
+}
+assert.match(landingTokens || "", /color-scheme:\s*light;/, "The public landing page must not inherit dark-theme control colors onto its intentionally light surface.");
+assert.ok(landingInk && contrastRatio(landingInk, "#edf1f6") >= 4.5, "Landing-page brand text must remain readable when the saved console preference is dark mode.");
+assert.ok(landingAccent && contrastRatio(landingAccent, "#edf1f6") >= 4.5, "Landing-page accent text must remain readable when the saved console preference is dark mode.");
+assert.match(styles, /#landing-view \.preview-toolbar \{ font-size: 11px; \}[\s\S]*#landing-view \.preview-student b \{ font-size: 12px; \}[\s\S]*#landing-view \.preview-status \{ color: #53627a; font-size: 9px; \}/, "The landing-page product preview must keep its useful labels legible instead of using tiny, faded text.");
+assert.match(styles, /#landing-view \.muted-card \{ background: rgba\(242, 245, 250, \.88\); opacity: 1; \}/, "Offline preview cards must use a muted surface, not reduced opacity that washes out all text.");
 assert.match(script, /function startClassPolling\(\)/, "Class refresh must use a single scheduled polling loop.");
 assert.match(script, /function storageSet\(storageName, key, value\)[\s\S]*?return storage\.getItem\(key\) === String\(value\);/, "Stored login tokens must verify that browser storage actually accepted the write.");
 assert.match(script, /if \(storageSet\("localStorage", TEACHER_TOKEN_KEY, token\)\) \{[\s\S]*?\} else \{\s*\/\/ Some managed\/private browser contexts deny persistent storage\.[\s\S]*?storageSet\("sessionStorage", TEACHER_TOKEN_KEY, token\);/, "A denied persistent-storage write must fall back to a tab-scoped token so reloads do not lose a valid login.");
@@ -245,9 +278,9 @@ assert.match(cloudflareWorker, /support-user.{0,12}2, 24 \* 60 \* 60_000/, "Supp
 assert.match(cloudflareWorker, /SUPPORT_ACCOUNT_NOT_ELIGIBLE[\s\S]{0,220}학생 계정은 학교 선생님께 문의해 주세요/, "Student sessions and unrelated Firebase accounts must not use teacher developer support.");
 assert.match(cloudflareWorker, /session_kind TEXT NOT NULL DEFAULT 'persistent'/, "Teacher sessions must record whether a login is one-time.");
 assert.match(cloudflareWorker, /GUEST_SESSION_LIFETIME_MS = 1000 \* 60 \* 60 \* 12/, "Guest and one-time sessions must have a bounded lifetime.");
-assert.match(script, /const APP_VERSION = "0\.9\.5"/, "The published UI needs a version change so existing installs detect this update.");
-assert.match(versionManifest, /"version":\s*"0\.9\.5"/, "The online version manifest must match the UI build version.");
-assert.match(serviceWorker, /classroom-console-v52[\s\S]*styles\.css\?v=0\.9\.5[\s\S]*app\.js\?v=0\.9\.5/, "The service-worker shell cache must rotate with the published assets.");
+assert.match(script, /const APP_VERSION = "0\.9\.6"/, "The published UI needs a version change so existing installs detect this update.");
+assert.match(versionManifest, /"version":\s*"0\.9\.6"/, "The online version manifest must match the UI build version.");
+assert.match(serviceWorker, /classroom-console-v53[\s\S]*styles\.css\?v=0\.9\.6[\s\S]*app\.js\?v=0\.9\.6/, "The service-worker shell cache must rotate with the published assets.");
 assert.match(cloudflareWorker, /if \(user\.is_admin && !user\.is_developer_admin\) return true;[\s\S]{0,220}ClassTeachers/, "Regular teachers must have explicit class membership rather than blanket school access.");
 assert.match(cloudflareWorker, /Require explicit class membership at request time without revoking[\s\S]{0,180}INSERT OR IGNORE INTO ClassTeachers/, "Class access hardening must preserve existing teacher assignments while ensuring class owners remain assigned.");
 assert.match(cloudflareWorker, /async compareTeacherStudentExitPin\(/, "Teachers must be able to verify whether their guest PIN matches the student-app exit PIN without receiving a stored secret.");
