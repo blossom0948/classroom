@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.9.2";
+  const APP_VERSION = "0.9.3";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -16,7 +16,14 @@
   }
 
   function storageSet(storageName, key, value) {
-    try { window[storageName]?.setItem(key, value); } catch (_) { /* storage can be disabled */ }
+    try {
+      const storage = window[storageName];
+      if (!storage) return false;
+      storage.setItem(key, value);
+      return storage.getItem(key) === String(value);
+    } catch (_) {
+      return false;
+    }
   }
 
   function storageRemove(storageName, key) {
@@ -45,8 +52,13 @@
       storageSet("sessionStorage", TEACHER_TOKEN_KEY, token);
       return;
     }
-    storageSet("localStorage", TEACHER_TOKEN_KEY, token);
-    storageRemove("sessionStorage", TEACHER_TOKEN_KEY);
+    if (storageSet("localStorage", TEACHER_TOKEN_KEY, token)) {
+      storageRemove("sessionStorage", TEACHER_TOKEN_KEY);
+    } else {
+      // Some managed/private browser contexts deny persistent storage. Keep
+      // the login for this tab's reloads instead of silently losing it.
+      storageSet("sessionStorage", TEACHER_TOKEN_KEY, token);
+    }
   }
 
   const state = {

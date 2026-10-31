@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { runInNewContext } from "node:vm";
 
 const [html, script, styles, config, updater, helper, desktopProgram, desktopForm, focusOverlayController, watchdog, desktopOptions, desktopPipeClient, agentWorker, desktopBridge, diagnostics, setupProgram, setupForm, elevatedInstaller, installScript, buildPagesScript, desktopRecovery, desktopLauncher, cloudflareWorker, updateManifest] = await Promise.all([
   readFile(new URL("../src/Classroom.Server/wwwroot/index.html", import.meta.url), "utf8"),
@@ -49,6 +50,23 @@ const missing = referencedIds.filter((id) => !ids.has(id) && !dynamicIds.has(id)
 
 assert.deepEqual(missing, [], `Missing static DOM IDs: ${missing.join(", ")}`);
 assert.match(script, /function startClassPolling\(\)/, "Class refresh must use a single scheduled polling loop.");
+assert.match(script, /function storageSet\(storageName, key, value\)[\s\S]*?return storage\.getItem\(key\) === String\(value\);/, "Stored login tokens must verify that browser storage actually accepted the write.");
+assert.match(script, /if \(storageSet\("localStorage", TEACHER_TOKEN_KEY, token\)\) \{[\s\S]*?\} else \{\s*\/\/ Some managed\/private browser contexts deny persistent storage\.[\s\S]*?storageSet\("sessionStorage", TEACHER_TOKEN_KEY, token\);/, "A denied persistent-storage write must fall back to a tab-scoped token so reloads do not lose a valid login.");
+const storageHelpers = script.match(/  function storageSet\(storageName, key, value\) \{[\s\S]*?\n  \}/)?.[0];
+const tokenStore = script.match(/  function storeTeacherToken\(token, isGuest = false\) \{[\s\S]*?\n  \}/)?.[0];
+assert.ok(storageHelpers && tokenStore, "Storage and token persistence helpers must remain testable.");
+const storedToken = runInNewContext(`${storageHelpers}\n${tokenStore}\nstoreTeacherToken("preview-token", false); window.sessionStorage.getItem("classroom.teacherToken");`, {
+  cookieSessionEnabled: false,
+  TEACHER_TOKEN_KEY: "classroom.teacherToken",
+  window: {
+    localStorage: { setItem() { throw new Error("persistent storage denied"); }, getItem() { return null; }, removeItem() {} },
+    sessionStorage: (() => {
+      const values = new Map();
+      return { setItem(key, value) { values.set(key, String(value)); }, getItem(key) { return values.get(key) || null; }, removeItem(key) { values.delete(key); } };
+    })()
+  }
+});
+assert.equal(storedToken, "preview-token", "A valid token must survive a reload in sessionStorage when localStorage is unavailable.");
 assert.match(script, /renderTodayInfo\(\);\s*try \{\s*await refreshClass\(\);\s*\} catch \(error\) \{[\s\S]*if \(!hasTeacherSession\(\) \|\| !state\.teacher\) throw error;/, "A temporary roster outage must not log a teacher out after /auth/me validated the session.");
 assert.match(script, /message\.textContent = "학생 연결이 잠시 불안정합니다\. 자동으로 다시 연결 중입니다\."/, "Reconnect status must stay short and avoid pushing the roster down.");
 assert.match(script, /function normalizeStudent\(student\)/, "Student payloads must be normalized before rendering.");
