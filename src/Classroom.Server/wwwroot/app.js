@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.9.1";
+  const APP_VERSION = "0.9.2";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -355,7 +355,7 @@
   }
 
   function isMobileCommandLayout() {
-    return mobileCommandMedia.matches && state.activeSection === "class" && !appView.hidden;
+    return state.activeSection === "class" && !appView.hidden;
   }
 
   function syncMobileCommandDeckPlacement() {
@@ -373,7 +373,6 @@
     const available = isMobileCommandLayout();
     if (!available) state.mobileCommandOpen = false;
     const open = Boolean(state.mobileCommandOpen && available);
-    const mobileLayout = mobileCommandMedia.matches && !appView.hidden;
     const deck = $("bulk-actions");
     const launcher = $("mobile-command-launcher");
     appView.classList.toggle("mobile-command-open", open);
@@ -385,21 +384,14 @@
         deck.setAttribute("aria-labelledby", "mobile-command-title");
         deck.removeAttribute("aria-hidden");
         deck.removeAttribute("inert");
-      } else if (mobileLayout) {
-        // The closed mobile sheet is visually off-screen, but it must also be
-        // removed from the accessibility tree and tab order. Keep it inline
-        // and accessible on desktop where the same deck is the command bar.
+      } else {
+        // The closed command sheet is visually hidden on every viewport and
+        // must also leave the accessibility tree and tab order.
         deck.removeAttribute("role");
         deck.removeAttribute("aria-modal");
         deck.removeAttribute("aria-labelledby");
         deck.setAttribute("aria-hidden", "true");
         deck.setAttribute("inert", "");
-      } else {
-        deck.removeAttribute("role");
-        deck.removeAttribute("aria-modal");
-        deck.removeAttribute("aria-labelledby");
-        deck.removeAttribute("aria-hidden");
-        deck.removeAttribute("inert");
       }
     }
   }
@@ -653,7 +645,14 @@
     applyTheme(state.theme);
     syncProfileControls(session);
     renderTodayInfo();
-    await refreshClass();
+    try {
+      await refreshClass();
+    } catch (error) {
+      // /auth/me already validated this session. A temporary roster outage
+      // should not turn that valid login into a logged-out screen; a real 401
+      // clears the session in api() and is still allowed to reach the caller.
+      if (!hasTeacherSession() || !state.teacher) throw error;
+    }
     await loadWorkspaceData();
     await loadCommandQueue().catch(() => {});
     startClassPolling();
@@ -1318,9 +1317,10 @@
       callout.hidden = true;
       return;
     }
-    const attempts = state.refreshFailureCount > 1 ? ` 연속 ${state.refreshFailureCount}회 실패했습니다.` : "";
-    const lastSuccess = state.lastSuccessfulRefreshAt ? ` 마지막 정상 갱신 ${formatTime(state.lastSuccessfulRefreshAt)}.` : "";
-    message.textContent = `${state.lastRefreshError}${attempts} 기존 학생 목록은 유지하고 다시 연결 중입니다.${lastSuccess}`;
+    message.textContent = "학생 연결이 잠시 불안정합니다. 자동으로 다시 연결 중입니다.";
+    const attempts = state.refreshFailureCount > 1 ? ` 연속 ${state.refreshFailureCount}회 실패` : "";
+    const lastSuccess = state.lastSuccessfulRefreshAt ? ` 마지막 정상 갱신 ${formatTime(state.lastSuccessfulRefreshAt)}` : "마지막 정상 갱신 기록 없음";
+    callout.title = `${state.lastRefreshError}${attempts}. ${lastSuccess}.`;
     callout.hidden = false;
   }
 

@@ -49,6 +49,8 @@ const missing = referencedIds.filter((id) => !ids.has(id) && !dynamicIds.has(id)
 
 assert.deepEqual(missing, [], `Missing static DOM IDs: ${missing.join(", ")}`);
 assert.match(script, /function startClassPolling\(\)/, "Class refresh must use a single scheduled polling loop.");
+assert.match(script, /renderTodayInfo\(\);\s*try \{\s*await refreshClass\(\);\s*\} catch \(error\) \{[\s\S]*if \(!hasTeacherSession\(\) \|\| !state\.teacher\) throw error;/, "A temporary roster outage must not log a teacher out after /auth/me validated the session.");
+assert.match(script, /message\.textContent = "학생 연결이 잠시 불안정합니다\. 자동으로 다시 연결 중입니다\."/, "Reconnect status must stay short and avoid pushing the roster down.");
 assert.match(script, /function normalizeStudent\(student\)/, "Student payloads must be normalized before rendering.");
 assert.match(script, /Array\.isArray\(students\)/, "Malformed student responses must not replace the roster.");
 assert.doesNotMatch(script, /\$\("security-setting"\)\.textContent/, "Removed settings UI must stay null-safe.");
@@ -191,6 +193,8 @@ assert.match(html, /id="guest-login-submit"[^>]*class="primary"[^>]*>학교 로�
 assert.doesNotMatch(script, /\$\("school-login-button"\)\.disabled = !firebaseReady/, "School login must not depend on Firebase admin authentication readiness.");
 assert.match(styles, /@media \(max-width: 820px\)/, "The mobile shell must keep a compact breakpoint.");
 assert.match(html, /id="mobile-command-launcher"[^>]*aria-controls="bulk-actions"/, "Phones need one explicit entry point for student commands.");
+assert.doesNotMatch(html, /toolbar-section-heading/, "The roster toolbar must not spend a column repeating its own purpose.");
+assert.match(script, /return state\.activeSection === "class" && !appView\.hidden;/, "The shared student command sheet must be available on both desktop and mobile.");
 assert.match(html, /id="mobile-command-close"/, "The mobile command sheet needs an explicit close action.");
 assert.match(html, /id="mobile-command-scrim"/, "The mobile command sheet needs a tappable outside-dismiss surface.");
 assert.match(script, /function syncMobileCommandDeckPlacement\(\)/, "The mobile command deck needs a stable placement guard.");
@@ -203,6 +207,7 @@ assert.match(script, /mobile-command-close"\)\?\.focus/, "Opening the mobile com
 assert.match(script, /mobile-command-launcher"\)\?\.focus/, "Closing the mobile command sheet must restore focus to its launcher.");
 assert.match(styles, /0\.6\.8 — mobile-first teacher console/, "The final mobile-first visual layer must remain documented and intentionally ordered.");
 assert.match(styles, /#app-view\.mobile-command-open #bulk-actions/, "Mobile student commands must use a deliberate bottom-sheet state.");
+assert.match(styles, /@media \(min-width: 821px\)[\s\S]*?\.mobile-command-launcher[\s\S]*?\.mobile-command-open #bulk-actions/, "Desktop student commands must open on demand instead of occupying the dashboard full time.");
 assert.match(styles, /#app-view #bulk-actions \.command-group \.secondary\s*\{[\s\S]*?min-height: 44px;/, "Mobile command actions need comfortable touch targets.");
 assert.match(styles, /#app-view #bulk-actions \.focus-mode-setting select\s*\{[\s\S]*?min-height: 44px;/, "The mobile focus display selector needs the same comfortable touch target.");
 assert.match(styles, /#app-view \.toolbar-browse-row \.filters[\s\S]*overflow-x: auto/, "Phone filters must scroll horizontally instead of collapsing into a dense button wall.");
