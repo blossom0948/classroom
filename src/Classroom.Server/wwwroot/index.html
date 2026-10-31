@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-    <link rel="stylesheet" href="/styles.css?v=0.9.4">
+    <link rel="stylesheet" href="/styles.css?v=0.9.5">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -45,7 +45,7 @@
             <div class="preview-heading"><div><span class="preview-kicker">2학년 3반</span><strong>수업 현황</strong></div><div class="preview-online"><b>24 / 28</b><small>온라인</small></div></div>
             <div class="preview-toolbar"><span class="preview-filter active">전체</span><span class="preview-filter">온라인</span><span class="preview-filter">집중 모드</span><span class="preview-search">학생·PC 검색</span></div>
             <div class="preview-grid"><div class="preview-student"><span class="student-avatar blue">김</span><div><b>김민수</b><small>DESKTOP-7A2</small></div><span class="preview-status online">온라인</span><div class="preview-app">▣ Chrome <small>classroom.google.com</small></div></div><div class="preview-student"><span class="student-avatar violet">이</span><div><b>이서윤</b><small>DESKTOP-1F9</small></div><span class="preview-status focus">집중 모드</span><div class="preview-app">▣ Word <small>현재 문서 작업 중</small></div></div><div class="preview-student muted-card"><span class="student-avatar orange">박</span><div><b>박지호</b><small>DESKTOP-3D8</small></div><span class="preview-status">오프라인</span><div class="preview-app">— <small>마지막 연결 4분 전</small></div></div><div class="preview-student"><span class="student-avatar green">최</span><div><b>최하은</b><small>DESKTOP-9B1</small></div><span class="preview-status online">온라인</span><div class="preview-app">▣ Edge <small>docs.google.com</small></div></div></div>
-            <div class="preview-footer"><span>● 실시간 동기화 중</span><button>메시지 보내기</button></div>
+            <div class="preview-footer"><span>● 실시간 동기화 중</span><span class="preview-action" aria-hidden="true">메시지 보내기</span></div>
           </div>
         </div>
       </section>
@@ -220,19 +220,9 @@
         <div class="admin-access-grid">
           <form id="admin-form" class="settings-card admin-grant-form">
             <div class="admin-grant-heading"><span class="settings-icon">⚿</span><h3>관리자 지정</h3><p>학교 구성원에게 필요한 관리자 권한을 부여합니다.</p></div>
-            <div class="admin-grant-tabs" role="tablist" aria-label="관리자 대상">
-              <button id="admin-teacher-tab" class="admin-grant-tab active" type="button" role="tab" aria-selected="true" aria-controls="teacher-admin-panel">선생님</button>
-              <button id="admin-student-tab" class="admin-grant-tab" type="button" role="tab" aria-selected="false" aria-controls="student-admin-panel">학생</button>
-            </div>
-            <div id="teacher-admin-panel" class="admin-grant-panel" role="tabpanel">
+            <div class="admin-grant-panel">
               <label>Google 이메일 또는 아이디<input id="admin-identifier" maxlength="254" autocomplete="off" placeholder="teacher@school.ac.kr 또는 teacher-id"></label>
               <button id="teacher-admin-submit" class="primary" type="submit">관리자로 지정</button>
-            </div>
-            <div id="student-admin-panel" class="admin-grant-panel student-admin-panel" role="tabpanel" hidden>
-              <label>학생 검색<input id="student-admin-search" type="search" autocomplete="off" placeholder="등록된 학생 이름 검색"></label>
-              <label>학생 선택<select id="student-admin-select"><option value="">학생을 선택하세요</option></select></label>
-              <button id="student-admin-submit" class="primary" type="button">학생 관리자 지정</button>
-              <p class="privacy-note">학생용 장치는 교사 관리자 세션으로 승격되지 않습니다. 이 권한은 학생 계정 기능이 연결될 때 적용되는 별도 권한 표식입니다.</p>
             </div>
             <p id="admin-error" class="error" hidden></p>
           </form>
@@ -287,7 +277,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.9.4</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.9.5</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -552,6 +542,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.9.4" defer></script>
+  <script src="/app.js?v=0.9.5" defer></script>
 </body>
 </html>

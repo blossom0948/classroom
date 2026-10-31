@@ -182,7 +182,14 @@ assert.match(script, /\$\("landing-cta-button"\)\.addEventListener\("click", \(\
 assert.match(script, /\$\("admin-login-choice"\)\.addEventListener\("click", \(\) => showAuth\("admin"\)\)/, "Administrator login must remain an explicit secondary entry.");
 assert.match(html, /class="auth-tab active" data-auth-mode="login"/, "The administrator panel must render the login tab as active initially.");
 assert.match(styles, /#admin-auth-panel \.auth-tabs\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/, "Administrator authentication choices must use a visibly distinct segmented control.");
-assert.match(styles, /#app-view \.filters,[\s\S]*#app-view \.admin-grant-tabs\s*\{[\s\S]*background:/, "Classroom filters and administrator target tabs must expose a filled switcher surface.");
+assert.match(styles, /#app-view \.filters\s*\{[\s\S]*background:/, "Classroom filters must expose a filled switcher surface.");
+assert.match(script, /displayName\s*\?\s*`\$\{displayName\} 선생님 안녕하세요\.`\s*:\s*"선생님 안녕하세요\."/, "The teacher greeting must separate the name and title and handle a missing name without duplication.");
+assert.doesNotMatch(script, /\$\("teacher-greeting"\)\.textContent[^\n]*\}\s*선생님/, "The teacher greeting must not concatenate the name directly with the title.");
+assert.match(html, /class="preview-action" aria-hidden="true">메시지 보내기<\/span>/, "The landing-page console preview must not expose an inert message button.");
+assert.doesNotMatch(html, /<button[^>]*class="preview-action"/, "Decorative preview actions must not behave like dead product controls.");
+assert.doesNotMatch(html, /id="admin-student-tab"|id="student-admin-panel"/, "Unimplemented student-admin grants must not appear as active controls.");
+assert.doesNotMatch(script, /renderStudentAdminOptions|updateStudentAdminAccess|studentAdminKey|student-admin-select/, "The nonfunctional student-admin placeholder must not retain client event paths.");
+assert.doesNotMatch(styles, /student-admin-panel|admin-grant-tabs|admin-grant-tab/, "Removed placeholder controls must not leave unused layout styles.");
 assert.match(styles, /#app-view \.settings-card\s*\{[\s\S]*border-top: 4px solid var\(--panel-accent\)/, "Management cards must use a category color rail for faster scanning.");
 assert.match(styles, /\.command-group\s*\{[\s\S]*background:/, "Classroom actions must be grouped by intent with their own surface.");
 assert.match(html, /class="toolbar-row toolbar-browse-row"/, "The roster filters and search need a dedicated browse row.");
@@ -238,9 +245,9 @@ assert.match(cloudflareWorker, /support-user.{0,12}2, 24 \* 60 \* 60_000/, "Supp
 assert.match(cloudflareWorker, /SUPPORT_ACCOUNT_NOT_ELIGIBLE[\s\S]{0,220}학생 계정은 학교 선생님께 문의해 주세요/, "Student sessions and unrelated Firebase accounts must not use teacher developer support.");
 assert.match(cloudflareWorker, /session_kind TEXT NOT NULL DEFAULT 'persistent'/, "Teacher sessions must record whether a login is one-time.");
 assert.match(cloudflareWorker, /GUEST_SESSION_LIFETIME_MS = 1000 \* 60 \* 60 \* 12/, "Guest and one-time sessions must have a bounded lifetime.");
-assert.match(script, /const APP_VERSION = "0\.9\.4"/, "The published UI needs a version change so existing installs detect this update.");
-assert.match(versionManifest, /"version":\s*"0\.9\.4"/, "The online version manifest must match the UI build version.");
-assert.match(serviceWorker, /classroom-console-v51[\s\S]*styles\.css\?v=0\.9\.4[\s\S]*app\.js\?v=0\.9\.4/, "The service-worker shell cache must rotate with the published assets.");
+assert.match(script, /const APP_VERSION = "0\.9\.5"/, "The published UI needs a version change so existing installs detect this update.");
+assert.match(versionManifest, /"version":\s*"0\.9\.5"/, "The online version manifest must match the UI build version.");
+assert.match(serviceWorker, /classroom-console-v52[\s\S]*styles\.css\?v=0\.9\.5[\s\S]*app\.js\?v=0\.9\.5/, "The service-worker shell cache must rotate with the published assets.");
 assert.match(cloudflareWorker, /if \(user\.is_admin && !user\.is_developer_admin\) return true;[\s\S]{0,220}ClassTeachers/, "Regular teachers must have explicit class membership rather than blanket school access.");
 assert.match(cloudflareWorker, /Require explicit class membership at request time without revoking[\s\S]{0,180}INSERT OR IGNORE INTO ClassTeachers/, "Class access hardening must preserve existing teacher assignments while ensuring class owners remain assigned.");
 assert.match(cloudflareWorker, /async compareTeacherStudentExitPin\(/, "Teachers must be able to verify whether their guest PIN matches the student-app exit PIN without receiving a stored secret.");

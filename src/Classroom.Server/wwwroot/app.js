@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.9.4";
+  const APP_VERSION = "0.9.5";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -658,7 +658,12 @@
       ? "중앙 관리자 · 학생 코드 발급 및 재발급 가능"
       : "조회 전용 · 담당 학급 코드를 확인할 수 있습니다.";
     renderClassPicker();
-    $("teacher-greeting").textContent = isGuest ? "게스트로 접속했습니다." : `${session.displayName || "선생님"}선생님 안녕하세요.`;
+    const displayName = typeof session.displayName === "string" ? session.displayName.trim() : "";
+    $("teacher-greeting").textContent = isGuest
+      ? "게스트로 접속했습니다."
+      : displayName
+        ? `${displayName} 선생님 안녕하세요.`
+        : "선생님 안녕하세요.";
     $("school-name").textContent = session.school?.name || "학교를 설정해 주세요";
     $("school-name").classList.toggle("unconfigured", !session.school?.name);
     $("sidebar-school-name").textContent = session.school?.name || "학교를 설정해 주세요";
@@ -1953,35 +1958,6 @@
     renderStudentCodes();
   }
 
-  function studentAdminKey(student) {
-    return `${student.classId || ""}::${student.studentId || ""}`;
-  }
-
-  function renderStudentAdminOptions() {
-    const select = $("student-admin-select");
-    if (!select) return;
-    const query = $("student-admin-search")?.value.trim().toLocaleLowerCase("ko-KR") || "";
-    const candidates = [];
-    const seen = new Set();
-    [...state.studentCodes]
-      .sort((left, right) => (Number(right.grade || 0) - Number(left.grade || 0))
-        || (Number(left.classNumber || 0) - Number(right.classNumber || 0))
-        || (Number(left.studentNumber || 999) - Number(right.studentNumber || 999))
-        || String(left.studentDisplayName || "").localeCompare(String(right.studentDisplayName || ""), "ko"))
-      .forEach((student) => {
-        const key = studentAdminKey(student);
-        if (!key || seen.has(key)) return;
-        if (query && !String(student.studentDisplayName || "").toLocaleLowerCase("ko-KR").includes(query)) return;
-        seen.add(key);
-        candidates.push(student);
-      });
-    const previous = select.value;
-    select.innerHTML = candidates.length
-      ? `<option value="">학생을 선택하세요</option>${candidates.map((student) => `<option value="${escapeHtml(studentAdminKey(student))}">${escapeHtml(`${student.grade || "—"}학년 ${student.classNumber || "—"}반 · ${student.studentNumber || "—"}번 · ${student.studentDisplayName}`)}</option>`).join("")}`
-      : '<option value="">검색 결과가 없습니다</option>';
-    if (candidates.some((student) => studentAdminKey(student) === previous)) select.value = previous;
-  }
-
   function renderAdminClassOptions() {
     const optionMarkup = state.classes.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}${item.defaultSubject ? ` · ${escapeHtml(item.defaultSubject)}` : ""}</option>`).join("");
     [$("roster-class-select"), $("enrollment-class-id")].forEach((select) => {
@@ -2219,7 +2195,6 @@
     if (!state.teacher?.isAdmin) return;
     const list = $("admin-list");
     if (list) list.innerHTML = '<div class="empty-state">관리자 목록을 불러오는 중입니다…</div>';
-    if (!state.studentCodes.length) await loadStudentCodes();
     const [directory, exitPinStatus, guestPasswordStatus] = await Promise.all([
       api("/api/admin/teachers"),
       api("/api/admin/student-exit-pin"),
@@ -2229,7 +2204,6 @@
     state.adminDirectory = directory;
     state.studentExitPinStatus = exitPinStatus;
     state.guestPasswordStatus = guestPasswordStatus;
-    renderStudentAdminOptions();
     renderAdminDirectory();
     renderStudentExitPinStatus();
     renderGuestPasswordStatus();
@@ -2383,7 +2357,6 @@
     if (!list || !state.adminDirectory) return;
     const teachers = Array.isArray(state.adminDirectory.teachers) ? state.adminDirectory.teachers : [];
     const grants = Array.isArray(state.adminDirectory.grants) ? state.adminDirectory.grants : [];
-    const students = Array.isArray(state.adminDirectory.students) ? state.adminDirectory.students : [];
     const known = new Set(teachers.map((teacher) => [teacher.email, teacher.loginName].filter(Boolean).map((value) => value.toLowerCase())) .flat());
     const pending = grants.filter((grant) => !known.has(String(grant.identifier || "").toLowerCase()));
     const teacherRows = teachers.map((teacher) => {
@@ -2392,14 +2365,9 @@
       return `<div class="admin-row"><div><strong>${escapeHtml(teacher.displayName)}</strong><small>${escapeHtml(teacher.email || teacher.loginName)}</small></div><span class="admin-badge ${teacher.isAdmin ? "active" : ""}">${teacher.isAdmin ? "관리자" : "선생님"}</span>${canRemove ? `<button class="ghost-button admin-remove-button" type="button" data-admin-remove="${escapeHtml(identifier)}">해제</button>` : ""}</div>`;
     }).join("");
     const pendingRows = pending.map((grant) => `<div class="admin-row pending"><div><strong>${escapeHtml(grant.identifier)}</strong><small>아직 가입하지 않은 계정 · ${formatTime(grant.createdAtUtc)}</small></div><span class="admin-badge active">가입 시 관리자</span><button class="ghost-button admin-remove-button" type="button" data-admin-remove="${escapeHtml(grant.identifier)}">해제</button></div>`).join("");
-    const studentAdminRows = students.filter((student) => student.isAdmin).map((student) => `<div class="admin-row"><div><strong>${escapeHtml(student.studentDisplayName)}</strong><small>${escapeHtml(`${student.grade || "—"}학년 ${student.classNumber || "—"}반 · ${student.studentNumber || "—"}번`)}</small></div><span class="admin-badge active">학생 관리자</span><button class="ghost-button admin-remove-button" type="button" data-student-admin-remove="${escapeHtml(studentAdminKey(student))}">해제</button></div>`).join("");
-    list.innerHTML = `<div class="admin-list-heading"><strong>학교 계정</strong><span class="muted small">${teachers.length}명</span></div>${teacherRows || '<div class="empty-state">아직 등록된 선생님이 없습니다.</div>'}${pendingRows ? `<div class="admin-list-heading pending-heading"><strong>가입 대기 권한</strong></div>${pendingRows}` : ""}<div class="admin-list-heading pending-heading"><strong>학생 관리자</strong><span class="muted small">${students.filter((student) => student.isAdmin).length}명</span></div>${studentAdminRows || '<div class="empty-state">지정된 학생 관리자가 없습니다.</div>'}`;
+    list.innerHTML = `<div class="admin-list-heading"><strong>학교 계정</strong><span class="muted small">${teachers.length}명</span></div>${teacherRows || '<div class="empty-state">아직 등록된 선생님이 없습니다.</div>'}${pendingRows ? `<div class="admin-list-heading pending-heading"><strong>가입 대기 권한</strong></div>${pendingRows}` : ""}`;
     list.querySelectorAll("[data-admin-remove]").forEach((button) => {
       button.addEventListener("click", () => updateAdminAccess(button.dataset.adminRemove, false).catch((error) => showToast(error.message)));
-    });
-    list.querySelectorAll("[data-student-admin-remove]").forEach((button) => {
-      const student = students.find((item) => studentAdminKey(item) === button.dataset.studentAdminRemove);
-      if (student) button.addEventListener("click", () => updateStudentAdminAccess(student, false).catch((error) => showToast(error.message)));
     });
   }
 
@@ -2408,17 +2376,6 @@
     if (!isAdmin && !await askConfirmation("관리자 권한 해제", `${identifier} 계정의 관리자 권한을 해제할까요?`, "권한 해제")) return;
     await api("/api/admin/teachers", { method: "POST", body: { kind: "teacher", identifier, isAdmin } });
     showToast(isAdmin ? "관리자 권한을 부여했습니다." : "관리자 권한을 해제했습니다.");
-    await loadAdminDirectory();
-  }
-
-  async function updateStudentAdminAccess(student, isAdmin) {
-    if (!student?.studentId || !student.classId) return;
-    if (!isAdmin && !await askConfirmation("학생 관리자 권한 해제", `${student.studentDisplayName} 학생의 학생 관리자 권한을 해제할까요?`, "권한 해제")) return;
-    await api("/api/admin/teachers", {
-      method: "POST",
-      body: { kind: "student", studentId: student.studentId, classId: student.classId, isAdmin }
-    });
-    showToast(isAdmin ? `${student.studentDisplayName} 학생에게 학생 관리자 권한을 지정했습니다.` : "학생 관리자 권한을 해제했습니다.");
     await loadAdminDirectory();
   }
 
@@ -4235,38 +4192,6 @@
   });
   $("student-code-search").addEventListener("input", renderStudentCodes);
   $("student-code-refresh").addEventListener("click", () => loadStudentCodes().catch((error) => showToast(error.message)));
-  $("student-admin-search").addEventListener("input", renderStudentAdminOptions);
-  $("admin-teacher-tab").addEventListener("click", () => {
-    $("admin-teacher-tab").classList.add("active");
-    $("admin-student-tab").classList.remove("active");
-    $("admin-teacher-tab").setAttribute("aria-selected", "true");
-    $("admin-student-tab").setAttribute("aria-selected", "false");
-    $("teacher-admin-panel").hidden = false;
-    $("student-admin-panel").hidden = true;
-  });
-  $("admin-student-tab").addEventListener("click", () => {
-    $("admin-student-tab").classList.add("active");
-    $("admin-teacher-tab").classList.remove("active");
-    $("admin-student-tab").setAttribute("aria-selected", "true");
-    $("admin-teacher-tab").setAttribute("aria-selected", "false");
-    $("teacher-admin-panel").hidden = true;
-    $("student-admin-panel").hidden = false;
-    renderStudentAdminOptions();
-  });
-  $("student-admin-submit").addEventListener("click", async () => {
-    const key = $("student-admin-select").value;
-    const student = state.studentCodes.find((item) => studentAdminKey(item) === key);
-    const errorTarget = $("admin-error");
-    errorTarget.hidden = true;
-    try {
-      if (!student) throw new Error("관리자 권한을 줄 학생을 선택해 주세요.");
-      await updateStudentAdminAccess(student, true);
-      $("student-admin-select").value = "";
-    } catch (error) {
-      errorTarget.textContent = error.message;
-      errorTarget.hidden = false;
-    }
-  });
   $("admin-enroll-button").addEventListener("click", openEnrollmentDialog);
   $("student-installer-download").addEventListener("click", downloadStudentInstaller);
   $("student-roster-fullscreen").addEventListener("click", () => toggleStudentRosterFullscreen().catch(() => showToast("전체화면을 사용할 수 없습니다.")));
