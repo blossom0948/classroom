@@ -8,7 +8,7 @@
   "scope": "/",
   "display": "standalone",
   "background_color": "#f7f9fd",
-  "theme_color": "#526ee5",
+  "theme_color": "#17132d",
   "icons": [
     {
       "src": "/icons/classroom.svg",

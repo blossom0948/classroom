@@ -64,7 +64,7 @@ function contrastRatio(foreground, background) {
 
 const nativeTokens = styles.match(/\/\* 0\.7\.0 — native surface system[\s\S]*?:root \{([\s\S]*?)\n\}/)?.[1];
 const darkTokens = styles.match(/\/\* 0\.7\.0 — native surface system[\s\S]*?html\[data-theme="dark"\] \{([\s\S]*?)\n\}/)?.[1];
-const landingTokens = styles.match(/#landing-view\.landing-page \{([\s\S]*?)\n\}/)?.[1];
+const landingTokens = Array.from(styles.matchAll(/#landing-view\.landing-page \{([\s\S]*?)\n\}/g)).at(-1)?.[1];
 const lightMuted = nativeTokens?.match(/--ui-muted:\s*(#[a-f\d]{6})/i)?.[1];
 const darkMuted = darkTokens?.match(/--ui-muted:\s*(#[a-f\d]{6})/i)?.[1];
 const landingInk = landingTokens?.match(/--ui-ink:\s*(#[a-f\d]{6})/i)?.[1];
@@ -79,11 +79,12 @@ for (const token of ["--ui-blue-strong", "--ui-violet", "--ui-green", "--ui-ambe
   assert.ok(lightColor && contrastRatio(lightColor, "#edf1f6") >= 4.5, `${token} must remain readable on light classroom surfaces.`);
   assert.ok(darkColor && contrastRatio(darkColor, "#142137") >= 4.5, `${token} must remain readable on dark classroom surfaces.`);
 }
-assert.match(landingTokens || "", /color-scheme:\s*light;/, "The public landing page must not inherit dark-theme control colors onto its intentionally light surface.");
-assert.ok(landingInk && contrastRatio(landingInk, "#edf1f6") >= 4.5, "Landing-page brand text must remain readable when the saved console preference is dark mode.");
-assert.ok(landingAccent && contrastRatio(landingAccent, "#edf1f6") >= 4.5, "Landing-page accent text must remain readable when the saved console preference is dark mode.");
-assert.match(styles, /#landing-view \.preview-toolbar \{ font-size: 11px; \}[\s\S]*#landing-view \.preview-student b \{ font-size: 12px; \}[\s\S]*#landing-view \.preview-status \{ color: #53627a; font-size: 9px; \}/, "The landing-page product preview must keep its useful labels legible instead of using tiny, faded text.");
-assert.match(styles, /#landing-view \.muted-card \{ background: rgba\(242, 245, 250, \.88\); opacity: 1; \}/, "Offline preview cards must use a muted surface, not reduced opacity that washes out all text.");
+assert.match(landingTokens || "", /color-scheme:\s*dark;/, "The public landing page must keep its dark violet palette independent of the saved console theme.");
+assert.ok(landingInk && contrastRatio(landingInk, "#17132d") >= 4.5, "Landing-page brand text must remain readable against its violet background.");
+assert.ok(landingAccent && contrastRatio(landingAccent, "#17132d") >= 4.5, "Landing-page accent text must remain readable against its violet background.");
+assert.match(styles, /#landing-view::before \{[\s\S]*radial-gradient[\s\S]*@keyframes classroom-aurora-drift/, "The short landing page must have its own subtle animated violet background.");
+assert.match(styles, /#landing-view \.landing-entry-card \{[\s\S]*backdrop-filter: blur/, "The login choices should be presented in one focused glass entry card.");
+assert.match(styles, /#app-view \.nav \{[\s\S]*border-radius: 23px/, "The desktop navigation rail should float on a fully rounded glass surface.");
 assert.match(styles, /html\[data-theme="dark"\] #login-view \.auth-card-heading h2 \{ color: #edf3ff; \}/, "The dark login card heading must remain readable after the login view's high-specificity light styles.");
 assert.match(styles, /html\[data-theme="dark"\] #login-view \.auth-card input,[\s\S]*?color: #edf3ff;/, "Dark-mode login fields must pair a dark surface with readable light text.");
 assert.match(styles, /html\[data-theme="dark"\] #login-view\[data-auth-entry="school"\] \.school-login-copy \{[\s\S]*?background:[\s\S]*?#203553/, "The school guest-login panel must not remain a white card inside the dark login view.");
@@ -217,16 +218,19 @@ assert.match(script, /function showAuth\(mode = "school"\)/, "The default auth r
 assert.match(script, /function setAuthMode\(mode = "login"\)/, "The administrator auth mode must default to login.");
 assert.match(html, /id="login-view"[^>]*data-auth-entry="school"[^>]*data-auth-mode="login"/, "The initial auth markup must identify school login and administrator login mode deterministically.");
 assert.match(script, /if \(resolvedMode === "school"\) \{[\s\S]*?setAuthEntry\("school"\);[\s\S]*?setAuthMode\("login"\);/, "School entry must reset a prior administrator signup tab back to login.");
-assert.match(script, /\$\("landing-start-button"\)\.addEventListener\("click", \(\) => showAuth\("school"\)\)/, "The primary start action must open school login first.");
-assert.match(script, /\$\("landing-cta-button"\)\.addEventListener\("click", \(\) => showAuth\("school"\)\)/, "The landing call-to-action must open school login first.");
+assert.match(script, /function showLanding\(\) \{[\s\S]*?landingView\.scrollTop = 0;/, "Returning to landing must restore the top after browser focus scrolls an entry control into view.");
+assert.match(script, /\$\("landing-start-button"\)\.addEventListener\("click", \(\) => \{\s*showAuth\("school"\);\s*openGuestLoginDialog\(\);\s*\}\)/, "The primary landing action must open school guest login without an extra navigation step.");
+assert.match(script, /\$\("landing-account-login"\)\.addEventListener\("click", \(\) => showAuth\("admin"\)\)/, "The teacher login action must open the account login form.");
+assert.match(script, /\$\("landing-signup-button"\)\.addEventListener\("click", \(\) => showAuth\("signup"\)\)/, "The signup action must open the separate account signup form.");
+assert.doesNotMatch(script, /landing-cta-button|principles-login-button/, "Removed long landing sections must not leave stale click handlers.");
 assert.match(script, /\$\("admin-login-choice"\)\.addEventListener\("click", \(\) => showAuth\("admin"\)\)/, "Administrator login must remain an explicit secondary entry.");
 assert.match(html, /class="auth-tab active" data-auth-mode="login"/, "The administrator panel must render the login tab as active initially.");
 assert.match(styles, /#admin-auth-panel \.auth-tabs\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/, "Administrator authentication choices must use a visibly distinct segmented control.");
 assert.match(styles, /#app-view \.filters\s*\{[\s\S]*background:/, "Classroom filters must expose a filled switcher surface.");
 assert.match(script, /displayName\s*\?\s*`\$\{displayName\} 선생님 안녕하세요\.`\s*:\s*"선생님 안녕하세요\."/, "The teacher greeting must separate the name and title and handle a missing name without duplication.");
 assert.doesNotMatch(script, /\$\("teacher-greeting"\)\.textContent[^\n]*\}\s*선생님/, "The teacher greeting must not concatenate the name directly with the title.");
-assert.match(html, /class="preview-action" aria-hidden="true">메시지 보내기<\/span>/, "The landing-page console preview must not expose an inert message button.");
-assert.doesNotMatch(html, /<button[^>]*class="preview-action"/, "Decorative preview actions must not behave like dead product controls.");
+assert.match(html, /id="landing-entry-title"/, "The simplified landing page must give its login choices a clear heading.");
+assert.match(html, /id="auth-help-close"[^>]*aria-label="도움말 닫기"/, "The support dialog must have a direct top-level close control.");
 assert.doesNotMatch(html, /id="admin-student-tab"|id="student-admin-panel"/, "Unimplemented student-admin grants must not appear as active controls.");
 assert.doesNotMatch(script, /renderStudentAdminOptions|updateStudentAdminAccess|studentAdminKey|student-admin-select/, "The nonfunctional student-admin placeholder must not retain client event paths.");
 assert.doesNotMatch(styles, /student-admin-panel|admin-grant-tabs|admin-grant-tab/, "Removed placeholder controls must not leave unused layout styles.");
@@ -285,9 +289,9 @@ assert.match(cloudflareWorker, /support-user.{0,12}2, 24 \* 60 \* 60_000/, "Supp
 assert.match(cloudflareWorker, /SUPPORT_ACCOUNT_NOT_ELIGIBLE[\s\S]{0,220}학생 계정은 학교 선생님께 문의해 주세요/, "Student sessions and unrelated Firebase accounts must not use teacher developer support.");
 assert.match(cloudflareWorker, /session_kind TEXT NOT NULL DEFAULT 'persistent'/, "Teacher sessions must record whether a login is one-time.");
 assert.match(cloudflareWorker, /GUEST_SESSION_LIFETIME_MS = 1000 \* 60 \* 60 \* 12/, "Guest and one-time sessions must have a bounded lifetime.");
-assert.match(script, /const APP_VERSION = "0\.9\.7"/, "The published UI needs a version change so existing installs detect this update.");
-assert.match(versionManifest, /"version":\s*"0\.9\.7"/, "The online version manifest must match the UI build version.");
-assert.match(serviceWorker, /classroom-console-v54[\s\S]*styles\.css\?v=0\.9\.7[\s\S]*app\.js\?v=0\.9\.7/, "The service-worker shell cache must rotate with the published assets.");
+assert.match(script, /const APP_VERSION = "0\.9\.8"/, "The published UI needs a version change so existing installs detect this update.");
+assert.match(versionManifest, /"version":\s*"0\.9\.8"/, "The online version manifest must match the UI build version.");
+assert.match(serviceWorker, /classroom-console-v55[\s\S]*styles\.css\?v=0\.9\.8[\s\S]*app\.js\?v=0\.9\.8/, "The service-worker shell cache must rotate with the published assets.");
 assert.match(cloudflareWorker, /if \(user\.is_admin && !user\.is_developer_admin\) return true;[\s\S]{0,220}ClassTeachers/, "Regular teachers must have explicit class membership rather than blanket school access.");
 assert.match(cloudflareWorker, /Require explicit class membership at request time without revoking[\s\S]{0,180}INSERT OR IGNORE INTO ClassTeachers/, "Class access hardening must preserve existing teacher assignments while ensuring class owners remain assigned.");
 assert.match(cloudflareWorker, /async compareTeacherStudentExitPin\(/, "Teachers must be able to verify whether their guest PIN matches the student-app exit PIN without receiving a stored secret.");

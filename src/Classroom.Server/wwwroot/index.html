@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Classroom — 안전한 교실 운영</title>
-  <meta name="theme-color" content="#526ee5">
-  <meta name="description" content="학교 수업 운영을 위한 Classroom 교사 콘솔">
+  <meta name="theme-color" content="#17132d">
+  <meta name="description" content="학급 상태 확인, 수업 안내와 기록을 한곳에서 관리하는 Blossom Classroom.">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-    <link rel="stylesheet" href="/styles.css?v=0.9.7">
+    <link rel="stylesheet" href="/styles.css?v=0.9.8">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -23,43 +23,29 @@
   <section id="landing-view" class="landing-page">
     <header class="landing-nav">
       <a class="landing-brand" href="#top" aria-label="Classroom 홈"><span class="brand-mark">C</span><span>Classroom</span></a>
-      <nav class="landing-links" aria-label="소개 메뉴">
-        <a href="#how-it-works">사용 방법</a>
-        <a href="#principles">운영 원칙</a>
-      </nav>
-      <div class="landing-nav-actions"><button id="landing-install-button" class="secondary" type="button" hidden>앱 설치</button><button id="landing-student-installer-button" class="secondary" type="button">학생용 앱 다운로드</button><button id="landing-login-button" class="secondary" type="button">학교 로그인</button></div>
+      <span class="landing-nav-caption">SCHOOL CLASSROOM <i aria-hidden="true">·</i> TEACHER CONSOLE</span>
+      <div class="landing-nav-actions"><button id="landing-install-button" class="secondary" type="button" hidden>앱 설치</button><button id="landing-login-button" class="secondary" type="button">로그인</button></div>
     </header>
     <main id="top">
       <section class="landing-hero">
         <div class="hero-copy">
-          <div class="eyebrow">BLOSSOM CLASSROOM · FOR SCHOOLS</div>
-          <h1>교실의 흐름을,<br><em>안전하게</em> 연결합니다.</h1>
-          <p>학생 PC의 수업 상태를 투명하게 확인하고, 필요한 안내를 학급 전체에 정확하게 전달하세요. Classroom은 교사와 학생의 수업 시간을 더 단순하게 만듭니다.</p>
-          <div class="landing-actions"><button id="landing-start-button" class="primary">무료로 시작하기 <span>→</span></button><a href="#how-it-works" class="text-link">어떻게 작동하나요? <span>↓</span></a></div>
-          <div class="landing-trust"><span class="trust-dot"></span><span>수업에 필요한 상태만 확인</span><span class="trust-divider"></span><span>감사 기록과 안전한 연결</span></div>
+          <div class="eyebrow"><span class="landing-live-dot"></span> BLOSSOM CLASSROOM <span class="landing-eyebrow-divider">/</span> FOR SCHOOLS</div>
+          <h1>수업은 더 집중하고,<br><em>운영은 더 간단하게.</em></h1>
+          <p>학급 상태 확인부터 수업 안내와 기록까지.<br class="landing-desktop-break"><span> 교사가 바로 쓰는 수업 운영 도구를 한곳에 모았습니다.</span></p>
+          <div class="landing-highlights" aria-label="주요 기능"><span><i aria-hidden="true">01</i> 학급 상태</span><span><i aria-hidden="true">02</i> 수업 안내</span><span><i aria-hidden="true">03</i> 운영 기록</span></div>
         </div>
-        <div class="hero-visual" aria-label="Classroom 교사 콘솔 미리보기">
-          <div class="visual-glow"></div>
-          <div class="console-preview">
-            <div class="preview-top"><div class="preview-brand"><span class="mini-mark">C</span><strong>Classroom</strong></div><span class="preview-pill">TODAY'S CLASS</span></div>
-            <div class="preview-heading"><div><span class="preview-kicker">2학년 3반</span><strong>수업 현황</strong></div><div class="preview-online"><b>24 / 28</b><small>온라인</small></div></div>
-            <div class="preview-toolbar"><span class="preview-filter active">전체</span><span class="preview-filter">온라인</span><span class="preview-filter">집중 모드</span><span class="preview-search">학생·PC 검색</span></div>
-            <div class="preview-grid"><div class="preview-student"><span class="student-avatar blue">김</span><div><b>김민수</b><small>DESKTOP-7A2</small></div><span class="preview-status online">온라인</span><div class="preview-app">▣ Chrome <small>classroom.google.com</small></div></div><div class="preview-student"><span class="student-avatar violet">이</span><div><b>이서윤</b><small>DESKTOP-1F9</small></div><span class="preview-status focus">집중 모드</span><div class="preview-app">▣ Word <small>현재 문서 작업 중</small></div></div><div class="preview-student muted-card"><span class="student-avatar orange">박</span><div><b>박지호</b><small>DESKTOP-3D8</small></div><span class="preview-status">오프라인</span><div class="preview-app">— <small>마지막 연결 4분 전</small></div></div><div class="preview-student"><span class="student-avatar green">최</span><div><b>최하은</b><small>DESKTOP-9B1</small></div><span class="preview-status online">온라인</span><div class="preview-app">▣ Edge <small>docs.google.com</small></div></div></div>
-            <div class="preview-footer"><span>● 실시간 동기화 중</span><span class="preview-action" aria-hidden="true">메시지 보내기</span></div>
-          </div>
+        <div class="landing-entry-card" aria-labelledby="landing-entry-title">
+          <div class="landing-entry-topline"><span class="landing-entry-icon" aria-hidden="true">✦</span><span class="landing-entry-kicker">QUICK ACCESS</span><span class="landing-entry-status"><i></i> 수업용</span></div>
+          <h2 id="landing-entry-title">어떤 방식으로 시작할까요?</h2>
+          <p class="landing-entry-copy">학교 PIN으로 바로 입장하거나,<br>교사 계정으로 로그인·가입하세요.</p>
+          <button id="landing-start-button" class="landing-guest-button" type="button" aria-haspopup="dialog"><span class="landing-entry-button-icon" aria-hidden="true">⌂</span><span class="landing-entry-button-copy"><strong>학교 게스트 로그인</strong><small>학교 검색 후 관리자 PIN 입력</small></span><span class="landing-entry-arrow" aria-hidden="true">↗</span></button>
+          <div class="landing-entry-divider"><span>OR WITH AN ACCOUNT</span></div>
+          <div class="landing-account-actions"><button id="landing-account-login" type="button">교사 로그인</button><button id="landing-signup-button" type="button">계정 만들기 <span aria-hidden="true">→</span></button></div>
+          <div class="landing-entry-footnote"><span class="landing-entry-footnote-dot"></span>학교 계정은 중앙 관리자 승인 후 이용할 수 있습니다.</div>
         </div>
       </section>
-
-      <section id="how-it-works" class="landing-section">
-        <div class="section-intro"><span class="eyebrow">A CLEARER CLASSROOM</span><h2>교사가 수업에 집중할 수 있도록</h2><p>복잡한 원격 관리 대신, 수업에 필요한 세 가지 흐름만 선명하게 제공합니다.</p></div>
-        <div class="feature-grid"><article class="feature-card"><span class="feature-number">01</span><span class="feature-icon blue-icon">◉</span><h3>한눈에 보는 수업 상태</h3><p>학생별 온라인 상태, 현재 앱, 네트워크와 배터리를 학급 단위로 확인합니다.</p><a href="#principles">자세히 보기 <span>→</span></a></article><article class="feature-card highlighted"><span class="feature-number">02</span><span class="feature-icon violet-icon">✦</span><h3>필요한 순간의 안내</h3><p>메시지, 집중 모드, 안전한 URL과 승인 앱을 수업 흐름에 맞춰 보냅니다.</p><a href="#principles">자세히 보기 <span>→</span></a></article><article class="feature-card"><span class="feature-number">03</span><span class="feature-icon green-icon">↗</span><h3>기록으로 남는 운영</h3><p>장치 등록부터 명령 결과까지 서버 감사 기록으로 남겨 다음 수업을 준비합니다.</p><a href="#principles">자세히 보기 <span>→</span></a></article></div>
-      </section>
-
-      <section id="principles" class="principles-section"><div class="principles-copy"><span class="eyebrow">BUILT FOR TRUST</span><h2>보여주고, 확인하고,<br><em>안전하게</em> 연결합니다.</h2><p>Classroom은 수업에 필요한 장치 상태만 수집하며, 화면 보기는 교사가 요청한 동안 학생 앱에 공유 상태를 분명히 표시하는 방식으로 작동합니다.</p><button id="principles-login-button" class="secondary">교사 콘솔 시작하기 <span>→</span></button></div><div class="principles-list"><div><span class="principle-check">✓</span><div><strong>수업에 필요한 정보만</strong><p>앱·창·도메인·연결 상태와 요청 중인 자동 화질 화면만 표시하며, 화면 프레임은 저장하지 않습니다.</p></div></div><div><span class="principle-check">✓</span><div><strong>학급 범위 권한</strong><p>교사는 배정된 학급의 장치만 조회하고 제어합니다.</p></div></div><div><span class="principle-check">✓</span><div><strong>기록 가능한 명령</strong><p>메시지와 집중 모드의 전달·결과를 감사 이벤트로 남깁니다.</p></div></div></div></section>
-
-      <section class="landing-cta"><div><span class="eyebrow">READY WHEN YOU ARE</span><h2>다음 수업을 더 가볍게 시작하세요.</h2></div><button id="landing-cta-button" class="primary">Classroom 시작하기 <span>→</span></button></section>
     </main>
-    <footer class="landing-footer"><span>© Blossom Classroom</span><span class="legal-links"><button type="button" data-legal-document="terms">이용약관</button><button type="button" data-legal-document="privacy">개인정보처리방침</button></span><span>수업을 위한 투명한 장치 관리</span></footer>
+    <footer class="landing-footer"><span class="landing-copyright">© Blossom Classroom</span><nav class="landing-footer-links" aria-label="서비스 정보"><button id="landing-student-installer-button" type="button">학생용 앱 <span aria-hidden="true">↓</span></button><button type="button" data-legal-document="terms">이용약관</button><button type="button" data-legal-document="privacy">개인정보처리방침</button><a href="mailto:blossom0948@gmail.com">문의</a></nav><span class="landing-footer-note">학교 수업 운영을 위한 도구</span></footer>
   </section>
 
   <section id="login-view" class="auth-shell" data-auth-entry="school" data-auth-mode="login" hidden>
@@ -277,7 +263,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.9.7</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.9.8</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -442,7 +428,7 @@
     </form>
   </dialog>
   <dialog id="central-admin-login-dialog" class="command-dialog central-admin-login-dialog"><form method="dialog" class="stack"><div class="dialog-heading"><span class="eyebrow">ACCOUNT NOTICE</span><h2>중앙 관리자 계정 안내</h2></div><p id="central-admin-login-dialog-copy" class="muted dialog-copy">학교 중앙 관리자 계정은 창을 닫아도 자동 로그아웃되지 않습니다. 반에서 로그인했다면 반드시 로그아웃해 주세요.</p><div class="dialog-actions"><button id="central-admin-notice-logout" class="secondary" type="button">로그아웃</button><button class="primary" type="submit">확인</button></div></form></dialog>
-  <dialog id="auth-help-dialog" class="command-dialog auth-help-dialog"><form id="auth-help-form" class="stack"><div class="dialog-heading"><span class="eyebrow">HELP & SUPPORT</span><h2>도움이 필요하신가요?</h2></div><div class="auth-faq-list"><details><summary>이미 학교 중앙 관리자 계정이 있다고 나와요.</summary><p>다른 계정이 학교를 먼저 신청했을 수 있습니다. 학교명을 확인해 개발자에게 도움을 요청해 주세요.</p></details><details><summary>중앙 관리자 신청이 승인 대기 중이에요.</summary><p>학교 소속과 신청 이메일을 확인한 뒤 개발자가 승인합니다. 승인 전에는 관리자 기능이 열리지 않습니다.</p></details><details><summary>선생님 가입이 승인 대기 중이에요.</summary><p>해당 학교 중앙 관리자가 가입을 확인해야 로그인할 수 있습니다. 학교 관리자에게 승인 여부를 문의해 주세요.</p></details></div><p class="support-safety-note">학생 이름·학생 코드·화면 캡처 등 학생 개인정보는 적지 마세요. 학생은 담당 선생님을 통해 도움을 요청해야 합니다.</p><div class="support-dev-contact">개발자: <a href="mailto:blossom0948@gmail.com">blossom0948@gmail.com</a></div><p class="muted small">문의는 이메일 인증을 마친 교사 계정이나 중앙 관리자 가입 검토 중인 계정에서 접수할 수 있습니다.</p><label>문의 유형<select id="auth-support-category"><option>가입</option><option>중앙 관리자</option><option>로그인</option><option>기능 오류</option><option>기타</option></select></label><label>상황 설명<textarea id="auth-support-message" maxlength="1200" rows="4" placeholder="학교명과 문제 상황을 간단히 적어 주세요. 학생 개인정보는 제외해 주세요."></textarea></label><p id="auth-support-status" class="muted small" role="status" hidden></p><p id="auth-support-error" class="error" hidden></p><div class="dialog-actions"><button class="secondary" type="button" data-dialog-cancel>닫기</button><button id="auth-support-submit" class="primary" type="submit">개발자에게 도움 요청</button></div></form></dialog>
+  <dialog id="auth-help-dialog" class="command-dialog auth-help-dialog" aria-labelledby="auth-help-title"><form id="auth-help-form" class="stack"><div class="dialog-heading"><span class="eyebrow">HELP & SUPPORT</span><h2 id="auth-help-title">도움이 필요하신가요?</h2><button id="auth-help-close" class="dialog-close-button" type="button" aria-label="도움말 닫기">×</button></div><div class="auth-faq-list"><details><summary>이미 학교 중앙 관리자 계정이 있다고 나와요.</summary><p>다른 계정이 학교를 먼저 신청했을 수 있습니다. 학교명을 확인해 개발자에게 도움을 요청해 주세요.</p></details><details><summary>중앙 관리자 신청이 승인 대기 중이에요.</summary><p>학교 소속과 신청 이메일을 확인한 뒤 개발자가 승인합니다. 승인 전에는 관리자 기능이 열리지 않습니다.</p></details><details><summary>선생님 가입이 승인 대기 중이에요.</summary><p>해당 학교 중앙 관리자가 가입을 확인해야 로그인할 수 있습니다. 학교 관리자에게 승인 여부를 문의해 주세요.</p></details></div><p class="support-safety-note">학생 이름·학생 코드·화면 캡처 등 학생 개인정보는 적지 마세요. 학생은 담당 선생님을 통해 도움을 요청해야 합니다.</p><div class="support-dev-contact">개발자: <a href="mailto:blossom0948@gmail.com">blossom0948@gmail.com</a></div><p class="muted small">문의는 이메일 인증을 마친 교사 계정이나 중앙 관리자 가입 검토 중인 계정에서 접수할 수 있습니다.</p><label>문의 유형<select id="auth-support-category"><option>가입</option><option>중앙 관리자</option><option>로그인</option><option>기능 오류</option><option>기타</option></select></label><label>상황 설명<textarea id="auth-support-message" maxlength="1200" rows="4" placeholder="학교명과 문제 상황을 간단히 적어 주세요. 학생 개인정보는 제외해 주세요."></textarea></label><p id="auth-support-status" class="muted small" role="status" hidden></p><p id="auth-support-error" class="error" hidden></p><div class="dialog-actions"><button class="secondary" type="button" data-dialog-cancel>닫기</button><button id="auth-support-submit" class="primary" type="submit">개발자에게 도움 요청</button></div></form></dialog>
   <dialog id="enrollment-dialog" class="command-dialog enrollment-dialog">
     <form method="dialog" id="enrollment-form" class="stack">
       <div class="dialog-heading"><span class="eyebrow">STUDENT DEVICE</span><h2>학생 PC 등록</h2></div>
@@ -542,6 +528,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.9.7" defer></script>
+  <script src="/app.js?v=0.9.8" defer></script>
 </body>
 </html>

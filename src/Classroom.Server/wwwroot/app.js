@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.9.7";
+  const APP_VERSION = "0.9.8";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -3115,6 +3115,7 @@
 
   function showAuth(mode = "school") {
     setMobileCommandOpen(false);
+    landingView.scrollTop = 0;
     const resolvedMode = mode === "signup"
       ? "signup"
       : mode === "admin" || mode === "login"
@@ -3137,6 +3138,7 @@
 
   function showLanding() {
     setMobileCommandOpen(false);
+    landingView.scrollTop = 0;
     landingView.hidden = false;
     loginView.hidden = true;
     appView.hidden = true;
@@ -3893,8 +3895,13 @@
   $("forgot-password-button").addEventListener("click", async () => {
     const email = $("login-name").value.trim();
     loginError.hidden = true;
+    if (!email) {
+      loginError.textContent = "가입한 이메일을 로그인 칸에 입력한 뒤 다시 눌러 주세요.";
+      loginError.hidden = false;
+      return;
+    }
     if (!email.includes("@")) {
-      loginError.textContent = "비밀번호 재설정은 이메일 계정에만 사용할 수 있습니다.";
+      loginError.textContent = "교사 아이디 대신 가입 이메일을 입력해 주세요. 재설정 메일은 이메일로 전송됩니다.";
       loginError.hidden = false;
       return;
     }
@@ -3959,6 +3966,7 @@
     $("auth-support-error").hidden = true;
     $("auth-help-dialog").showModal();
   });
+  $("auth-help-close").addEventListener("click", () => $("auth-help-dialog").close());
   $("auth-help-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const errorTarget = $("auth-support-error");
@@ -4029,12 +4037,15 @@
       button.disabled = false;
     }
   });
-  $("landing-login-button").addEventListener("click", () => showAuth("school"));
+  $("landing-login-button").addEventListener("click", () => showAuth("admin"));
+  $("landing-account-login").addEventListener("click", () => showAuth("admin"));
+  $("landing-signup-button").addEventListener("click", () => showAuth("signup"));
   $("landing-student-installer-button").addEventListener("click", downloadStudentInstaller);
   $("landing-install-button").addEventListener("click", installApp);
-  $("landing-start-button").addEventListener("click", () => showAuth("school"));
-  $("principles-login-button").addEventListener("click", () => showAuth("school"));
-  $("landing-cta-button").addEventListener("click", () => showAuth("school"));
+  $("landing-start-button").addEventListener("click", () => {
+    showAuth("school");
+    openGuestLoginDialog();
+  });
   $("back-to-landing").addEventListener("click", (event) => { event.preventDefault(); showLanding(); });
   $("admin-login-choice").addEventListener("click", () => showAuth("admin"));
   $("school-login-back").addEventListener("click", () => showAuth("school"));
