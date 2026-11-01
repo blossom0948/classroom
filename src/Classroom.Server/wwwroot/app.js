@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.9.10";
+  const APP_VERSION = "0.9.11";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -4514,8 +4514,8 @@
     $("school-login-button").disabled = false;
     setSchoolLoginStatus("학교를 선택하고 관리자가 설정한 PIN으로 연결합니다.");
     setFirebaseStatus(firebaseReady
-      ? "관리자용 Google 로그인과 이메일 회원가입을 사용할 수 있습니다."
-      : "관리자용 인증은 Firebase 설정 후 사용할 수 있습니다.");
+      ? "Google 로그인·이메일 가입을 지원합니다. 가입은 학교 승인 후 이용할 수 있습니다."
+      : "Google 로그인과 이메일 가입은 Firebase 설정 후 사용할 수 있습니다.");
     return firebaseReady;
   }
 
