@@ -121,7 +121,6 @@ export class ClassroomState {
     this.env = env;
     this.sql = ctx.storage.sql;
     this.screenFrames = new Map();
-    this.schoolSearchCache = new Map();
     this.ready = ctx.blockConcurrencyWhile(async () => this.initialize());
   }
 
@@ -136,6 +135,13 @@ export class ClassroomState {
       created_at_utc TEXT NOT NULL,
       updated_at_utc TEXT NOT NULL
     )`);
+    this.exec(`CREATE TABLE IF NOT EXISTS SchoolSearchCache (
+      cache_key TEXT PRIMARY KEY,
+      schools_json TEXT NOT NULL,
+      search_message TEXT NOT NULL DEFAULT '',
+      expires_at_ms INTEGER NOT NULL
+    )`);
+    this.exec("CREATE INDEX IF NOT EXISTS idx_school_search_cache_expiry ON SchoolSearchCache(expires_at_ms)");
     this.exec(`CREATE TABLE IF NOT EXISTS Users (
       id TEXT PRIMARY KEY,
       school_id TEXT NOT NULL,
@@ -991,15 +997,21 @@ export class ClassroomState {
       return responseError("SCHOOL_SEARCH_RATE_LIMITED", "학교 검색 요청이 많습니다. 잠시 후 다시 시도해 주세요.", 429, cors, { "Retry-After": "60" });
     }
     const cacheKey = query.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase("ko-KR");
-    const cachedSearch = this.schoolSearchCache.get(cacheKey);
-    if (cachedSearch && cachedSearch.expiresAt > Date.now()) {
-      this.schoolSearchCache.delete(cacheKey);
-      this.schoolSearchCache.set(cacheKey, cachedSearch);
-      return responseJson(cachedSearch.schools, 200, cors, cachedSearch.searchMessage
-        ? { "X-Classroom-School-Search": cachedSearch.searchMessage }
-        : {});
+    if (!cacheKey) return responseJson([], 200, cors);
+    const cacheNow = Date.now();
+    const cachedSearch = this.one(`SELECT schools_json, search_message FROM SchoolSearchCache
+      WHERE cache_key = ? AND expires_at_ms > ?`, cacheKey, cacheNow);
+    if (cachedSearch) {
+      try {
+        const schools = JSON.parse(cachedSearch.schools_json);
+        if (Array.isArray(schools)) {
+          return responseJson(schools, 200, cors, cachedSearch.search_message
+            ? { "X-Classroom-School-Search": cachedSearch.search_message }
+            : {});
+        }
+      } catch (_) { /* Discard malformed cache data and refresh from NEIS. */ }
     }
-    if (cachedSearch) this.schoolSearchCache.delete(cacheKey);
+    this.exec("DELETE FROM SchoolSearchCache WHERE cache_key = ? AND expires_at_ms <= ?", cacheKey, cacheNow);
     const apiKey = String(this.env.NEIS_API_KEY || "").trim();
     if (!apiKey) {
       return responseError("SCHOOL_SEARCH_NOT_CONFIGURED", "학교 검색을 준비하는 중입니다. 관리자에게 NEIS 인증키 설정을 요청해 주세요.", 503, cors);
@@ -1056,15 +1068,19 @@ export class ClassroomState {
   }
 
   rememberSchoolSearch(cacheKey, schools, searchMessage = "") {
-    this.schoolSearchCache.delete(cacheKey);
-    this.schoolSearchCache.set(cacheKey, {
-      schools,
-      searchMessage,
-      expiresAt: Date.now() + SCHOOL_SEARCH_CACHE_TTL_MS
-    });
-    while (this.schoolSearchCache.size > SCHOOL_SEARCH_CACHE_MAX_ENTRIES) {
-      const oldestKey = this.schoolSearchCache.keys().next().value;
-      this.schoolSearchCache.delete(oldestKey);
+    const now = Date.now();
+    this.exec("DELETE FROM SchoolSearchCache WHERE expires_at_ms <= ?", now);
+    this.exec(`INSERT INTO SchoolSearchCache (cache_key, schools_json, search_message, expires_at_ms)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(cache_key) DO UPDATE SET schools_json = excluded.schools_json,
+        search_message = excluded.search_message, expires_at_ms = excluded.expires_at_ms`,
+    cacheKey, JSON.stringify(schools), searchMessage, now + SCHOOL_SEARCH_CACHE_TTL_MS);
+    const cacheCount = Number(this.one("SELECT COUNT(*) AS count FROM SchoolSearchCache")?.count || 0);
+    const excessCount = cacheCount - SCHOOL_SEARCH_CACHE_MAX_ENTRIES;
+    if (excessCount > 0) {
+      this.exec(`DELETE FROM SchoolSearchCache WHERE cache_key IN (
+        SELECT cache_key FROM SchoolSearchCache ORDER BY expires_at_ms ASC LIMIT ?
+      )`, excessCount);
     }
   }
 
