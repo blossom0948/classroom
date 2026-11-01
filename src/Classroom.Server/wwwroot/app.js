@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.9.9";
+  const APP_VERSION = "0.9.10";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -3196,6 +3196,7 @@
   function setLoginRole(role = "teacher") {
     state.selectedLoginRole = role === "central-admin" ? "central-admin" : "teacher";
     const central = state.selectedLoginRole === "central-admin";
+    loginView.dataset.loginRole = central ? "central-admin" : "teacher";
     $("teacher-login-choice").classList.toggle("active", !central);
     $("teacher-login-choice").setAttribute("aria-pressed", String(!central));
     $("central-admin-login-choice").classList.toggle("active", central);
@@ -3204,6 +3205,15 @@
     $("admin-one-time-button").hidden = !central;
     $("admin-one-time-options").hidden = true;
     $("admin-one-time-checkbox").checked = false;
+    $("login-error").hidden = true;
+    $("login-error").textContent = "";
+    $("login-identifier-label").textContent = central ? "학교 중앙 관리자 이메일" : "이메일 또는 교사 아이디";
+    $("login-identifier-hint").textContent = central
+      ? "승인된 학교 중앙 관리자 계정의 이메일로 로그인합니다."
+      : "이메일 또는 교사 아이디로 로그인합니다.";
+    $("login-name").placeholder = central ? "관리자 계정 이메일" : "이메일 또는 교사 아이디";
+    $("login-name").inputMode = central ? "email" : "text";
+    $("login-name").autocomplete = central ? "email" : "username";
     $("account-login-submit").innerHTML = central ? "학교 중앙 관리자 로그인 <span>→</span>" : "선생님 로그인 <span>→</span>";
   }
 
@@ -3734,6 +3744,9 @@
       const loginName = $("login-name").value.trim();
       const password = $("login-password").value;
       const oneTimeLogin = $("admin-one-time-checkbox").checked;
+      if (state.selectedLoginRole === "central-admin" && !loginName.includes("@")) {
+        throw new Error("학교 중앙 관리자 계정은 이메일 주소로 로그인해 주세요.");
+      }
       if (loginName.includes("@")) {
         const credentials = await firebaseClient().signInEmail(loginName, password);
         await finishFirebaseLogin(credentials, {

@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-    <link rel="stylesheet" href="/styles.css?v=0.9.9">
+    <link rel="stylesheet" href="/styles.css?v=0.9.10">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -69,9 +69,9 @@
             <div id="central-admin-login-notice" class="central-admin-login-notice" hidden>학교 중앙 관리자 계정은 창을 닫아도 자동 로그아웃되지 않습니다. 반에서 사용한 뒤에는 꼭 로그아웃해 주세요.</div>
             <button id="admin-one-time-button" class="admin-one-time-button" data-tooltip="반 컴퓨터에서 사용하고 창을 닫을 때 로그인 상태를 지우는 옵션입니다. 기본 중앙 관리자 로그인은 자동 로그아웃되지 않습니다." type="button" hidden title="반 컴퓨터에서 사용하고 창을 닫을 때 로그인 상태를 지우는 옵션">일회성 로그인 설정</button>
             <div id="admin-one-time-options" class="admin-one-time-options" hidden><label class="consent-check" data-tooltip="체크하면 로그인 토큰을 이 브라우저 창에만 보관합니다."><input id="admin-one-time-checkbox" type="checkbox"><span>이 창에서만 로그인하고, 창을 닫으면 로그아웃</span></label><p class="auth-tooltip-copy">반 컴퓨터에서 사용할 때 선택하세요. 중앙 관리자 계정은 기본적으로 창을 닫아도 자동 로그아웃되지 않으므로, 일회성 로그인이 아닌 경우 반드시 직접 로그아웃해야 합니다.</p></div>
-            <p class="auth-form-lead">이메일 또는 교사 아이디로 로그인합니다.</p>
+            <p id="login-identifier-hint" class="auth-form-lead">이메일 또는 교사 아이디로 로그인합니다.</p>
             <form id="login-form" class="stack">
-              <label>이메일 또는 교사 아이디<input id="login-name" autocomplete="username" required placeholder="이메일 또는 교사 아이디"></label>
+              <label><span id="login-identifier-label">이메일 또는 교사 아이디</span><input id="login-name" autocomplete="username" required placeholder="이메일 또는 교사 아이디"></label>
               <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" required></label>
               <div class="form-row"><button id="forgot-password-button" class="inline-link" type="button">비밀번호를 잊으셨나요?</button><button id="account-lookup-button" class="inline-link" type="button">계정 찾기</button></div>
               <button id="account-login-submit" class="primary wide" type="submit">선생님 로그인 <span>→</span></button>
@@ -263,7 +263,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.9.9</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.9.10</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -528,6 +528,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.9.9" defer></script>
+  <script src="/app.js?v=0.9.10" defer></script>
 </body>
 </html>

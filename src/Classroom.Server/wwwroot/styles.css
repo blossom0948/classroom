@@ -7050,8 +7050,8 @@ html[data-theme="dark"] #auth-help-dialog .support-dev-contact a { color: #c9baf
   html[data-theme="dark"] #login-view .auth-card { -webkit-backdrop-filter: none; backdrop-filter: none; background: #211d3a; }
 }
 
-/* 0.9.9 — keep login actions visible on short desktop viewports and use the
-   violet material palette for generic account lookup feedback. */
+/* 0.9.10 — keep central-admin login guidance compact on short desktop screens
+   and use the violet material palette for generic account lookup feedback. */
 #account-lookup-dialog { --dialog-accent: #8b73e4; }
 #account-lookup-result[data-state="error"] {
   background: color-mix(in srgb, var(--ui-red) 10%, var(--ui-surface-solid));
@@ -7067,6 +7067,12 @@ html[data-theme="dark"] #account-lookup-result[data-state="error"] {
 @media (min-width: 821px) and (max-height: 780px) {
   #login-view .auth-layout { padding-bottom: 24px; padding-top: 24px; }
   #login-view[data-auth-mode="login"] .auth-card { padding-bottom: 18px; padding-top: 18px; }
+  #login-view[data-login-role="central-admin"] .central-admin-login-notice {
+    margin-bottom: 5px;
+    margin-top: 5px;
+    padding-bottom: 7px;
+    padding-top: 7px;
+  }
 }
 
 @media (min-width: 821px) {
