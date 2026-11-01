@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.9.12";
+  const APP_VERSION = "0.9.13";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -3224,6 +3224,7 @@
       button.classList.toggle("active", selected);
       button.setAttribute("aria-pressed", String(selected));
     });
+    $("signup-subject-field").hidden = state.selectedSignupRole !== "TEACHER";
     $("signup-submit").innerHTML = state.selectedSignupRole === "SCHOOL_ADMIN"
       ? "중앙 관리자 신청 <span>→</span>"
       : "선생님 가입 신청 <span>→</span>";
@@ -3849,7 +3850,7 @@
         registrationRole: state.selectedSignupRole,
         schoolId,
         displayName,
-        subject: $("signup-subject").value.trim(),
+        subject: state.selectedSignupRole === "TEACHER" ? $("signup-subject").value.trim() : "",
         termsAccepted: true,
         privacyAccepted: true
       };
@@ -3903,7 +3904,7 @@
         registrationRole: state.selectedSignupRole,
         schoolId: $("signup-school-id").value.trim(),
         displayName: $("signup-display-name").value.trim(),
-        subject: $("signup-subject").value.trim(),
+        subject: state.selectedSignupRole === "TEACHER" ? $("signup-subject").value.trim() : "",
         termsAccepted: $("signup-terms").checked,
         privacyAccepted: $("signup-privacy").checked
       }

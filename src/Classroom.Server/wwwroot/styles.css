@@ -7845,3 +7845,79 @@ html[data-theme="dark"] #app-view .command-group-message .command-group-label { 
 html[data-theme="dark"] #app-view .command-group-tools .command-group-label { color: #ffd2aa; }
 html[data-theme="dark"] #app-view .command-group-more .command-group-label { color: #cbd8ff; }
 html[data-theme="dark"] #app-view .command-group-more .secondary { background: #1b294d; border-color: #6c82d2; color: #e4eaff; }
+
+/* Auth controls: keep the guest-entry link quiet and anchored to the form,
+   and separate the two recovery actions so they remain distinct on phones. */
+#login-view #admin-auth-panel .auth-mode-header {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  justify-content: flex-start;
+  margin: 2px 0 0;
+  min-height: 34px;
+  padding: 0;
+}
+#login-view #admin-auth-panel .auth-mode-header .inline-link {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  color: #6551a9;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 650;
+  gap: 7px;
+  justify-content: flex-start;
+  min-height: 36px;
+  padding: 6px 9px;
+  text-align: left;
+  white-space: nowrap;
+}
+#login-view #admin-auth-panel .auth-mode-header .inline-link::before {
+  content: "←";
+  font-size: 15px;
+  line-height: 1;
+}
+#login-view #login-form .form-row {
+  align-items: center;
+  column-gap: 14px;
+  flex-wrap: wrap;
+  row-gap: 2px;
+  margin-top: -3px;
+}
+#login-view #login-form .form-row .inline-link {
+  border-radius: 8px;
+  font-size: 13px;
+  min-height: 32px;
+  padding: 5px 2px;
+  white-space: nowrap;
+}
+#login-view .signup-role-choice strong { font-size: 13px; }
+#login-view .signup-role-choice small { font-size: 12px; line-height: 1.45; }
+
+html[data-theme="dark"] #login-view #admin-auth-panel .auth-mode-header {
+  background: transparent;
+  border: 0;
+}
+html[data-theme="dark"] #login-view #admin-auth-panel .auth-mode-header .inline-link {
+  background: transparent;
+  border: 0;
+  color: #d0c2f6;
+}
+@media (hover: hover) and (pointer: fine) {
+  #login-view #admin-auth-panel .auth-mode-header .inline-link:hover {
+    background: rgba(112, 85, 191, .08);
+  }
+  html[data-theme="dark"] #login-view #admin-auth-panel .auth-mode-header .inline-link:hover {
+    background: rgba(255, 255, 255, .07);
+  }
+}
+@media (min-width: 821px) and (max-height: 760px) {
+  #login-view .auth-topbar { padding-bottom: 14px; padding-top: 14px; }
+  #login-view .auth-layout { align-items: start; padding-bottom: 20px; padding-top: 20px; }
+  #login-view[data-auth-mode="login"] .auth-card { padding-bottom: 18px; padding-top: 18px; }
+  #login-view[data-auth-mode="login"] #login-form.stack { gap: 10px; }
+  #login-view[data-auth-mode="login"] .auth-divider { margin-bottom: 8px; margin-top: 8px; }
+  #login-view[data-auth-mode="login"] .auth-card .auth-footnote { margin-top: 5px; }
+}
