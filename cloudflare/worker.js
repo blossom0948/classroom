@@ -31,6 +31,8 @@ const REMOTE_ASSIST_MAX_DURATION_SECONDS = 600;
 const REMOTE_ASSIST_CONSENT_TIMEOUT_MS = 45 * 1000;
 const REMOTE_ASSIST_MAX_INPUTS_PER_SECOND = 30;
 const EMPTY_SESSION_ID = "00000000-0000-0000-0000-000000000000";
+const SCHOOL_SEARCH_CACHE_TTL_MS = 5 * 60_000;
+const SCHOOL_SEARCH_CACHE_MAX_ENTRIES = 256;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PUBLIC_DOWNLOADS = Object.freeze({
   "/downloads/student-setup": {
@@ -119,6 +121,7 @@ export class ClassroomState {
     this.env = env;
     this.sql = ctx.storage.sql;
     this.screenFrames = new Map();
+    this.schoolSearchCache = new Map();
     this.ready = ctx.blockConcurrencyWhile(async () => this.initialize());
   }
 
@@ -987,6 +990,16 @@ export class ClassroomState {
     if (!this.consumeRateLimit(`${clientIp(request)}|school-search`, 30, 60_000)) {
       return responseError("SCHOOL_SEARCH_RATE_LIMITED", "학교 검색 요청이 많습니다. 잠시 후 다시 시도해 주세요.", 429, cors, { "Retry-After": "60" });
     }
+    const cacheKey = query.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase("ko-KR");
+    const cachedSearch = this.schoolSearchCache.get(cacheKey);
+    if (cachedSearch && cachedSearch.expiresAt > Date.now()) {
+      this.schoolSearchCache.delete(cacheKey);
+      this.schoolSearchCache.set(cacheKey, cachedSearch);
+      return responseJson(cachedSearch.schools, 200, cors, cachedSearch.searchMessage
+        ? { "X-Classroom-School-Search": cachedSearch.searchMessage }
+        : {});
+    }
+    if (cachedSearch) this.schoolSearchCache.delete(cacheKey);
     const apiKey = String(this.env.NEIS_API_KEY || "").trim();
     if (!apiKey) {
       return responseError("SCHOOL_SEARCH_NOT_CONFIGURED", "학교 검색을 준비하는 중입니다. 관리자에게 NEIS 인증키 설정을 요청해 주세요.", 503, cors);
@@ -1015,6 +1028,7 @@ export class ClassroomState {
       : [];
     if (!rows.length) {
       const message = payload?.RESULT?.MESSAGE || "검색 결과가 없습니다.";
+      this.rememberSchoolSearch(cacheKey, [], message);
       return responseJson([], 200, cors, { "X-Classroom-School-Search": message });
     }
     const now = isoNow();
@@ -1037,7 +1051,21 @@ export class ClassroomState {
       }
       return school;
     }).filter((school) => school.name && school.id !== "neis::");
+    this.rememberSchoolSearch(cacheKey, schools);
     return responseJson(schools, 200, cors);
+  }
+
+  rememberSchoolSearch(cacheKey, schools, searchMessage = "") {
+    this.schoolSearchCache.delete(cacheKey);
+    this.schoolSearchCache.set(cacheKey, {
+      schools,
+      searchMessage,
+      expiresAt: Date.now() + SCHOOL_SEARCH_CACHE_TTL_MS
+    });
+    while (this.schoolSearchCache.size > SCHOOL_SEARCH_CACHE_MAX_ENTRIES) {
+      const oldestKey = this.schoolSearchCache.keys().next().value;
+      this.schoolSearchCache.delete(oldestKey);
+    }
   }
 
   async createClass(request, cors) {

@@ -19,6 +19,7 @@ data/
 .npm-cache/
 .wrangler-config/
 cloudflare/.wrangler/
+.wrangler/
 node_modules/
 *.user
 *.suo

@@ -5948,11 +5948,11 @@ html[data-theme="dark"] #login-view .auth-lock { background: #263b5d; border-col
 #app-view .command-group-message { background: #eaf6f2; border-color: #c6e5db; }
 #app-view .command-group-tools,
 #app-view .command-group-more { background: #fbf1ea; border-color: #edd3bf; }
-#app-view .command-group-monitor .command-group-label { color: #4d77a4; }
+#app-view .command-group-monitor .command-group-label { color: #3f668e; }
 #app-view .command-group-focus .command-group-label { color: #735ab7; }
-#app-view .command-group-message .command-group-label { color: #2a816d; }
+#app-view .command-group-message .command-group-label { color: #24745f; }
 #app-view .command-group-tools .command-group-label,
-#app-view .command-group-more .command-group-label { color: #a56a3f; }
+#app-view .command-group-more .command-group-label { color: #87522e; }
 
 #app-view .student-card {
   background: var(--ui-surface-solid) !important;
@@ -7220,7 +7220,7 @@ body {
 }
 #landing-view .landing-entry-button-icon { background: rgba(255,255,255,.17); border-color: rgba(255,255,255,.25); }
 #landing-view .landing-entry-button-copy strong { font-size: 14px; font-weight: 700; }
-#landing-view .landing-entry-button-copy small { color: rgba(255,255,255,.84); font-size: 12px; }
+#landing-view .landing-entry-button-copy small { color: #fff; font-size: 12px; }
 #landing-view .landing-entry-divider { color: #8b8797; font-size: 11px; font-weight: 620; letter-spacing: 0; margin: 19px 0 13px; }
 #landing-view .landing-entry-divider::before,
 #landing-view .landing-entry-divider::after { background: rgba(89,77,117,.14); }
@@ -7318,7 +7318,7 @@ body {
 #login-view .auth-tab {
   border: 0;
   border-radius: 11px;
-  color: #716d7d;
+  color: #696578;
   font-size: 13px;
   font-weight: 670;
   min-height: 42px;
@@ -7345,7 +7345,7 @@ body {
   min-height: 52px;
 }
 #login-view .auth-card input::placeholder,
-#login-view .auth-card textarea::placeholder { color: #9793a1; }
+#login-view .auth-card textarea::placeholder { color: #696578; opacity: 1; }
 #login-view .auth-card input:focus,
 #login-view .auth-card select:focus,
 #login-view .auth-card textarea:focus { border-color: #8873cf; box-shadow: 0 0 0 4px rgba(127,103,201,.13); }
@@ -7387,6 +7387,7 @@ body {
 #login-view[data-auth-mode="login"] #login-form input { min-height: 52px; }
 #login-view[data-auth-mode="login"] #account-login-submit,
 #login-view[data-auth-mode="login"] #google-login-button { min-height: 52px; }
+#login-view .auth-divider { color: #696578; }
 #login-view[data-auth-mode="login"] .auth-divider { font-size: 12px; margin: 14px 0; }
 #landing-view .landing-footer,
 #landing-view .landing-footer-links button,
@@ -7829,3 +7830,18 @@ dialog .eyebrow { display: none; }
   html[data-theme="dark"] #app-view .topbar,
   html[data-theme="dark"] #app-view .nav { background: #302d3a !important; }
 }
+
+/* Keep the dark palette authoritative after the higher-specificity light
+   command colors above; otherwise these labels and tiles lose contrast. */
+html[data-theme="dark"] #login-view .auth-divider { color: #c0bbcd; }
+html[data-theme="dark"] #app-view .command-group-monitor { background: #1a3151; border-color: #41668f; }
+html[data-theme="dark"] #app-view .command-group-focus { background: #302858; border-color: #665a9b; }
+html[data-theme="dark"] #app-view .command-group-message { background: #183c3a; border-color: #3e806f; }
+html[data-theme="dark"] #app-view .command-group-tools { background: #3e2e29; border-color: #725445; }
+html[data-theme="dark"] #app-view .command-group-more { background: #252d55; border-color: #5b6db7; color: #dce5ff; }
+html[data-theme="dark"] #app-view .command-group-monitor .command-group-label { color: #a9caff; }
+html[data-theme="dark"] #app-view .command-group-focus .command-group-label { color: #d0c5ff; }
+html[data-theme="dark"] #app-view .command-group-message .command-group-label { color: #9ee4cf; }
+html[data-theme="dark"] #app-view .command-group-tools .command-group-label { color: #ffd2aa; }
+html[data-theme="dark"] #app-view .command-group-more .command-group-label { color: #cbd8ff; }
+html[data-theme="dark"] #app-view .command-group-more .secondary { background: #1b294d; border-color: #6c82d2; color: #e4eaff; }
