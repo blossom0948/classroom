@@ -7913,6 +7913,84 @@ html[data-theme="dark"] #login-view #admin-auth-panel .auth-mode-header .inline-
     background: rgba(255, 255, 255, .07);
   }
 }
+
+/* Class action bar: keep the state readable in light mode and make the
+   session actions feel distinct from the smaller day-to-day tools. */
+#app-view #class-section > .class-command-strip .session-command-copy #session-caption {
+  color: #464253 !important;
+  font-size: 14px;
+  font-weight: 700;
+}
+#app-view #class-section > .class-command-strip .session-command-copy .eyebrow {
+  color: #746f80 !important;
+}
+#app-view #class-section > .class-command-strip .class-status-actions .secondary,
+#app-view #class-section > .class-command-strip .class-status-actions .class-utility-button {
+  background: #f6f5f9;
+  border-color: #dcd8e5;
+  color: #4c4758;
+}
+#app-view #class-section > .class-command-strip .class-status-actions .class-utility-button > span:first-child {
+  color: #715bb4;
+}
+#app-view #class-section > .class-command-strip .class-status-actions button:disabled {
+  background: #efedf3 !important;
+  border-color: #d5d1dd !important;
+  box-shadow: none !important;
+  color: #615c6d !important;
+  cursor: not-allowed;
+  filter: none !important;
+  opacity: 1 !important;
+}
+#app-view #class-section > .class-command-strip .class-status-actions button:disabled > span:first-child {
+  color: #777182;
+}
+@media (min-width: 1081px) {
+  #app-view #class-section > .class-command-strip #command-queue-button {
+    margin-left: 8px;
+    position: relative;
+  }
+  #app-view #class-section > .class-command-strip #command-queue-button::before {
+    background: rgba(90, 82, 111, .22);
+    content: "";
+    height: 23px;
+    left: -10px;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1px;
+  }
+}
+
+html[data-theme="dark"] #app-view #class-section > .class-command-strip .session-command-copy #session-caption {
+  color: #f0edf6 !important;
+}
+html[data-theme="dark"] #app-view #class-section > .class-command-strip .session-command-copy .eyebrow {
+  color: #c7c0d2 !important;
+}
+html[data-theme="dark"] #app-view #class-section > .class-command-strip .class-status-actions .secondary,
+html[data-theme="dark"] #app-view #class-section > .class-command-strip .class-status-actions .class-utility-button {
+  background: #35313f;
+  border-color: #555061;
+  color: #e8e3f1;
+}
+html[data-theme="dark"] #app-view #class-section > .class-command-strip .class-status-actions .class-utility-button > span:first-child {
+  color: #d8c39e;
+}
+html[data-theme="dark"] #app-view #class-section > .class-command-strip .class-status-actions button:disabled {
+  background: #302d38 !important;
+  border-color: #514b5b !important;
+  color: #c5bfce !important;
+  opacity: 1 !important;
+}
+html[data-theme="dark"] #app-view #class-section > .class-command-strip .class-status-actions button:disabled > span:first-child {
+  color: #b2aabd;
+}
+@media (min-width: 1081px) {
+  html[data-theme="dark"] #app-view #class-section > .class-command-strip #command-queue-button::before {
+    background: rgba(238, 233, 247, .24);
+  }
+}
 @media (min-width: 821px) and (max-height: 760px) {
   #login-view .auth-topbar { padding-bottom: 14px; padding-top: 14px; }
   #login-view .auth-layout { align-items: start; padding-bottom: 20px; padding-top: 20px; }

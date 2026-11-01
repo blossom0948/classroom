@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.9.13";
+  const APP_VERSION = "0.9.14";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -391,9 +391,9 @@
     const deck = $("bulk-actions");
     const anchor = $("bulk-actions-anchor");
     if (!deck || !anchor) return;
-    // Keep the fixed sheet in the stable class section. Directly appending it
-    // to the tall application shell makes some mobile browsers measure its
-    // fixed bottom edge from the document rather than the visual viewport.
+    // Keep the fixed panel at the app-view root. The toolbar clips overflow,
+    // and the animated class section creates a fixed-position containing box;
+    // the root avoids both for the desktop dialog and mobile bottom sheet.
     if (deck.parentElement !== anchor.parentElement || deck.nextElementSibling !== anchor) anchor.before(deck);
   }
 
@@ -816,7 +816,7 @@
       queueCount.textContent = String(activeQueueCount);
       queueCount.hidden = activeQueueCount === 0;
     }
-    if (queueButton) queueButton.title = activeQueueCount ? `진행 중인 작업 ${activeQueueCount}개` : "예약·전달 결과 작업함";
+    if (queueButton) queueButton.title = activeQueueCount ? `진행 중인 예약 작업 ${activeQueueCount}개` : "예약 작업과 학생별 전달 결과";
     const attendanceButton = $("attendance-button");
     if (attendanceButton) attendanceButton.disabled = !state.session;
     const screenWallButton = $("screen-wall-button");
