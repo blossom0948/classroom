@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/classroom.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/classroom.svg">
-  <link rel="stylesheet" href="/styles.css?v=0.9.16">
+  <link rel="stylesheet" href="/styles.css?v=0.9.17">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -147,7 +147,19 @@
       <section id="class-section" class="section-view">
         <div class="class-command-strip" aria-label="수업 제어">
           <div class="session-command-copy"><span class="eyebrow">수업 상태</span><p id="session-caption" class="muted">활성 수업이 없습니다.</p></div>
-          <div class="class-status-actions" role="group" aria-label="수업 작업 및 운영 도구"><button id="start-session-button" class="primary" type="button" title="새 수업 시작">수업 시작</button><button id="announcement-button" class="secondary" type="button" title="학급 전체에 공지 보내기">전체 공지</button><button id="end-session-button" class="danger-outline" type="button" title="진행 중인 수업 종료" hidden>수업 종료</button><button id="command-queue-button" class="class-utility-button" type="button" title="예약 작업과 학생별 전달 결과"><span aria-hidden="true">▤</span> 예약 작업 <strong id="command-queue-count" class="notification-badge" hidden>0</strong></button><button id="attendance-button" class="class-utility-button" type="button" title="학급 출결 현황 보기"><span aria-hidden="true">✓</span> 출결</button><button id="connection-health-button" class="class-utility-button" type="button" title="학생 기기 연결 상태 보기"><span aria-hidden="true">⌁</span> 연결 상태</button><button id="alert-drawer-button" class="class-utility-button" type="button" title="확인이 필요한 학생 알림 보기" aria-controls="alert-drawer" aria-expanded="false"><span aria-hidden="true">●</span> 알림 <strong id="alert-count" class="notification-badge" hidden>0</strong></button></div>
+          <div class="class-status-actions" role="group" aria-label="수업">
+            <button id="start-session-button" class="primary" type="button" title="출결과 학생 화면 확인을 위해 수업을 시작합니다.">수업 시작</button>
+            <button id="end-session-button" class="danger-outline" type="button" title="진행 중인 수업 종료" hidden>수업 종료</button>
+            <details id="class-tools-details" class="class-tools-details">
+              <summary aria-label="수업 도구 열기"><span>수업 도구</span><span class="class-tools-chevron" aria-hidden="true">⌄</span></summary>
+              <div class="class-tools-menu" aria-label="수업 도구">
+                <button id="command-queue-button" class="class-tool-button" type="button" title="예약 작업과 학생별 전달 결과">예약 작업 <strong id="command-queue-count" class="notification-badge" hidden>0</strong></button>
+                <button id="attendance-button" class="class-tool-button" type="button" title="학급 출결 현황 보기">출결 확인</button>
+                <button id="connection-health-button" class="class-tool-button" type="button" title="학생 기기 연결 상태 보기">연결 상태</button>
+                <button id="alert-drawer-button" class="class-tool-button" type="button" title="확인이 필요한 학생 알림 보기" aria-controls="alert-drawer" aria-expanded="false">확인 알림 <strong id="alert-count" class="notification-badge" hidden>0</strong></button>
+              </div>
+            </details>
+          </div>
         </div>
         <div class="class-metrics" aria-label="수업 요약"><article class="metric-card"><span class="metric-label">등록 학생</span><strong id="total-count">0</strong></article><article class="metric-card metric-online"><span class="metric-label">온라인</span><strong id="metric-online-count">0</strong></article><article class="metric-card metric-offline"><span class="metric-label">오프라인</span><strong id="offline-count">0</strong></article><article class="metric-card metric-attention"><span class="metric-label">확인 필요</span><strong id="needs-attention-count">0</strong></article></div>
         <div class="toolbar">
@@ -162,15 +174,15 @@
           <div class="toolbar-rule" aria-hidden="true"></div>
           <div id="bulk-actions" class="bulk-actions command-deck">
             <div class="mobile-command-sheet-heading">
-              <div><span class="toolbar-kicker">학생 작업</span><strong id="mobile-command-title">학생 작업</strong><small id="mobile-command-target">학급 전체에 적용됩니다.</small></div>
+              <div><strong id="mobile-command-title">학생 작업</strong><small id="mobile-command-target">학급 전체에 적용됩니다.</small></div>
               <button id="mobile-command-close" class="mobile-command-close" type="button" aria-label="학생 제어 닫기">×</button>
             </div>
-            <div class="bulk-heading"><span class="toolbar-kicker">선택 학생</span><strong>선택 학생 제어</strong><small>학생 카드를 선택하면 아래 명령이 활성화됩니다.</small></div>
+            <div class="bulk-heading"><strong>학생 작업</strong></div>
             <div class="command-scope"><span id="selection-caption" class="selection-caption">전체 학생 대상</span><button id="clear-selection-button" class="ghost-button" hidden>선택 해제</button></div>
             <div class="command-group command-group-monitor"><span class="command-group-label">화면 확인</span><button id="screen-wall-button" class="secondary screen-wall-open" title="선택한 학생들의 화면 보기">화면 보기</button></div>
             <div class="command-group command-group-focus"><span class="command-group-label">집중 상태</span><label class="focus-mode-setting" for="focus-display-mode"><span>표시</span><select id="focus-display-mode" aria-label="집중 모드 표시 방식"><option value="message">안내문</option><option value="blackScreen">검은 화면</option></select></label><button id="focus-on-button" class="secondary" title="선택한 학생의 집중 모드 켜기">집중 켜기</button><button id="focus-off-button" class="secondary" title="선택한 학생의 집중 모드 끄기">집중 끄기</button></div>
-            <div class="command-group command-group-message"><span class="command-group-label">학생 안내</span><button id="message-button" class="secondary" title="학생에게 메시지 보내기">메시지 보내기</button><button id="url-button" class="secondary" title="학생 PC에서 HTTPS 주소 열기">URL 열기</button></div>
-            <div class="command-group command-group-more"><span class="command-group-label">기타 도구</span><button id="more-tools-open-button" class="secondary" type="button" title="자주 쓰지 않는 도구 열기">더보기</button></div>
+            <div class="command-group command-group-message"><span class="command-group-label">학생에게 보내기</span><button id="message-button" class="secondary" title="학급 전체 또는 선택한 학생에게 메시지 보내기">메시지</button><button id="url-button" class="secondary" title="선택한 학생 PC에서 HTTPS 주소 열기">링크 열기</button></div>
+            <div class="command-group command-group-more"><span class="command-group-label">보조 기능</span><button id="more-tools-open-button" class="secondary" type="button" title="자주 쓰지 않는 학생 PC 보조 기능 열기">도구 목록 열기</button></div>
           </div>
         </div>
         <div id="class-sync-status" class="class-sync-status" role="status" aria-live="polite" hidden><span class="class-sync-icon" aria-hidden="true">↻</span><span id="class-sync-message"></span><button id="class-sync-retry" class="ghost-button" type="button">다시 시도</button></div>
@@ -262,7 +274,7 @@
         <article class="settings-card update-card">
           <div class="update-card-heading"><span class="settings-icon">↻</span><div><h3>업데이트</h3><p>기존 릴리스 이력을 이어서 버전을 관리하며, 설치된 교사 콘솔은 자동으로 최신 상태를 적용합니다.</p></div></div>
           <div class="version-list" aria-label="설치 버전">
-            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.9.16</strong><small>웹·설치 앱</small></div>
+            <div class="version-item"><span>교사 콘솔</span><strong id="console-version">v0.9.17</strong><small>웹·설치 앱</small></div>
             <div class="version-item"><span>학생 앱</span><strong id="student-agent-version">확인 중</strong><small>Windows 장치</small></div>
             <div class="version-item version-auto"><span class="version-live-dot" aria-hidden="true"></span><strong>자동 업데이트</strong><small>사용 중</small></div>
           </div>
@@ -528,6 +540,6 @@
   <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
   <script src="/config.js"></script>
   <script src="/firebase-auth.js"></script>
-  <script src="/app.js?v=0.9.16" defer></script>
+  <script src="/app.js?v=0.9.17" defer></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.9.16";
+  const APP_VERSION = "0.9.17";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -857,7 +857,7 @@
   }
 
   function formatSessionCaption(session) {
-    if (!session) return "활성 수업이 없습니다.";
+    if (!session) return "출결·화면 확인 전";
     const startedAt = new Date(session.startedAtUtc);
     if (Number.isNaN(startedAt.getTime())) return `${displayText(session.subject, "수업")} · 시작 시간 확인 필요`;
     const elapsedMinutes = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 60_000));
@@ -4144,20 +4144,26 @@
   });
   $("class-select").addEventListener("change", (event) => chooseClass(event.target.value).catch((error) => showToast(error.message)));
   document.addEventListener("click", (event) => {
-    if (!(event.target instanceof Element) || !event.target.closest(".custom-class-picker")) closeClassPicker();
+    if (!(event.target instanceof Element)) return;
+    if (!event.target.closest(".custom-class-picker")) closeClassPicker();
+    const classTools = $("class-tools-details");
+    if (classTools?.open && !classTools.contains(event.target)) classTools.open = false;
   });
   document.addEventListener("keydown", (event) => {
     handleEasterEggKey(event);
     if (event.key === "Escape") {
       closeClassPicker();
+      $("class-tools-details").open = false;
       setMobileCommandOpen(false, true);
     }
+  });
+  $("class-tools-details").addEventListener("click", (event) => {
+    if (event.target instanceof Element && event.target.closest(".class-tool-button")) $("class-tools-details").open = false;
   });
   $("start-session-button").addEventListener("click", () => {
     const subject = currentClass()?.defaultSubject || state.teacher?.subject || "수업";
     startSession(subject).catch((error) => showToast(error.message));
   });
-  $("announcement-button").addEventListener("click", () => openCommandDialog("message"));
   $("end-session-button").addEventListener("click", () => endSession().catch((error) => showToast(error.message)));
   $("command-queue-button").addEventListener("click", () => openCommandQueueDialog());
   $("attendance-button").addEventListener("click", () => openAttendanceDialog());
