@@ -292,13 +292,14 @@ assert.match(cloudflareWorker, /support-user.{0,12}2, 24 \* 60 \* 60_000/, "Supp
 assert.match(cloudflareWorker, /SUPPORT_ACCOUNT_NOT_ELIGIBLE[\s\S]{0,220}학생 계정은 학교 선생님께 문의해 주세요/, "Student sessions and unrelated Firebase accounts must not use teacher developer support.");
 assert.match(cloudflareWorker, /session_kind TEXT NOT NULL DEFAULT 'persistent'/, "Teacher sessions must record whether a login is one-time.");
 assert.match(cloudflareWorker, /GUEST_SESSION_LIFETIME_MS = 1000 \* 60 \* 60 \* 12/, "Guest and one-time sessions must have a bounded lifetime.");
-assert.match(script, /const APP_VERSION = "0\.9\.15"/, "The published UI needs a version change so existing installs detect this update.");
-assert.match(versionManifest, /"version":\s*"0\.9\.15"/, "The online version manifest must match the UI build version.");
-assert.match(serviceWorker, /classroom-console-v62[\s\S]*styles\.css\?v=0\.9\.15[\s\S]*app\.js\?v=0\.9\.15/, "The service-worker shell cache must rotate with the published assets.");
+assert.match(script, /const APP_VERSION = "0\.9\.16"/, "The published UI needs a version change so existing installs detect this update.");
+assert.match(versionManifest, /"version":\s*"0\.9\.16"/, "The online version manifest must match the UI build version.");
+assert.match(serviceWorker, /classroom-console-v63[\s\S]*styles\.css\?v=0\.9\.16[\s\S]*app\.js\?v=0\.9\.16/, "The service-worker shell cache must rotate with the published assets.");
 assert.match(cloudflareWorker, /if \(hasSchoolAdminRole\(user\)\) return true;[\s\S]{0,220}ClassTeachers/, "Only central admins and the developer get school-scoped class access; teachers remain explicitly assigned.");
 assert.match(cloudflareWorker, /Require explicit class membership at request time without revoking[\s\S]{0,180}INSERT OR IGNORE INTO ClassTeachers/, "Class access hardening must preserve existing teacher assignments while ensuring class owners remain assigned.");
 assert.match(cloudflareWorker, /async compareTeacherStudentExitPin\(/, "Teachers must be able to verify whether their guest PIN matches the student-app exit PIN without receiving a stored secret.");
 assert.match(styles, /@media \(max-width: 820px\)/, "The mobile shell must keep a compact breakpoint.");
+assert.match(styles, /@media \(max-width: 820px\) and \(max-height: 700px\)[\s\S]*class-status-actions[^\n]*repeat\(3, minmax\(0, 1fr\)\)/, "Short mobile screens must keep student actions clear of the fixed tab bar.");
 assert.match(html, /id="mobile-command-launcher"[^>]*aria-controls="bulk-actions"/, "Phones need one explicit entry point for student commands.");
 assert.doesNotMatch(html, /toolbar-section-heading/, "The roster toolbar must not spend a column repeating its own purpose.");
 assert.match(script, /return state\.activeSection === "class" && !appView\.hidden;/, "The shared student command sheet must be available on both desktop and mobile.");

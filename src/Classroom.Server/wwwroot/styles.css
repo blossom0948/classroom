@@ -8029,6 +8029,26 @@ html[data-theme="dark"] #app-view #class-section > .class-command-strip .class-s
 #app-view .main-content { padding: 32px clamp(24px, 3vw, 52px) 76px; }
 #app-view .topbar { margin-bottom: 24px; padding-bottom: 20px; }
 #app-view #class-section > .class-command-strip { margin: 0 0 20px; padding: 16px 18px; }
+#app-view #class-section > .class-command-strip {
+  background: linear-gradient(138deg, #302747 0%, #3c3158 58%, #4a3d6b 100%) !important;
+  border: 1px solid rgba(126, 108, 180, .48) !important;
+  box-shadow: 0 1px 2px rgba(25,18,44,.14), 0 12px 24px rgba(36,27,61,.16), 0 26px 44px rgba(36,27,61,.08), inset 0 1px 0 rgba(255,255,255,.11) !important;
+}
+#app-view #class-section > .class-command-strip .session-command-copy #session-caption { color: #f5f1ff !important; }
+#app-view #class-section > .class-command-strip .session-command-copy .eyebrow { color: #cbbdf1 !important; }
+#app-view #class-section > .class-command-strip .class-status-actions .primary { background: #fff; border-color: rgba(255,255,255,.92); color: #40325e; }
+#app-view #class-section > .class-command-strip .class-status-actions .secondary,
+#app-view #class-section > .class-command-strip .class-status-actions .class-utility-button {
+  background: rgba(255,255,255,.12);
+  border-color: rgba(236,229,255,.25);
+  color: #f5f1ff;
+}
+#app-view #class-section > .class-command-strip .class-status-actions .secondary:hover,
+#app-view #class-section > .class-command-strip .class-status-actions .class-utility-button:hover { background: rgba(255,255,255,.2); }
+html[data-theme="dark"] #app-view #class-section > .class-command-strip {
+  background: linear-gradient(138deg, #282236 0%, #342b49 58%, #403557 100%) !important;
+  border-color: rgba(183,163,226,.32) !important;
+}
 #app-view #class-section > .class-metrics { margin-bottom: 20px !important; }
 #app-view .toolbar { margin-bottom: 18px; }
 #app-view .section-view:not(#class-section) > .hero-row { margin-bottom: 22px; }
@@ -8186,7 +8206,7 @@ html[data-theme="dark"] #app-view #class-section > .class-command-strip .class-s
 
   #app-view .main-content {
     max-width: none;
-    padding: calc(64px + env(safe-area-inset-top)) 14px calc(174px + env(safe-area-inset-bottom));
+    padding: calc(72px + env(safe-area-inset-top)) 14px calc(96px + env(safe-area-inset-bottom));
     width: 100%;
   }
   #app-view .topbar {
@@ -8205,10 +8225,11 @@ html[data-theme="dark"] #app-view #class-section > .class-command-strip .class-s
   #app-view .teacher-heading-main { grid-column: 1; grid-row: 1; min-width: 0; }
   #app-view .school-name { font-size: 11px; }
   #app-view .teacher-greeting { font-size: clamp(23px, 6.2vw, 29px); line-height: 1.16; margin-top: 4px; }
-  #app-view .class-picker { align-items: center; gap: 7px; margin-top: 10px; }
-  #app-view .class-select-wrap { flex: 1 1 160px; min-width: 0; }
+  #app-view .class-picker { align-items: center; display: grid; gap: 7px; grid-template-columns: minmax(0, 1fr) auto; margin-top: 10px; }
+  #app-view .class-select-wrap { flex: none; min-width: 0; width: 100%; }
   #app-view .class-select-button { min-height: 43px; width: 100%; }
-  #app-view .class-subject { font-size: 12px; }
+  #app-view .class-select-button > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #app-view .class-subject { justify-self: start; font-size: 12px; }
   #app-view .top-actions { grid-column: 2; grid-row: 1; justify-self: end; padding: 0; position: static; }
   #app-view .top-actions .icon-button { height: 40px; min-height: 40px; width: 40px; }
   #app-view .top-actions .icon-button span { display: none; }
@@ -8239,13 +8260,29 @@ html[data-theme="dark"] #app-view #class-section > .class-command-strip .class-s
   #app-view #class-section > .class-metrics { gap: 9px; margin-bottom: 16px !important; }
   #app-view #class-section > .class-metrics .metric-card { min-height: 72px; padding: 11px 12px; }
   #app-view .toolbar { margin-bottom: 15px; }
+  #app-view .toolbar-row.toolbar-browse-row .filters { grid-column: 1 / -1; grid-row: 2; }
+  #app-view .toolbar-row.toolbar-browse-row .mobile-command-launcher {
+    bottom: auto;
+    grid-column: 1 / -1;
+    grid-row: 1;
+    justify-self: stretch;
+    left: auto;
+    margin: 0;
+    min-height: 52px;
+    position: static;
+    transform: none !important;
+    width: 100%;
+    z-index: auto !important;
+  }
+  #app-view .toolbar-row.toolbar-browse-row .student-search { grid-column: 1; grid-row: 3; }
+  #app-view .toolbar-row.toolbar-browse-row .student-view-controls { grid-column: 2; grid-row: 3; }
+  #app-view.mobile-command-open .toolbar-row.toolbar-browse-row .mobile-command-launcher { opacity: 0; pointer-events: none; visibility: hidden; }
   #app-view .section-view:not(#class-section) { padding-top: 0; }
   #app-view .section-view:not(#class-section) > .hero-row { margin: 0 0 17px; padding: 17px; }
   #app-view .section-view:not(#class-section) > .hero-row p { line-height: 1.5; margin-bottom: 0; }
   #app-view .section-view:not(#class-section) .admin-actions { gap: 8px; }
   #app-view .section-view:not(#class-section) .admin-actions button { min-height: 42px; }
   #app-view dialog { max-height: calc(100dvh - 24px - env(safe-area-inset-top)); max-width: calc(100vw - 24px); overflow-y: auto; }
-  #app-view .mobile-command-launcher { bottom: calc(82px + env(safe-area-inset-bottom)); z-index: 1210 !important; }
   #app-view .mobile-command-scrim { z-index: 1220 !important; }
   #app-view #bulk-actions { z-index: 1230 !important; }
 }
@@ -8263,6 +8300,24 @@ html[data-theme="dark"] #app-view #class-section > .class-command-strip .class-s
   #app-view .brand-area { left: 8px; }
   #app-view .sidebar-bottom { right: 8px; }
   #app-view .teacher-greeting { font-size: 23px; }
+}
+
+@media (max-width: 820px) and (max-height: 700px) {
+  #app-view .main-content { padding-top: calc(68px + env(safe-area-inset-top)); }
+  #app-view .topbar { margin-bottom: 13px; padding-bottom: 10px !important; }
+  #app-view .topbar .header-context.today-info { display: none !important; }
+  #app-view .class-picker { margin-top: 7px; }
+  #app-view #class-section > .class-command-strip { gap: 9px; margin-bottom: 12px !important; padding: 12px !important; }
+  #app-view #class-section > .class-command-strip .session-command-copy { align-items: center; grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
+  #app-view #class-section > .class-command-strip .class-status-actions { gap: 5px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #app-view #class-section > .class-command-strip .class-status-actions button { font-size: 11px; min-height: 36px; padding: 7px 3px; }
+  #app-view #class-section > .class-metrics { gap: 6px; margin-bottom: 10px !important; }
+  #app-view #class-section > .class-metrics .metric-card { min-height: 56px; padding: 8px 10px; }
+  #app-view .toolbar { margin-bottom: 11px; }
+  #app-view .toolbar-row.toolbar-browse-row .mobile-command-launcher { min-height: 46px; }
+  #app-view .nav { bottom: calc(5px + env(safe-area-inset-bottom)); height: 60px; }
+  #app-view .nav-item,
+  #app-view .nav-item[data-section="class"] { height: 50px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
