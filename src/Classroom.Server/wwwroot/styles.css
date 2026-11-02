@@ -8566,3 +8566,204 @@ html[data-theme="dark"] #app-view #bulk-actions .command-group-tools { backgroun
 @media (max-width: 820px) and (max-height: 700px) {
   #app-view #class-section > .class-command-strip .class-status-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* 0.9.18 — proportional spacing, safe dialog bounds, and the original C mark. */
+#landing-view .brand-mark,
+#login-view .brand-mark,
+#app-view .brand-mark,
+#landing-view .install-app-icon {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-size: 0 !important;
+  line-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+#landing-view .brand-mark img,
+#login-view .brand-mark img,
+#app-view .brand-mark img,
+#landing-view .install-app-icon img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+#app-view.app-shell {
+  --ui-shadow-card: none;
+  --ui-shadow-float: none;
+  --ui-shadow-dialog: none;
+  --native-motion: 220ms;
+  --native-spring: cubic-bezier(.22, 1.28, .36, 1);
+  overflow-x: clip;
+}
+#app-view .main-content { min-width: 0; padding: 26px clamp(20px, 2.4vw, 36px) 48px; }
+#app-view .topbar { min-width: 0; margin-bottom: 18px; padding-bottom: 15px; }
+#app-view .section-view,
+#app-view .section-view > *,
+#app-view .toolbar,
+#app-view .student-grid,
+#app-view .class-command-strip,
+#app-view .class-status-actions,
+#app-view .class-tools-details { min-width: 0; }
+#app-view .student-card,
+#app-view .metric-card,
+#app-view .settings-card,
+#app-view .grade-roster-group,
+#app-view .roster-class-card,
+#app-view .more-tool-card,
+#app-view .table-card,
+#app-view .audit-list,
+#app-view .toolbar,
+#app-view .topbar,
+#app-view .class-command-strip,
+#app-view .admin-list,
+#app-view .section-view > .hero-row,
+#app-view .detail-pane,
+#app-view .nav,
+#app-view .brand-area,
+#app-view .logout-button,
+#app-view .mobile-command-launcher,
+#app-view #bulk-actions.command-deck,
+#app-view #bulk-actions .command-group,
+#app-view .class-tools-menu,
+#app-view dialog,
+#landing-view .landing-entry-card,
+#login-view .auth-card,
+#login-view .auth-topbar {
+  box-shadow: none !important;
+}
+#app-view .student-card:hover,
+#app-view .student-card.selected,
+#app-view .class-select-button:hover:not(:disabled),
+#app-view .class-select-button[aria-expanded="true"] {
+  box-shadow: none !important;
+}
+#app-view .student-card.selected { border-color: var(--ui-blue-strong) !important; }
+#app-view .student-card:hover { transform: none; }
+#app-view button:not(:disabled),
+#app-view [role="button"],
+#app-view summary,
+#landing-view button:not(:disabled),
+#login-view button:not(:disabled) { max-width: 100%; min-width: 0; }
+#app-view .student-card,
+#app-view .class-command-strip,
+#app-view .toolbar,
+#app-view .metric-card,
+#app-view .settings-card,
+#app-view .dialog-actions > button { overflow-wrap: anywhere; }
+#app-view dialog.workspace-dialog,
+#app-view dialog.command-dialog,
+#login-view dialog.command-dialog {
+  box-sizing: border-box;
+  margin: auto;
+  max-height: calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-width: calc(100vw - 40px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  width: min(720px, calc(100vw - 40px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+}
+#app-view .dialog-actions,
+#login-view .dialog-actions { align-items: stretch; flex-wrap: wrap; gap: 9px; }
+#app-view .dialog-actions > button,
+#login-view .dialog-actions > button { flex: 1 1 150px; white-space: normal; }
+#app-view #class-section > .class-command-strip .class-tools-menu {
+  left: auto;
+  max-width: calc(100vw - 40px);
+  min-width: 0;
+  right: 0;
+  width: min(350px, calc(100vw - 40px));
+}
+
+@media (min-width: 821px) and (max-width: 1100px) {
+  #app-view #class-section > .class-command-strip { align-items: stretch; flex-direction: column; gap: 12px; }
+  #app-view #class-section > .class-command-strip .class-status-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #app-view #class-section > .class-command-strip .class-status-actions > button,
+  #app-view #class-section > .class-command-strip .class-tools-details > summary { justify-content: center; width: 100%; }
+}
+@media (max-width: 820px) {
+  #login-view .auth-topbar {
+    box-sizing: border-box;
+    border: 1px solid rgba(79, 97, 145, .12);
+    border-radius: 18px;
+    margin: 12px 14px 0;
+    min-height: 52px;
+    padding: 10px 14px;
+  }
+  html[data-theme="dark"] #login-view .auth-topbar {
+    background: rgba(20, 27, 47, .88);
+    border-color: rgba(255, 255, 255, .1);
+  }
+  #login-view .auth-layout { padding-top: 22px; }
+  #app-view .main-content {
+    padding: calc(70px + env(safe-area-inset-top)) clamp(14px, 4vw, 18px) calc(92px + env(safe-area-inset-bottom));
+  }
+  #app-view .topbar { margin-bottom: 14px; padding-bottom: 11px !important; }
+  #app-view #class-section > .class-command-strip { gap: 10px; margin-bottom: 12px !important; padding: 12px !important; }
+  #app-view #class-section > .class-metrics { gap: 8px; margin-bottom: 12px !important; }
+  #app-view #class-section > .class-metrics .metric-card { min-height: 62px; padding: 9px 11px; }
+  #app-view .toolbar { margin-bottom: 11px; }
+  #app-view .student-grid { gap: 10px; }
+  #app-view .student-card { padding: 14px; }
+  #app-view .section-view:not(#class-section) { row-gap: 13px; }
+  #app-view .section-view:not(#class-section) > .hero-row { margin-bottom: 12px; padding: 15px; }
+  #app-view #class-section > .class-command-strip .class-tools-menu { right: 0; }
+  #app-view dialog.workspace-dialog,
+  #app-view dialog.command-dialog,
+  #login-view dialog.command-dialog {
+    border-radius: 20px;
+    max-height: calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    max-width: calc(100vw - 28px - env(safe-area-inset-left) - env(safe-area-inset-right));
+    padding: 20px 18px;
+    width: calc(100vw - 28px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  }
+  #app-view .dialog-actions,
+  #login-view .dialog-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #app-view .dialog-actions > button,
+  #login-view .dialog-actions > button { min-width: 0; padding-inline: 10px; }
+}
+@media (max-width: 360px) {
+  #app-view .main-content { padding-left: 14px; padding-right: 14px; }
+  #app-view #class-section > .class-command-strip .class-tools-menu { left: auto; right: 0; }
+  #app-view .dialog-actions,
+  #login-view .dialog-actions { grid-template-columns: minmax(0, 1fr); }
+}
+
+@keyframes classroom-spring-sheet-in {
+  0% { opacity: 0; transform: translate3d(0, 20px, 0) scale(.96); }
+  72% { opacity: 1; transform: translate3d(0, -2px, 0) scale(1.006); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes classroom-spring-view-in {
+  0% { opacity: 0; transform: translate3d(0, 8px, 0) scale(.99); }
+  74% { opacity: 1; transform: translate3d(0, -1px, 0) scale(1.002); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #app-view button:not(:disabled),
+  #app-view summary,
+  #app-view .nav-item,
+  #app-view .student-card,
+  #landing-view button:not(:disabled),
+  #login-view button:not(:disabled) {
+    transition: transform 220ms var(--native-spring), background-color 220ms var(--native-spring), border-color 220ms var(--native-spring), color 220ms var(--native-spring);
+  }
+  #app-view button:not(:disabled):active,
+  #app-view summary:active,
+  #landing-view button:not(:disabled):active,
+  #login-view button:not(:disabled):active { transform: scale(.97); }
+  #app-view .section-view:not([hidden]) { animation: classroom-spring-view-in 280ms cubic-bezier(.22, 1.15, .36, 1) both; }
+  dialog[open] { animation: classroom-spring-sheet-in 320ms cubic-bezier(.22, 1.18, .36, 1) both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #app-view .section-view:not([hidden]),
+  dialog[open] { animation: none !important; }
+  #app-view button:not(:disabled),
+  #app-view summary,
+  #app-view .nav-item,
+  #app-view .student-card,
+  #landing-view button:not(:disabled),
+  #login-view button:not(:disabled) { transition-duration: .01ms !important; }
+}
