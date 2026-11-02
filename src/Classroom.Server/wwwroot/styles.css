@@ -7999,3 +7999,274 @@ html[data-theme="dark"] #app-view #class-section > .class-command-strip .class-s
   #login-view[data-auth-mode="login"] .auth-divider { margin-bottom: 8px; margin-top: 8px; }
   #login-view[data-auth-mode="login"] .auth-card .auth-footnote { margin-top: 5px; }
 }
+
+/* 0.9.15 — high-contrast landing glass and calmer spacing. */
+#landing-view.landing-page {
+  --ui-ink: #201d2d;
+  --ui-blue-strong: #5e48a5;
+  --landing-ink: #201d2d;
+  --landing-accent: #5e48a5;
+  color: var(--landing-ink);
+  color-scheme: light;
+}
+#landing-view .landing-nav {
+  background: rgba(255,255,255,.72);
+  border-color: rgba(93,72,165,.14);
+  box-shadow: 0 1px 2px rgba(33,29,45,.04), 0 10px 24px rgba(45,37,73,.08), inset 0 1px 0 rgba(255,255,255,.96);
+}
+#landing-view .landing-brand { color: var(--landing-ink); }
+#landing-view .landing-nav-caption { color: #696578; }
+#landing-view .landing-nav-caption i { color: var(--landing-accent); }
+#landing-view .landing-nav-actions .secondary {
+  background: rgba(250,249,253,.9);
+  border-color: rgba(75,62,112,.16);
+  box-shadow: 0 1px 2px rgba(33,29,45,.04), inset 0 1px 0 #fff;
+  color: #454052;
+}
+#landing-view .landing-nav-actions .secondary:hover { background: #fff; border-color: rgba(94,72,165,.28); color: var(--landing-accent); }
+
+/* The desktop workspace uses a measured vertical rhythm instead of packed cards. */
+#app-view .main-content { padding: 32px clamp(24px, 3vw, 52px) 76px; }
+#app-view .topbar { margin-bottom: 24px; padding-bottom: 20px; }
+#app-view #class-section > .class-command-strip { margin: 0 0 20px; padding: 16px 18px; }
+#app-view #class-section > .class-metrics { margin-bottom: 20px !important; }
+#app-view .toolbar { margin-bottom: 18px; }
+#app-view .section-view:not(#class-section) > .hero-row { margin-bottom: 22px; }
+#app-view .section-view:not(#class-section) { row-gap: 18px; }
+
+@media (max-width: 820px) {
+  #app-view.app-shell {
+    display: block;
+    min-height: 100dvh;
+    overflow-x: clip;
+    padding: 0;
+  }
+  /* `display: contents` removes the old sticky header as a containing block.
+     Floating controls now anchor to the viewport on iOS and Android. */
+  #app-view .sidebar {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    display: contents;
+    filter: none !important;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    position: static;
+    transform: none !important;
+  }
+  #app-view .brand-area {
+    align-items: center;
+    background: var(--ui-surface-solid);
+    border: 1px solid var(--ui-line);
+    border-radius: 15px;
+    box-shadow: 0 1px 2px rgba(25,22,44,.05), 0 8px 20px rgba(39,32,66,.09), inset 0 1px 0 rgba(255,255,255,.92);
+    display: flex;
+    height: 44px;
+    left: 12px;
+    padding: 5px 10px 5px 6px;
+    position: fixed;
+    top: calc(9px + env(safe-area-inset-top));
+    z-index: 1180;
+  }
+  #app-view .sidebar-console-label,
+  #app-view .sidebar-school-name { display: none !important; }
+  #app-view .brand { color: var(--ui-ink) !important; font-size: 14px; gap: 7px; }
+  #app-view .brand-mark { height: 32px; width: 32px; }
+  #app-view .sidebar-bottom {
+    align-items: center;
+    background: transparent !important;
+    border: 0 !important;
+    display: flex;
+    height: 44px;
+    margin: 0;
+    padding: 0;
+    position: fixed;
+    right: 12px;
+    top: calc(9px + env(safe-area-inset-top));
+    z-index: 1181;
+  }
+  #app-view .teacher-chip { display: none !important; }
+  #app-view .logout-button {
+    background: var(--ui-surface-solid);
+    border: 1px solid var(--ui-line);
+    border-radius: 13px;
+    box-shadow: 0 1px 2px rgba(25,22,44,.04), 0 6px 15px rgba(39,32,66,.07);
+    color: var(--ui-ink);
+    font-size: 12px;
+    font-weight: 750;
+    min-height: 40px;
+    padding: 0 12px;
+    width: auto;
+  }
+  #app-view .nav,
+  #app-view .nav:has(#admins-nav[hidden]),
+  #app-view .nav:has(#admins-nav:not([hidden])) {
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    backdrop-filter: blur(24px) saturate(150%);
+    align-items: stretch;
+    background: color-mix(in srgb, var(--ui-surface-solid) 88%, transparent);
+    border: 1px solid var(--ui-line);
+    border-radius: 21px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    box-shadow: 0 1px 2px rgba(25,22,44,.07), 0 10px 28px rgba(39,32,66,.15), inset 0 1px 0 rgba(255,255,255,.88);
+    display: grid;
+    gap: 3px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    height: 64px;
+    left: 50%;
+    margin: 0;
+    max-width: 520px;
+    overflow: visible;
+    padding: 4px 5px;
+    position: fixed;
+    transform: translateX(-50%);
+    width: calc(100% - 20px);
+    z-index: 1200;
+  }
+  #app-view .nav-item,
+  #app-view .nav-item[data-section="class"] {
+    align-items: center;
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    border-radius: 14px;
+    color: var(--ui-muted);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    height: 54px;
+    justify-content: center;
+    margin: 0;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    padding: 3px 1px;
+    transform: none !important;
+  }
+  #app-view .nav-item .nav-icon,
+  #app-view .nav-item[data-section="class"] .nav-icon {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 8px;
+    box-shadow: none !important;
+    color: currentColor;
+    height: 23px;
+    margin: 0;
+    width: 25px;
+  }
+  #app-view .nav-item .nav-icon svg { height: 20px; width: 20px; }
+  #app-view .nav-item .nav-label {
+    color: currentColor;
+    display: block;
+    font-size: clamp(8px, 2.5vw, 10px);
+    font-weight: 760;
+    line-height: 1.15;
+    max-width: 100%;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: 100%;
+  }
+  #app-view .nav-item.active,
+  #app-view .nav-item[data-section="class"].active {
+    background: var(--ui-blue-soft) !important;
+    border-color: color-mix(in srgb, var(--ui-blue) 20%, transparent) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.65);
+    color: var(--ui-blue-strong);
+  }
+  #app-view .nav-item[data-section="developer"] .nav-label { font-size: clamp(7.5px, 2.25vw, 9px); }
+  #app-view .nav-item[data-section="class"] { order: 1; }
+  #app-view .nav-item[data-section="student-codes"] { order: 2; }
+  #app-view .nav-item[data-section="admins"] { order: 3; }
+  #app-view .nav-item[data-section="developer"] { order: 4; }
+  #app-view .nav-item[data-section="settings"] { order: 5; }
+
+  #app-view .main-content {
+    max-width: none;
+    padding: calc(64px + env(safe-area-inset-top)) 14px calc(174px + env(safe-area-inset-bottom));
+    width: 100%;
+  }
+  #app-view .topbar {
+    align-items: start;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    display: grid !important;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) 42px;
+    margin: 0 0 20px;
+    padding: 0 1px 16px !important;
+  }
+  #app-view .teacher-heading { display: contents; }
+  #app-view .teacher-heading-main { grid-column: 1; grid-row: 1; min-width: 0; }
+  #app-view .school-name { font-size: 11px; }
+  #app-view .teacher-greeting { font-size: clamp(23px, 6.2vw, 29px); line-height: 1.16; margin-top: 4px; }
+  #app-view .class-picker { align-items: center; gap: 7px; margin-top: 10px; }
+  #app-view .class-select-wrap { flex: 1 1 160px; min-width: 0; }
+  #app-view .class-select-button { min-height: 43px; width: 100%; }
+  #app-view .class-subject { font-size: 12px; }
+  #app-view .top-actions { grid-column: 2; grid-row: 1; justify-self: end; padding: 0; position: static; }
+  #app-view .top-actions .icon-button { height: 40px; min-height: 40px; width: 40px; }
+  #app-view .top-actions .icon-button span { display: none; }
+  #app-view .topbar .header-context.today-info {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    display: flex;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-start;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  #app-view .today-info strong { font-size: 12px; }
+
+  #app-view #class-section > .class-command-strip {
+    border-radius: 19px;
+    display: grid;
+    gap: 13px;
+    margin: 0 0 16px !important;
+    padding: 15px !important;
+  }
+  #app-view #class-section > .session-command-copy { align-items: flex-start; display: grid; gap: 3px; }
+  #app-view #class-section > .session-command-copy p { font-size: 13px; line-height: 1.45; white-space: normal; }
+  #app-view #class-section > .class-status-actions { display: grid; gap: 7px; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  #app-view #class-section > .class-status-actions button { min-height: 44px; padding: 8px 6px; width: 100%; }
+  #app-view #class-section > .class-metrics { gap: 9px; margin-bottom: 16px !important; }
+  #app-view #class-section > .class-metrics .metric-card { min-height: 72px; padding: 11px 12px; }
+  #app-view .toolbar { margin-bottom: 15px; }
+  #app-view .section-view:not(#class-section) { padding-top: 0; }
+  #app-view .section-view:not(#class-section) > .hero-row { margin: 0 0 17px; padding: 17px; }
+  #app-view .section-view:not(#class-section) > .hero-row p { line-height: 1.5; margin-bottom: 0; }
+  #app-view .section-view:not(#class-section) .admin-actions { gap: 8px; }
+  #app-view .section-view:not(#class-section) .admin-actions button { min-height: 42px; }
+  #app-view dialog { max-height: calc(100dvh - 24px - env(safe-area-inset-top)); max-width: calc(100vw - 24px); overflow-y: auto; }
+  #app-view .mobile-command-launcher { bottom: calc(82px + env(safe-area-inset-bottom)); z-index: 1210 !important; }
+  #app-view .mobile-command-scrim { z-index: 1220 !important; }
+  #app-view #bulk-actions { z-index: 1230 !important; }
+}
+
+@media (max-width: 560px) {
+  #app-view .student-grid:not(.monitor-grid) { grid-template-columns: minmax(0, 1fr); }
+  #app-view .student-grid:not(.monitor-grid) .student-card { min-height: 0; }
+  #app-view .student-grid.monitor-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 360px) {
+  #app-view .main-content { padding-left: 11px; padding-right: 11px; }
+  #app-view .nav { gap: 1px; width: calc(100% - 14px); }
+  #app-view .nav-item .nav-label { font-size: 8px; }
+  #app-view .brand-area { left: 8px; }
+  #app-view .sidebar-bottom { right: 8px; }
+  #app-view .teacher-greeting { font-size: 23px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app-view .nav,
+  #app-view .brand-area,
+  #app-view .sidebar-bottom { scroll-behavior: auto; }
+}

@@ -6,6 +6,9 @@ const ROOT_TEACHER_ID = "e55aeebb-7f43-4d38-9c4f-6361570afd11";
 const ROOT_CLASS_ID = "42ab8f3a-0e8a-47bc-a543-7b7892fa1e00";
 const ROOT_LOGIN = "blossom0948";
 const ROOT_EMAIL = "blossom0948@gmail.com";
+function hasSchoolAdminRole(user) {
+  return Boolean(user && (user.is_admin || user.is_developer_admin));
+}
 // Central-admin sessions can persist across routine browser restarts. Ordinary
 // teacher and one-time sessions are tab-scoped and use the shorter bound below.
 const SESSION_LIFETIME_MS = 1000 * 60 * 60 * 24 * 30;
@@ -690,7 +693,7 @@ export class ClassroomState {
     this.exec(`UPDATE Users SET firebase_uid = ?, firebase_email = ?, updated_at_utc = ? WHERE id = ?`, identity.localId, email, now, user.id);
     user = this.one("SELECT * FROM Users WHERE id = ?", user.id);
     if (email === ROOT_EMAIL) {
-      this.exec("UPDATE Users SET is_developer_admin = 1 WHERE id = ?", user.id);
+      this.exec("UPDATE Users SET is_admin = 1, is_developer_admin = 1 WHERE id = ?", user.id);
       user = this.one("SELECT * FROM Users WHERE id = ?", user.id);
     }
     const grant = this.one("SELECT identifier FROM AdministratorGrants WHERE active = 1 AND school_id = ? AND identifier IN (?, ?)", user.school_id, email, normalizeIdentifier(user.login_name));
@@ -797,8 +800,12 @@ export class ClassroomState {
   }
 
   async getMe(request, cors) {
-    const user = await this.authenticate(request);
+    let user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
+    if (normalizeEmail(user.firebase_email) === ROOT_EMAIL && (!user.is_admin || !user.is_developer_admin)) {
+      this.exec("UPDATE Users SET is_admin = 1, is_developer_admin = 1 WHERE id = ?", user.id);
+      user = this.one("SELECT * FROM Users WHERE id = ?", user.id);
+    }
     return responseJson(this.serializeTeacherSession(user), 200, cors);
   }
 
@@ -963,7 +970,7 @@ export class ClassroomState {
   async getOperationsStatus(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "관리자만 운영 상태를 확인할 수 있습니다.", 403, cors);
+    if (!hasSchoolAdminRole(user)) return responseError("ADMIN_REQUIRED", "관리자만 운영 상태를 확인할 수 있습니다.", 403, cors);
 
     const neisConfigured = Boolean(String(this.env.NEIS_API_KEY || "").trim());
     const resendKeyConfigured = Boolean(String(this.env.RESEND_API_KEY || "").trim());
@@ -1087,7 +1094,7 @@ export class ClassroomState {
   async createClass(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "학급 생성은 관리자만 할 수 있습니다.", 403, cors);
+    if (!hasSchoolAdminRole(user)) return responseError("ADMIN_REQUIRED", "학급 생성은 관리자만 할 수 있습니다.", 403, cors);
     const body = await readJson(request);
     const grade = numberInRange(body?.grade, 1, 12);
     const classNumber = numberInRange(body?.classNumber, 1, 99);
@@ -1117,7 +1124,7 @@ export class ClassroomState {
   async updateClass(request, classId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "학급 정보 수정은 관리자만 할 수 있습니다.", 403, cors);
+    if (!hasSchoolAdminRole(user)) return responseError("ADMIN_REQUIRED", "학급 정보 수정은 관리자만 할 수 있습니다.", 403, cors);
     if (!validId(classId)) return responseError("CLASS_NOT_FOUND", "학급을 찾지 못했습니다.", 404, cors);
     const classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
     if (!classItem || classItem.school_id !== user.school_id) return responseError("CLASS_NOT_FOUND", "학급을 찾지 못했습니다.", 404, cors);
@@ -1147,7 +1154,7 @@ export class ClassroomState {
   async deleteClass(request, classId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "학급 삭제는 관리자만 할 수 있습니다.", 403, cors);
+    if (!hasSchoolAdminRole(user)) return responseError("ADMIN_REQUIRED", "학급 삭제는 관리자만 할 수 있습니다.", 403, cors);
     if (!validId(classId)) return responseError("CLASS_NOT_FOUND", "학급을 찾지 못했습니다.", 404, cors);
     const classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
     if (!classItem || classItem.school_id !== user.school_id) return responseError("CLASS_NOT_FOUND", "학급을 찾지 못했습니다.", 404, cors);
@@ -1183,7 +1190,7 @@ export class ClassroomState {
   async importStudentCodes(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "학생 코드 발급은 관리자만 할 수 있습니다.", 403, cors);
+    if (!hasSchoolAdminRole(user)) return responseError("ADMIN_REQUIRED", "학생 코드 발급은 관리자만 할 수 있습니다.", 403, cors);
     const body = await readJson(request);
     const classId = text(body?.classId, 80);
     const classItem = classId ? this.one("SELECT * FROM Classes WHERE id = ?", classId) : null;
@@ -1422,7 +1429,7 @@ export class ClassroomState {
   async createStudentCode(request, classId, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "학생 코드는 관리자만 발급할 수 있습니다.", 403, cors);
+    if (!hasSchoolAdminRole(user)) return responseError("ADMIN_REQUIRED", "학생 코드는 관리자만 발급할 수 있습니다.", 403, cors);
     if (!this.canAccessClass(user, classId)) return responseError("FORBIDDEN", "이 학급에 접근할 수 없습니다.", 403, cors);
     const body = await readJson(request);
     const studentName = text(body?.studentDisplayName, 128);
@@ -1494,7 +1501,7 @@ export class ClassroomState {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
     if (!user.is_guest && !user.school_selected) return responseError("SCHOOL_APPROVAL_REQUIRED", "학교 등록 또는 가입 승인이 완료된 계정만 학생 코드를 볼 수 있습니다.", 403, cors);
-    const teacherClassFilter = user.is_guest || (user.is_admin && !user.is_developer_admin)
+    const teacherClassFilter = user.is_guest || hasSchoolAdminRole(user)
       ? ""
       : " AND sc.class_id IN (SELECT class_id FROM ClassTeachers WHERE teacher_id = ?)";
     const parameters = teacherClassFilter ? [user.school_id, user.id] : [user.school_id];
@@ -2057,7 +2064,7 @@ export class ClassroomState {
   async getAdministrators(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "관리자만 권한 목록을 확인할 수 있습니다.", 403, cors);
+    if (!hasSchoolAdminRole(user)) return responseError("ADMIN_REQUIRED", "관리자만 권한 목록을 확인할 수 있습니다.", 403, cors);
     const teachers = this.all("SELECT id, login_name, display_name, firebase_email, is_admin FROM Users WHERE school_id = ? ORDER BY display_name COLLATE NOCASE", user.school_id)
       .map((row) => ({ teacherId: row.id, loginName: row.login_name, displayName: row.display_name, email: row.firebase_email || "", isAdmin: Boolean(row.is_admin) }));
     const grants = this.all("SELECT identifier, created_at_utc FROM AdministratorGrants WHERE school_id = ? AND active = 1 ORDER BY identifier", user.school_id)
@@ -2087,7 +2094,7 @@ export class ClassroomState {
   async getStudentExitPinStatus(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "관리자만 학생 앱 종료 비밀번호를 확인할 수 있습니다.", 403, cors);
+    if (!hasSchoolAdminRole(user)) return responseError("ADMIN_REQUIRED", "관리자만 학생 앱 종료 비밀번호를 확인할 수 있습니다.", 403, cors);
     const pin = this.one("SELECT updated_at_utc FROM StudentExitPins WHERE school_id = ?", user.school_id);
     return responseJson({
       configured: Boolean(pin),
@@ -2098,7 +2105,7 @@ export class ClassroomState {
   async setStudentExitPin(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "관리자만 학생 앱 종료 비밀번호를 설정할 수 있습니다.", 403, cors);
+    if (!hasSchoolAdminRole(user)) return responseError("ADMIN_REQUIRED", "관리자만 학생 앱 종료 비밀번호를 설정할 수 있습니다.", 403, cors);
     const body = await readJson(request);
     const pin = normalizeStudentExitPin(body?.pin);
     if (!pin) return responseError("INVALID_EXIT_PIN", "학생 앱 종료 비밀번호는 6~64자로 입력해 주세요.", 400, cors);
@@ -2144,7 +2151,7 @@ export class ClassroomState {
   async getGuestPasswordStatus(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest || !user.is_admin) return responseError("ADMIN_REQUIRED", "관리자만 게스트 비밀번호를 확인할 수 있습니다.", 403, cors);
+    if (user.is_guest || !hasSchoolAdminRole(user)) return responseError("ADMIN_REQUIRED", "관리자만 게스트 비밀번호를 확인할 수 있습니다.", 403, cors);
     const password = this.one("SELECT updated_at_utc FROM GuestPasswords WHERE school_id = ?", user.school_id);
     return responseJson({
       configured: Boolean(password),
@@ -2155,7 +2162,7 @@ export class ClassroomState {
   async setGuestPassword(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (user.is_guest || !user.is_admin) return responseError("ADMIN_REQUIRED", "관리자만 게스트 비밀번호를 설정할 수 있습니다.", 403, cors);
+    if (user.is_guest || !hasSchoolAdminRole(user)) return responseError("ADMIN_REQUIRED", "관리자만 게스트 비밀번호를 설정할 수 있습니다.", 403, cors);
     const body = await readJson(request);
     const password = normalizeGuestPassword(body?.password);
     if (!password) return responseError("INVALID_GUEST_PASSWORD", "게스트 비밀번호는 6~64자로 입력해 주세요.", 400, cors);
@@ -2178,7 +2185,7 @@ export class ClassroomState {
   async setAdministrator(request, cors) {
     const user = await this.authenticate(request);
     if (!user) return responseError("UNAUTHORIZED", "로그인이 필요합니다.", 401, cors);
-    if (!user.is_admin) return responseError("ADMIN_REQUIRED", "관리자만 권한을 변경할 수 있습니다.", 403, cors);
+    if (!hasSchoolAdminRole(user)) return responseError("ADMIN_REQUIRED", "관리자만 권한을 변경할 수 있습니다.", 403, cors);
     const body = await readJson(request);
     const kind = text(body?.kind, 32).toLowerCase() || "teacher";
     if (kind === "student") return this.setStudentAdministrator(user, body, cors);
@@ -2886,7 +2893,7 @@ export class ClassroomState {
   }
 
   classesForTeacher(user) {
-    if (user.is_guest || (user.is_admin && !user.is_developer_admin)) {
+    if (user.is_guest || hasSchoolAdminRole(user)) {
       return this.all("SELECT * FROM Classes WHERE school_id = ? ORDER BY COALESCE(grade, 999), COALESCE(class_number, 999), name COLLATE NOCASE", user.school_id).map(serializeClass);
     }
     if (!user.school_selected) return [];
@@ -2900,7 +2907,7 @@ export class ClassroomState {
     const classItem = this.one("SELECT * FROM Classes WHERE id = ?", classId);
     if (!classItem || classItem.school_id !== user.school_id) return false;
     if (user.is_guest) return true;
-    if (user.is_admin && !user.is_developer_admin) return true;
+    if (hasSchoolAdminRole(user)) return true;
     if (!user.school_selected) return false;
     return Boolean(this.one("SELECT class_id FROM ClassTeachers WHERE class_id = ? AND teacher_id = ?", classId, user.id));
   }

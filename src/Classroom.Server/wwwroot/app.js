@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.9.14";
+  const APP_VERSION = "0.9.15";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -627,7 +627,8 @@
 
   async function loadTeacher() {
     const session = await api("/auth/me");
-    state.teacher = session;
+    const canManageSchool = session.isAdmin === true || session.isDeveloperAdmin === true;
+    state.teacher = { ...session, canManageSchool };
     state.classes = Array.isArray(session.classes) ? session.classes : [];
     const isGuest = session.isGuest === true;
     // Account sessions survive closing/reopening the installed console. Guest
@@ -643,7 +644,7 @@
       : session.email || session.loginName || "Teacher";
     const isDeveloperAdmin = session.isDeveloperAdmin === true;
     const isCentralAdmin = session.isAdmin === true;
-    $("teacher-role").textContent = isDeveloperAdmin ? "개발자" : isGuest ? "게스트" : isCentralAdmin ? "중앙 관리자" : "선생님";
+    $("teacher-role").textContent = isDeveloperAdmin ? "개발자 관리자" : isGuest ? "게스트" : isCentralAdmin ? "중앙 관리자" : "선생님";
     $("teacher-role").classList.toggle("guest-badge", isGuest);
     $("teacher-role").hidden = !isCentralAdmin && !isDeveloperAdmin && !isGuest;
     const focusDisplayMode = $("focus-display-mode");
@@ -652,18 +653,18 @@
     // second in-page close icon crowded the responsive header without adding
     // a reliable browser close path, so it intentionally stays out of view.
     $("close-console-button").hidden = true;
-    $("admins-nav").hidden = !session.isAdmin;
+    $("admins-nav").hidden = !canManageSchool;
     $("developer-nav").hidden = !isDeveloperAdmin;
     $("student-codes-nav").hidden = false;
     $("settings-nav").hidden = isGuest;
     $("teacher-exit-pin-check-form").hidden = isGuest || isDeveloperAdmin;
-    $("admin-enroll-button").disabled = !session.isAdmin || !state.classes.length;
-    $("admin-enroll-button").hidden = !session.isAdmin;
-    $("admin-enroll-button").title = state.classes.length ? "학생 코드 발급" : "먼저 관리자 메뉴에서 학급을 만들어 주세요";
+    $("admin-enroll-button").disabled = !canManageSchool || !state.classes.length;
+    $("admin-enroll-button").hidden = !canManageSchool;
+    $("admin-enroll-button").title = state.classes.length ? "학생 추가 및 등록 코드 발급" : "먼저 학급을 만들어 주세요";
     $("student-code-permission").textContent = isGuest
       ? "게스트 · 수업 운영 가능 · 학생 코드 발급과 보안 설정은 관리자만"
-      : session.isAdmin
-      ? "중앙 관리자 · 학생 코드 발급 및 재발급 가능"
+      : canManageSchool
+      ? isDeveloperAdmin ? "개발자 관리자 · 학생 추가와 학급 관리를 사용할 수 있습니다" : "중앙 관리자 · 학생 코드 발급 및 재발급 가능"
       : "조회 전용 · 담당 학급 코드를 확인할 수 있습니다.";
     renderClassPicker();
     const displayName = typeof session.displayName === "string" ? session.displayName.trim() : "";
@@ -705,6 +706,10 @@
     await loadCommandQueue().catch(() => {});
     startClassPolling();
     window.setTimeout(() => maybeOpenOnboarding(session), 150);
+  }
+
+  function hasSchoolManagementAccess() {
+    return state.teacher?.canManageSchool === true;
   }
 
   async function refreshClass() {
@@ -1528,7 +1533,7 @@
       if (state.students.length) {
         grid.innerHTML = '<div class="empty-state">현재 필터에 해당하는 학생이 없습니다.</div>';
       } else {
-        grid.innerHTML = `<div class="empty-state"><strong>등록된 학생 PC가 없습니다.</strong><p>관리자는 관리자 메뉴에서 학생 코드를 발급하고, 학생은 학생용 설치 앱에 코드를 입력합니다.</p></div>`;
+        grid.innerHTML = `<div class="empty-state"><strong>등록된 학생 PC가 없습니다.</strong><p>관리자 메뉴에서 ‘학생 추가’를 눌러 등록을 시작하세요.</p></div>`;
       }
       return;
     }
@@ -1770,7 +1775,7 @@
       return;
     }
 
-    const revokeAction = state.teacher?.isAdmin
+    const revokeAction = hasSchoolManagementAccess()
       ? '<button class="danger-action wide" id="detail-revoke-button">장치 연결 해제</button>'
       : "";
     const detailActions = `<div class="detail-section stack">${remoteCallout}${remoteActions}<button class="primary wide" id="detail-screen-button">이 학생 화면 보기</button><button class="secondary wide" id="detail-message-button">이 학생에게 메시지</button>${revokeAction}</div>`;
@@ -2022,7 +2027,7 @@
     });
     list.innerHTML = [...grades.entries()].sort(([left], [right]) => right - left).map(([grade, classes]) => {
       classes.sort((left, right) => left.classNumber - right.classNumber || left.className.localeCompare(right.className, "ko"));
-      return `<section class="grade-roster-group"><div class="grade-roster-heading"><div><span class="eyebrow">GRADE</span><h3>${grade}학년</h3></div><span class="muted small">${classes.length}개 반</span></div><div class="roster-class-grid">${classes.map((item) => `<article class="roster-class-card"><button class="roster-class-main" type="button" data-roster-class-open="${escapeHtml(item.classId)}" aria-label="${escapeHtml(`${item.className} 학생 명단 보기`)}"><span class="roster-class-number">${item.classNumber}반</span><strong class="roster-class-name">${escapeHtml(item.className)}</strong><span class="roster-class-meta">${item.codes.length}명${item.subject ? ` · ${escapeHtml(item.subject)}` : ""}</span><span class="roster-class-action">명단 보기 <span aria-hidden="true">→</span></span></button>${state.teacher?.isAdmin ? `<div class="roster-class-actions"><button class="roster-class-edit" type="button" data-roster-class-edit="${escapeHtml(item.classId)}">수정</button><button class="roster-class-delete" type="button" data-roster-class-delete="${escapeHtml(item.classId)}">삭제</button></div>` : ""}</article>`).join("")}</div></section>`;
+      return `<section class="grade-roster-group"><div class="grade-roster-heading"><div><span class="eyebrow">GRADE</span><h3>${grade}학년</h3></div><span class="muted small">${classes.length}개 반</span></div><div class="roster-class-grid">${classes.map((item) => `<article class="roster-class-card"><button class="roster-class-main" type="button" data-roster-class-open="${escapeHtml(item.classId)}" aria-label="${escapeHtml(`${item.className} 학생 명단 보기`)}"><span class="roster-class-number">${item.classNumber}반</span><strong class="roster-class-name">${escapeHtml(item.className)}</strong><span class="roster-class-meta">${item.codes.length}명${item.subject ? ` · ${escapeHtml(item.subject)}` : ""}</span><span class="roster-class-action">명단 보기 <span aria-hidden="true">→</span></span></button>${hasSchoolManagementAccess() ? `<div class="roster-class-actions"><button class="roster-class-edit" type="button" data-roster-class-edit="${escapeHtml(item.classId)}">수정</button><button class="roster-class-delete" type="button" data-roster-class-delete="${escapeHtml(item.classId)}">삭제</button></div>` : ""}</article>`).join("")}</div></section>`;
     }).join("");
 
     list.querySelectorAll("[data-roster-class-open]").forEach((button) => {
@@ -2037,7 +2042,7 @@
   }
 
   function openClassEditDialog(classId) {
-    if (!state.teacher?.isAdmin) {
+    if (!hasSchoolManagementAccess()) {
       showToast("학급 정보 수정은 관리자만 할 수 있습니다.");
       return;
     }
@@ -2057,7 +2062,7 @@
   }
 
   async function saveClassEdit() {
-    if (!state.teacher?.isAdmin) throw new Error("학급 정보 수정은 관리자만 할 수 있습니다.");
+    if (!hasSchoolManagementAccess()) throw new Error("학급 정보 수정은 관리자만 할 수 있습니다.");
     const classId = $("class-edit-id").value;
     const name = $("class-edit-name").value.trim();
     const grade = Number($("class-edit-grade").value);
@@ -2077,7 +2082,7 @@
   }
 
   async function deleteClassFromRoster(classId) {
-    if (!state.teacher?.isAdmin) throw new Error("학급 삭제는 관리자만 할 수 있습니다.");
+    if (!hasSchoolManagementAccess()) throw new Error("학급 삭제는 관리자만 할 수 있습니다.");
     const classItem = state.classes.find((item) => item.id === classId);
     if (!classItem) return;
     const model = collectRosterClasses().find((item) => item.classId === classId);
@@ -2137,7 +2142,7 @@
     $("student-roster-title").textContent = model.className;
     $("student-roster-subtitle").textContent = `${codes.length}명${model.subject ? ` · ${model.subject}` : ""} · 학생 이름, 번호, 코드를 확인할 수 있습니다.`;
     content.innerHTML = codes.length
-      ? `<div class="student-roster-table-wrap"><table class="student-roster-table"><thead><tr><th>번호</th><th>학생</th><th>학생 코드</th><th></th></tr></thead><tbody>${codes.map((code) => `<tr><td>${escapeHtml(code.studentNumber || "—")}</td><td><strong>${escapeHtml(code.studentDisplayName)}</strong></td><td><code>${escapeHtml(code.joinCode)}</code></td><td class="roster-row-actions"><button class="secondary roster-code-copy" type="button" data-roster-code-copy="${escapeHtml(code.joinCode)}">복사</button>${state.teacher?.isAdmin ? `<button class="ghost-button code-reissue-button" type="button" data-roster-code-reissue="${escapeHtml(code.studentId)}">새 코드</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+      ? `<div class="student-roster-table-wrap"><table class="student-roster-table"><thead><tr><th>번호</th><th>학생</th><th>학생 코드</th><th></th></tr></thead><tbody>${codes.map((code) => `<tr><td>${escapeHtml(code.studentNumber || "—")}</td><td><strong>${escapeHtml(code.studentDisplayName)}</strong></td><td><code>${escapeHtml(code.joinCode)}</code></td><td class="roster-row-actions"><button class="secondary roster-code-copy" type="button" data-roster-code-copy="${escapeHtml(code.joinCode)}">복사</button>${hasSchoolManagementAccess() ? `<button class="ghost-button code-reissue-button" type="button" data-roster-code-reissue="${escapeHtml(code.studentId)}">새 코드</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
       : '<div class="empty-state">이 반에는 아직 등록된 학생 코드가 없습니다.</div>';
     content.querySelectorAll("[data-roster-code-copy]").forEach((button) => {
       button.addEventListener("click", async () => {
@@ -2183,7 +2188,7 @@
   }
 
   async function reissueStudentCode(code) {
-    if (!state.teacher?.isAdmin) {
+    if (!hasSchoolManagementAccess()) {
       throw new Error("학생 코드는 관리자만 재발급할 수 있습니다.");
     }
     if (!await askConfirmation("학생 코드 재발급", `${code.studentDisplayName} 학생의 기존 코드를 폐기하고 새 코드를 발급할까요?`, "새 코드 발급")) return;
@@ -2200,7 +2205,7 @@
   }
 
   async function loadAdminDirectory() {
-    if (!state.teacher?.isAdmin) return;
+    if (!hasSchoolManagementAccess()) return;
     const list = $("admin-list");
     if (list) list.innerHTML = '<div class="empty-state">관리자 목록을 불러오는 중입니다…</div>';
     const [directory, exitPinStatus, guestPasswordStatus] = await Promise.all([
@@ -2333,7 +2338,7 @@
   }
 
   async function loadOperationsStatus() {
-    if (!state.teacher?.isAdmin) return;
+    if (!hasSchoolManagementAccess()) return;
     const target = $("operations-status");
     if (target) target.innerHTML = '<div class="empty-state">상태를 확인하는 중입니다…</div>';
     try {
@@ -3015,7 +3020,7 @@
   }
 
   function openEnrollmentDialog() {
-    if (!state.teacher?.isAdmin) {
+    if (!hasSchoolManagementAccess()) {
       showToast("학생 코드 발급은 관리자 메뉴에서만 가능합니다.");
       return;
     }

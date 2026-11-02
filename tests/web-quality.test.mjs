@@ -79,9 +79,9 @@ for (const token of ["--ui-blue-strong", "--ui-violet", "--ui-green", "--ui-ambe
   assert.ok(lightColor && contrastRatio(lightColor, "#edf1f6") >= 4.5, `${token} must remain readable on light classroom surfaces.`);
   assert.ok(darkColor && contrastRatio(darkColor, "#142137") >= 4.5, `${token} must remain readable on dark classroom surfaces.`);
 }
-assert.match(landingTokens || "", /color-scheme:\s*dark;/, "The public landing page must keep its dark violet palette independent of the saved console theme.");
-assert.ok(landingInk && contrastRatio(landingInk, "#17132d") >= 4.5, "Landing-page brand text must remain readable against its violet background.");
-assert.ok(landingAccent && contrastRatio(landingAccent, "#17132d") >= 4.5, "Landing-page accent text must remain readable against its violet background.");
+assert.match(landingTokens || "", /color-scheme:\s*light;/, "The public landing page must keep its light violet palette independent of the saved console theme.");
+assert.ok(landingInk && contrastRatio(landingInk, "#f7f6fb") >= 4.5, "Landing-page brand text must remain readable against its light violet background.");
+assert.ok(landingAccent && contrastRatio(landingAccent, "#f7f6fb") >= 4.5, "Landing-page accent text must remain readable against its light violet background.");
 assert.match(styles, /#landing-view::before \{[\s\S]*radial-gradient[\s\S]*@keyframes classroom-aurora-drift/, "The short landing page must have its own subtle animated violet background.");
 assert.match(styles, /#landing-view \.landing-entry-card \{[\s\S]*backdrop-filter: blur/, "The login choices should be presented in one focused glass entry card.");
 assert.match(styles, /#app-view \.nav \{[\s\S]*border-radius: 23px/, "The desktop navigation rail should float on a fully rounded glass surface.");
@@ -247,7 +247,10 @@ assert.match(styles, /\.workspace-dialog-tools\s*\{\s*--dialog-accent:/, "Worksp
 assert.match(script, /teacher-account[\s\S]*?수업 운영/, "School guests must be presented as classroom operators rather than read-only viewers.");
 assert.doesNotMatch(script, /\$\("bulk-actions"\)\.hidden = isGuest/, "School guests must keep the selected-student command deck visible.");
 assert.doesNotMatch(script, /start-session-button"\)\.hidden = Boolean\(state\.teacher\?\.isGuest\)/, "School guests must be able to start a class session.");
-assert.match(script, /const revokeAction = state\.teacher\?\.isAdmin/, "Device disconnection must remain an administrator-only action.");
+assert.match(script, /const revokeAction = hasSchoolManagementAccess\(\)/, "Only school managers and the developer may disconnect a device.");
+assert.match(script, /session\.isAdmin === true \|\| session\.isDeveloperAdmin === true/, "The developer account must expose school management controls.");
+assert.match(cloudflareWorker, /function hasSchoolAdminRole\(user\)[\s\S]{0,120}user\.is_developer_admin/, "The developer account must receive school-scoped management access on the server.");
+assert.match(cloudflareWorker, /normalizeEmail\(user\.firebase_email\) === ROOT_EMAIL[\s\S]{0,180}SET is_admin = 1, is_developer_admin = 1/, "The root developer account's school-manager role must be repaired on sign-in.");
 assert.doesNotMatch(cloudflareWorker, /async startSession\(request, classId, cors\)[\s\S]{0,320}user\.is_guest/, "School guests must be able to start a class session through the API.");
 assert.doesNotMatch(cloudflareWorker, /async queueCommand\(request, classId, cors\)[\s\S]{0,320}user\.is_guest/, "School guests must be able to send classroom commands through the API.");
 assert.match(styles, /0\.6\.2 — dark mode contrast pass/, "The dark mode contrast pass must be present after the final light-surface rules.");
@@ -289,10 +292,10 @@ assert.match(cloudflareWorker, /support-user.{0,12}2, 24 \* 60 \* 60_000/, "Supp
 assert.match(cloudflareWorker, /SUPPORT_ACCOUNT_NOT_ELIGIBLE[\s\S]{0,220}학생 계정은 학교 선생님께 문의해 주세요/, "Student sessions and unrelated Firebase accounts must not use teacher developer support.");
 assert.match(cloudflareWorker, /session_kind TEXT NOT NULL DEFAULT 'persistent'/, "Teacher sessions must record whether a login is one-time.");
 assert.match(cloudflareWorker, /GUEST_SESSION_LIFETIME_MS = 1000 \* 60 \* 60 \* 12/, "Guest and one-time sessions must have a bounded lifetime.");
-assert.match(script, /const APP_VERSION = "0\.9\.12"/, "The published UI needs a version change so existing installs detect this update.");
-assert.match(versionManifest, /"version":\s*"0\.9\.12"/, "The online version manifest must match the UI build version.");
-assert.match(serviceWorker, /classroom-console-v59[\s\S]*styles\.css\?v=0\.9\.12[\s\S]*app\.js\?v=0\.9\.12/, "The service-worker shell cache must rotate with the published assets.");
-assert.match(cloudflareWorker, /if \(user\.is_admin && !user\.is_developer_admin\) return true;[\s\S]{0,220}ClassTeachers/, "Regular teachers must have explicit class membership rather than blanket school access.");
+assert.match(script, /const APP_VERSION = "0\.9\.15"/, "The published UI needs a version change so existing installs detect this update.");
+assert.match(versionManifest, /"version":\s*"0\.9\.15"/, "The online version manifest must match the UI build version.");
+assert.match(serviceWorker, /classroom-console-v62[\s\S]*styles\.css\?v=0\.9\.15[\s\S]*app\.js\?v=0\.9\.15/, "The service-worker shell cache must rotate with the published assets.");
+assert.match(cloudflareWorker, /if \(hasSchoolAdminRole\(user\)\) return true;[\s\S]{0,220}ClassTeachers/, "Only central admins and the developer get school-scoped class access; teachers remain explicitly assigned.");
 assert.match(cloudflareWorker, /Require explicit class membership at request time without revoking[\s\S]{0,180}INSERT OR IGNORE INTO ClassTeachers/, "Class access hardening must preserve existing teacher assignments while ensuring class owners remain assigned.");
 assert.match(cloudflareWorker, /async compareTeacherStudentExitPin\(/, "Teachers must be able to verify whether their guest PIN matches the student-app exit PIN without receiving a stored secret.");
 assert.match(styles, /@media \(max-width: 820px\)/, "The mobile shell must keep a compact breakpoint.");
