@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.ClassroomStudent" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">#6558D3</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSecondary">#7A6BE6</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#F5F3FA</item>
+        <item name="android:navigationBarColor">#F5F3FA</item>
+        <item name="android:windowBackground">#F5F3FA</item>
+        <item name="android:colorAccent">#6558D3</item>
+    </style>
+</resources>
