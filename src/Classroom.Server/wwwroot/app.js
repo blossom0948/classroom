@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "0.9.17";
+  const APP_VERSION = "0.9.18";
   const runtimeConfig = window.CLASSROOM_CONFIG || {};
   const apiOrigin = String(runtimeConfig.apiOrigin || "").trim().replace(/\/+$/, "");
   const cookieSessionEnabled = runtimeConfig.cookieSession === true;
@@ -558,6 +558,14 @@
     return typeof value === "string" && value.trim() ? value.trim() : fallback;
   }
 
+  function isAndroidStudent(student) {
+    const version = String(student?.agentVersion || "");
+    const deviceName = String(student?.computerName || "");
+    return /^android[/: ]/i.test(version)
+      || /^0\.2\.\d+-alpha$/i.test(version)
+      || /(?:combus|rk3588)/i.test(deviceName);
+  }
+
   function normalizeActivity(activity) {
     if (!activity || typeof activity !== "object") return null;
     const applicationDisplayName = displayText(activity.applicationDisplayName, "");
@@ -872,11 +880,15 @@
     if (student.activityRisk?.level === "warning") {
       signals.push({ kind: "risk", label: "활동 확인", detail: student.activityRisk.reason || "활동 신호를 확인해 주세요." });
     }
-    if (!student.activity) signals.push({ kind: "agent", label: "상태 대기", detail: "학생 앱의 현재 활동 정보가 아직 도착하지 않았습니다." });
+    if (!student.activity && !isAndroidStudent(student)) {
+      signals.push({ kind: "agent", label: "상태 대기", detail: "학생 앱의 현재 활동 정보가 아직 도착하지 않았습니다." });
+    }
     if (!student.networkStatus || student.networkStatus === "unknown") {
       signals.push({ kind: "network", label: "연결 확인", detail: "네트워크 상태를 확인하지 못했습니다." });
     }
-    if (student.batteryPercent != null && student.batteryPercent <= 15) {
+    if (student.batteryPercent != null
+      && student.batteryPercent <= 15
+      && !(isAndroidStudent(student) && student.batteryPercent === 0)) {
       signals.push({ kind: "battery", label: "저배터리", detail: `배터리가 ${student.batteryPercent}%입니다.` });
     }
     return signals;
@@ -1544,7 +1556,9 @@
       const attention = primaryAttentionSignal(student);
       const statusClass = !student.online ? "" : attention?.kind === "help" ? "help" : attention ? "attention" : student.policyApplied ? "focus" : "online";
       const statusText = !student.online ? "오프라인" : attention?.kind === "help" ? "도움 요청" : attention ? "확인 필요" : student.policyApplied ? "집중 모드" : "온라인";
-      const battery = student.batteryPercent == null ? "배터리 —" : `배터리 ${student.batteryPercent}%`;
+      const batteryUnavailable = student.batteryPercent == null
+        || (isAndroidStudent(student) && student.batteryPercent === 0);
+      const battery = batteryUnavailable ? "배터리 —" : `배터리 ${student.batteryPercent}%`;
       const selected = state.selectedDeviceIds.has(student.deviceId);
       const selector = studentSelectorMarkup(student, selected);
       const riskNotice = attention
@@ -1595,6 +1609,9 @@
       return { applicationDisplayName: "오프라인", browserDomain: "마지막 활동 없음" };
     }
     if (!student.activity) {
+      if (isAndroidStudent(student)) {
+        return { applicationDisplayName: "Android 활동 정보 미제공", browserDomain: "전체 화면 보기로 확인" };
+      }
       return { applicationDisplayName: "학생 화면 확인 필요", browserDomain: "에이전트 연결 대기 중" };
     }
     const activity = student.activity;
@@ -1740,13 +1757,25 @@
     $("detail-pane").classList.toggle("screen-mode", state.detailView === "screen");
     const activity = student.activity;
     const attention = primaryAttentionSignal(student);
+    const androidStudent = isAndroidStudent(student);
     const detailStatusClass = !student.online ? "" : attention?.kind === "help" ? "help" : attention ? "attention" : student.policyApplied ? "focus" : "online";
     const detailStatusText = !student.online ? "오프라인" : attention?.kind === "help" ? "도움 요청" : attention ? "확인 필요" : student.policyApplied ? "집중 모드" : "온라인";
     const riskMarkup = attention
       ? `<div class="risk-callout ${escapeHtml(attention.kind)}"><strong>${escapeHtml(attention.label)}</strong><span>${escapeHtml(attention.detail)}</span></div>`
-      : `<div class="privacy-note">현재 앱과 창 제목을 상태 요약으로 표시합니다. 화면 보기는 교사가 수업 중 직접 켠 동안만 저화질로 전송되며 학생 앱에 공유 중 표시가 나타납니다.</div>`;
-    const statusRows = `<div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>학급 / 번호</span><strong>${student.grade ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번` : "학급 정보 없음"}</strong></div><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>수업 신호</span><strong>${escapeHtml(attention?.label || "정상")}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activity?.applicationDisplayName || "확인 필요")}</strong></div><div class="detail-row"><span>현재 창</span><strong>${escapeHtml(activity?.windowTitle || "창 정보 미연결")}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activity?.browserDomain || "도메인 미연결")}</strong></div><div class="detail-row"><span>배터리</span><strong>${student.batteryPercent == null ? "AC 전원 또는 정보 없음" : `${student.batteryPercent}%`}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 연결</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div>`;
-    const deviceRows = `<div class="detail-section"><h3>학생 앱</h3><div class="detail-row"><span>등록 상태</span><strong>${student.agentVersion && student.agentVersion !== "확인 필요" ? `연결된 설치 앱 · v${escapeHtml(student.agentVersion)}` : "설치 상태 확인 중"}</strong></div><div class="detail-row"><span>Windows 시작</span><strong>학생 설치 앱에서 자동 연결 설정</strong></div><div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div></div>`;
+      : `<div class="privacy-note">${androidStudent
+        ? "Android 앱은 개별 앱·창 활동 정보를 보내지 않습니다. 실제 화면은 전체 화면 보기 요청 후 전자칠판에서 공유를 승인하면 확인할 수 있습니다."
+        : "현재 앱과 창 제목을 상태 요약으로 표시합니다. 화면 보기는 교사가 수업 중 직접 켠 동안만 저화질로 전송되며 학생 앱에 공유 중 표시가 나타납니다."}</div>`;
+    const activityApp = activity?.applicationDisplayName || (androidStudent ? "Android 활동 정보 미제공" : "확인 필요");
+    const activityWindow = activity?.windowTitle || (androidStudent ? "전체 화면 보기로 확인" : "창 정보 미연결");
+    const activityDomain = activity?.browserDomain || (androidStudent ? "개별 웹 도메인 정보 미제공" : "도메인 미연결");
+    const batteryText = androidStudent && student.batteryPercent === 0
+      ? "전원 연결 또는 배터리 정보 없음"
+      : student.batteryPercent == null ? "AC 전원 또는 정보 없음" : `${student.batteryPercent}%`;
+    const statusRows = `<div class="detail-section"><h3>현재 상태</h3><div class="detail-row"><span>학급 / 번호</span><strong>${student.grade ? `${student.grade}학년 ${student.classNumber || ""}반 · ${student.studentNumber || "—"}번` : "학급 정보 없음"}</strong></div><div class="detail-row"><span>컴퓨터</span><strong>${escapeHtml(student.computerName)}</strong></div><div class="detail-row"><span>수업 신호</span><strong>${escapeHtml(attention?.label || "정상")}</strong></div><div class="detail-row"><span>현재 앱</span><strong>${escapeHtml(activityApp)}</strong></div><div class="detail-row"><span>현재 창</span><strong>${escapeHtml(activityWindow)}</strong></div><div class="detail-row"><span>웹 도메인</span><strong>${escapeHtml(activityDomain)}</strong></div><div class="detail-row"><span>배터리</span><strong>${batteryText}</strong></div><div class="detail-row"><span>네트워크</span><strong>${escapeHtml(student.networkStatus || "unknown")}</strong></div><div class="detail-row"><span>마지막 연결</span><strong>${formatTime(student.lastHeartbeatUtc)}</strong></div><div class="detail-row"><span>정책</span><strong>${student.policyApplied ? "집중 모드" : "일반"}</strong></div></div>`;
+    const platformRows = androidStudent
+      ? `<div class="detail-row"><span>기기 종류</span><strong>Android 전자칠판</strong></div>`
+      : `<div class="detail-row"><span>Windows 시작</span><strong>학생 설치 앱에서 자동 연결 설정</strong></div>`;
+    const deviceRows = `<div class="detail-section"><h3>학생 앱</h3><div class="detail-row"><span>등록 상태</span><strong>${student.agentVersion && student.agentVersion !== "확인 필요" ? `연결된 설치 앱 · v${escapeHtml(student.agentVersion)}` : "설치 상태 확인 중"}</strong></div>${platformRows}<div class="detail-row"><span>Device ID</span><code>${student.deviceId.slice(0, 8)}…</code></div></div>`;
     const header = `<div class="eyebrow">STUDENT DEVICE</div><h2 class="detail-title">${escapeHtml(student.studentDisplayName)}</h2><div class="detail-status"><span class="status-dot ${detailStatusClass}">${detailStatusText}</span></div>`;
     const remote = student.remoteAssist;
     const remoteCallout = remote

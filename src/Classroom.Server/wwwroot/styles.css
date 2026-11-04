@@ -8326,7 +8326,7 @@ html[data-theme="dark"] #app-view #class-section > .class-command-strip {
   #app-view .sidebar-bottom { scroll-behavior: auto; }
 }
 
-/* 0.9.17 — calm, task-first classroom controls. Keep the capabilities, but
+/* 0.9.18 — calm, task-first classroom controls. Keep the capabilities, but
    give each operation one clear home and remove the oversized floating look. */
 #app-view.app-shell {
   --ui-shadow-card: 0 1px 2px rgba(28, 24, 46, .035), 0 5px 14px rgba(34, 29, 56, .045);
