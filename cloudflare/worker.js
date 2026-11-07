@@ -420,6 +420,8 @@ export class ClassroomState {
     this.exec("CREATE INDEX IF NOT EXISTS idx_guest_sessions_school ON GuestSessions(school_id, expires_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_audit_class ON AuditEvents(class_id, timestamp_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_commands_class ON Commands(class_id, created_at_utc)");
+    this.exec("CREATE INDEX IF NOT EXISTS idx_command_targets_device_state ON CommandTargets(device_id, state)");
+    this.exec("CREATE INDEX IF NOT EXISTS idx_class_sessions_active ON ClassSessions(class_id, ended_at_utc, started_at_utc)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_attendance_class_session ON AttendanceRecords(class_id, session_id)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_student_admin_school ON StudentAdminGrants(school_id, active)");
     this.exec("CREATE INDEX IF NOT EXISTS idx_remote_assist_class ON RemoteAssistSessions(class_id, requested_at_utc)");
